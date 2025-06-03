@@ -1,4 +1,5 @@
-const socket = io('http://localhost:3000'); // Change this when deployed
+const socket = io("https://survival-io-md0m.onrender.com");
+ // Change this when deployed
 
 let otherPlayers = {};
 
