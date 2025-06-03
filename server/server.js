@@ -1,37 +1,41 @@
 const express = require('express');
 const http = require('http');
 const socketIO = require('socket.io');
+const path = require('path');
 
 // Setup
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server, {
   cors: {
-    origin: '*', // allow all origins (for local dev)
+    origin: '*',
   }
 });
 
-const PORT = 3000;
+// Serve static files from root folder
+app.use(express.static(path.join(__dirname, '..')));
+
+// Fallback: send index.html for all other routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'index.html'));
+});
+
+const PORT = process.env.PORT || 3000; // For Render compatibility
 
 let players = {};
 
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
-  // Add new player
   players[socket.id] = {
     id: socket.id,
     x: Math.random() * 800,
     y: Math.random() * 600
   };
 
-  // Send current players to the new one
   socket.emit('currentPlayers', players);
-
-  // Tell others about the new player
   socket.broadcast.emit('newPlayer', players[socket.id]);
 
-  // Movement update
   socket.on('move', (data) => {
     if (players[socket.id]) {
       players[socket.id].x = data.x;
@@ -40,7 +44,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Disconnect
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
     delete players[socket.id];
