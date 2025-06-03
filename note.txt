@@ -1,0 +1,61 @@
+Create a survival rpg game
+Things I need to build this game:
+    - account github
+    - download git
+    - account render
+    - download nodejs
+    - download socket.io(terminal)
+    - download express socket.io(terminal)
+
+
+- generated world and resource
+
+
++ version 1
+- create player 
+- create simple resource
+    = stone 
+        - health random between 30-60
+        - spawn max 30
+        - if stone health 30-45 stone drop = 5-7 stone
+        - if stone health 45-60 stone drop = 7-10 stone
+    = tree 
+        - health random between 20-40
+        - spawn max 50
+        - if wood health 20-30 wood drop = 5-7 wood
+        - if wood health 30-40 wood drop = 7-10 wood
+    = iron 
+        - health random between 40-80
+        - spawn max 10
+        - if iron health 40-60 iron drop = 5-7 iron
+        - if iron health 60-80 iron drop = 7-10 iron
+    = gold
+        - health random between 50-100
+        - spawn max 5
+        - if gold health 50-75 gold drop = 5-7 gold
+        - if gold health 75-100 gold drop = 7-10 gold
+- crafting
+    = wooden_axe x12 wood
+    = wooden_sword x15 wood
+    = wooden_pickaxe x15 wood
+    = stone_axe x24 wood, x15 stone
+    = stone_sword x24 wood, x20 stone
+    = stone_pickaxe x24 wood, x20 stone
+    = iron_axe x36 wood, x15 stone
+    = iron_sword x36 wood, x20 stone
+    = iron_pickaxe x36 wood, x20 stone
+    = gold_axe x50 wood, 15 iron
+    = gold_sword x50 wood, x20 iron
+    = gold_pickaxe x50 wood, x20 iron
+- tool
+    = defualt: hand:
+        - damage to enemy 1
+        - damage to tree 1
+    = wooden_axe
+        - damage to tree 5
+    = wooden_pickaxe
+        - damage to stone 5
+    = wooden_sword
+        - damage to enemy 5
+
+- create bigger maps
