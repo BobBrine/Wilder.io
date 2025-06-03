@@ -3,24 +3,25 @@ const http = require('http');
 const socketIO = require('socket.io');
 const path = require('path');
 
-// Setup
 const app = express();
 const server = http.createServer(app);
+
 const io = socketIO(server, {
   cors: {
     origin: '*',
-  }
+  },
+  path: '/socket.io',
 });
 
-// Serve static files from root folder
-app.use(express.static(path.join(__dirname, '..')));
+const PORT = process.env.PORT || 3000;
 
-// Fallback: send index.html for all other routes
+// Serve static files from the 'public' folder
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Fallback route to serve index.html for SPA support
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'index.html'));
+  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
-
-const PORT = process.env.PORT || 3000; // For Render compatibility
 
 let players = {};
 
@@ -30,7 +31,7 @@ io.on('connection', (socket) => {
   players[socket.id] = {
     id: socket.id,
     x: Math.random() * 800,
-    y: Math.random() * 600
+    y: Math.random() * 600,
   };
 
   socket.emit('currentPlayers', players);
