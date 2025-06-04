@@ -1,6 +1,6 @@
-const socket = io("https://survival-io-md0m.onrender.com");
-//const socket = io("http://localhost:3000");
-const autostart = false;
+//const socket = io("https://survival-io-md0m.onrender.com");
+const socket = io("http://localhost:3000");
+const autostart = true;
 
 
 let gameStarted = false;
@@ -73,10 +73,14 @@ socket.on("state", (data) => {
   draw();
 
   const serverPlayers = data.players;
-
+  let smoothing = 0.2; 
   // Update your own player
   if (player && serverPlayers[socket.id]) {
-    Object.assign(player, serverPlayers[socket.id]);
+    let serverPlayer = serverPlayers[socket.id];
+    player.x += (serverPlayer.x - player.x) * smoothing;
+    player.y += (serverPlayer.y - player.y) * smoothing;
+    const { x, y, ...rest } = serverPlayer;
+    Object.assign(player, rest);
   }
 
   // Update other players

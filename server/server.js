@@ -83,7 +83,9 @@ io.on('connection', (socket) => {
 // ⬇ Add this after the io.on block
 setInterval(() => {
   io.emit("state", {
-    players,
+    players: Object.fromEntries(Object.entries(players).map(([id, p]) => {
+    return [id, { x: p.x, y: p.y, name: p.name }];
+  })),
     square
   });
 }, 1000 / 20);
