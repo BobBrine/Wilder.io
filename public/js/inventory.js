@@ -16,9 +16,4 @@ const inventory = {
     return this[type] >= count;
   }
 };
-//give player item at the start
-//inventory.addItem("gold_axe", 1);
-//inventory.addItem("wood", 100);
-//inventory.addItem("stone", 100);
-//inventory.addItem("iron", 100);
-//inventory.addItem("gold", 100);
+
