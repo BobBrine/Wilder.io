@@ -3,13 +3,16 @@ let mouseY = 0;
 
 const keys = {};
 
-window.addEventListener("keydown", e => {
+window.addEventListener("keydown", (e) => {
+  if (!e.key || typeof e.key !== "string" || typeof keys === "undefined") return;
   keys[e.key.toLowerCase()] = true;
 });
 
-window.addEventListener("keyup", e => {
+window.addEventListener("keyup", (e) => {
+  if (!e.key || typeof e.key !== "string" || typeof keys === "undefined") return;
   keys[e.key.toLowerCase()] = false;
 });
+
 
 
 canvas.addEventListener("mousemove", (e) => {
@@ -19,15 +22,24 @@ canvas.addEventListener("mousemove", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
-  const num = parseInt(e.key);
-  if (!isNaN(num)) {
+  if (!e.key || typeof e.key !== "string") return;
+
+  const key = e.key.toLowerCase();
+
+  if (typeof keys !== "undefined") {
+    keys[key] = true;
+  }
+
+  const num = parseInt(e.key, 10);
+  if (!isNaN(num) && typeof hotbar !== "undefined") {
     if (num === 0) {
-      hotbar.selectedIndex = 9; // '0' = 10th slot
+      hotbar.selectedIndex = 9;
     } else if (num >= 1 && num <= 9) {
       hotbar.selectedIndex = num - 1;
     }
   }
 });
+
 
 let draggingSlotIndex = null;
 let draggedItem = null;

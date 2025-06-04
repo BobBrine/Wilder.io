@@ -156,6 +156,39 @@ function drawDamageTexts() {
   }
 }
 
+let lastFrameTime = performance.now();
+let fps = 0;
+let ms = 0;
+let fpsDisplay = 0;
+let msDisplay = 0;
+let fpsUpdateCounter = 0;
+const FPS_UPDATE_DELAY_FRAMES = 20; 
+
+function updateFPSCounter() {
+  const now = performance.now();
+  ms = now - lastFrameTime;
+  fps = 1000 / ms;
+  lastFrameTime = now;
+
+  fpsUpdateCounter++;
+  if (fpsUpdateCounter >= FPS_UPDATE_DELAY_FRAMES) {
+    fpsDisplay = fps;
+    msDisplay = ms;
+    fpsUpdateCounter = 0;
+  }
+}
+function drawFPSCounter() {
+  ctx.save();
+  ctx.fillStyle = "white";
+  ctx.font = "16px monospace";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "bottom";
+
+  const displayText = `FPS: ${fpsDisplay.toFixed(1)} | MS: ${msDisplay.toFixed(1)}`;
+  ctx.fillText(displayText, 10, canvas.height - 10);
+  ctx.restore();
+}
+
 
 
 

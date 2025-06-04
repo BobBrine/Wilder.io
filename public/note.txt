@@ -59,3 +59,8 @@ Things I need to build this game:
         - damage to enemy 5
 
 - create bigger maps
+
++ version 2
+- add multiplayer
+- fixed bug from version 1
+- add enemy

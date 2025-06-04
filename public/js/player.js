@@ -1,21 +1,4 @@
 
-
-
-const player = {
-  x: Math.random() * (WORLD_WIDTH - 20),
-  y: Math.random() * (WORLD_HEIGHT - 20),
-  size: 20,
-  color: "lime",
-  speed: 3,
-  facingAngle: 0,
-  level: 1,
-  xp: 0,
-  xpToNextLevel: 10,
-
-};
-
-
-
 function updatePlayerPosition() {
   let moveX = 0;
   let moveY = 0;
@@ -57,13 +40,6 @@ if (!isCollidingWithResources(player.x, newY)) {
 }
 
 
-/*
-function updatePlayerFacing(mouseX, mouseY) {
-  const centerX = player.x + player.size / 2;
-  const centerY = player.y + player.size / 2;
-  player.facingAngle = Math.atan2(mouseY - centerY, mouseX - centerX);
-}
-*/
 
 function updatePlayerFacing(mouseX, mouseY) {
   // Convert mouse screen coordinates to world coordinates
@@ -79,6 +55,7 @@ function updatePlayerFacing(mouseX, mouseY) {
 
 
 function drawPlayer() {
+  if (!player) return;
   ctx.fillStyle = player.color;
   ctx.fillRect(player.x, player.y, player.size, player.size);
 
@@ -106,7 +83,14 @@ function drawPlayer() {
   ctx.lineTo(centerX, centerY);
   ctx.fill();
   
+  // ✅ Draw your name
+  ctx.fillStyle = "white";
+  ctx.font = "14px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(player.name || "You", centerX, player.y - 10);
+
   drawTool();
+
 }
 
 function drawTool() {
@@ -168,8 +152,24 @@ function gainXP(amount) {
   }
 }
 
-for (let id in otherPlayers) {
+function drawOtherPlayers() {
+  ctx.font = '14px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'white';
+
+  for (const id in otherPlayers) {
     const p = otherPlayers[id];
-    ctx.fillStyle = "blue";
-    ctx.fillRect(p.x, p.y, 20, 20);
+    if (!p) continue;
+    const screenX = p.x;
+    const screenY = p.y;
+
+
+    ctx.fillStyle = 'blue';
+    ctx.fillRect(screenX, screenY, p.size || 20, p.size || 20); 
+
+    ctx.fillStyle = 'white';
+    const centerX = screenX + (p.size || 20) / 2;
+    ctx.fillText(p.name || 'Unnamed', centerX, screenY - 10);
   }
+}
+

@@ -9,10 +9,16 @@
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
+  <div id="nameEntry" style="position: absolute; z-index: 10; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #222; padding: 20px; border-radius: 8px; color: white;">
+  <h2>Enter Your Name</h2>
+  <input type="text" id="playerNameInput" placeholder="Your name" />
+  <button onclick="submitName()" disabled>Join</button>
+
+  </div>
   <canvas id="gameCanvas"></canvas>
   <script src="js/canvas.js"></script> 
-  
   <script src="js/network.js"></script>
+  
   <script src="js/player.js"></script>
   <script src="js/resource.js"></script> 
   <script src="js/world.js"></script> 
@@ -28,6 +34,16 @@
 
   <script src="js/ui.js"></script>
 
+  <script>
+  let playerName = "Unknown";
+
+  function submitName() {
+    const input = document.getElementById("playerNameInput");
+    playerName = input.value.trim() || "Unknown";
+    document.getElementById("nameEntry").style.display = "none";
+    socket.emit('setName', playerName);
+  }
+  </script>
 
   <script src="js/main.js"></script>
 

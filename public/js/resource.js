@@ -15,7 +15,7 @@ const resourceTypes = {
       "iron_axe",
       "gold_axe"
     ],
-    spawntimer: 10, // 🕒 10 seconds (60fps * 10)
+    spawntimer: 1, // 🕒 10 seconds (60fps * 10)
     getDropAmount(health) {
       return health <= 30
         ? Math.floor(Math.random() * 3) + 5   // 5–7
@@ -181,6 +181,8 @@ function drawAllResources() {
       if (r.size > 0) {
         ctx.fillStyle = r.color;
         ctx.fillRect(r.x, r.y, r.size, r.size);
+        ctx.strokeStyle = "red";
+        ctx.strokeRect(r.x, r.y, r.size, r.size);
 
         // Draw health bar if recently hit
         if (r.lastHitTime && now - r.lastHitTime < 1000) {
@@ -189,6 +191,7 @@ function drawAllResources() {
       }
     }
   }
+  
 }
 
 
@@ -206,6 +209,7 @@ function pointInCone(px, py, ox, oy, dir, angle, length) {
 }
 
 function hitResourceInCone() {
+  if (!player) return false;
   const coneLength = 50;
   const coneAngle = Math.PI / 4;
   const centerX = player.x + player.size / 2;
@@ -263,6 +267,7 @@ function hitResourceInCone() {
 
 
 function isOverlappingAnythings(x, y, size) {
+  if (!player) return false;
   const all = Object.values(allResources).flat(); // flatten all resource arrays
 
   const overlappingResource = all.some(obj =>
@@ -284,6 +289,7 @@ function getResourceArrayByType(type) {
 function isCollidingWithResources(newX, newY, size = player.size) {
     const all = Object.values(allResources).flat();
     return all.some(resource =>
+        resource.size > 0 && 
         checkOverlap(newX, newY, size, resource.x, resource.y, resource.size)
     );
 }
@@ -302,14 +308,15 @@ function updateResourceRespawns(deltaTime) {
     for (const r of resources) {
       if (r.size === 0 && r.respawnTimer > 0) {
         r.respawnTimer -= deltaTime;
-        //console.log(r.respawnTimer);
+        console.log(r.respawnTimer);
         if (r.respawnTimer <= 0) {
           // Respawn the resource at a new location
+          const config = resourceTypes[r.type];
           let newX, newY;
           do {
             newX = Math.random() * (WORLD_WIDTH - r.size);
             newY = Math.random() * (WORLD_HEIGHT - r.size);
-          } while (isOverlappingAnythings(newX, newY, r.size));
+          } while (isOverlappingAnythings(newX, newY, config.size));
 
           r.x = newX;
           r.y = newY;
@@ -324,10 +331,3 @@ function updateResourceRespawns(deltaTime) {
   }
 }
 
-
-spawnAllResources();
-/*
-setInterval(() => {
-  spawnAllResources(); // This will try to spawn missing resources
-}, 1000); 
-*/

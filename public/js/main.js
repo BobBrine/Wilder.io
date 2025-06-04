@@ -14,6 +14,13 @@ function drawWroldborder()
 }
 
 function update(now = performance.now()) {
+  if (!player) {
+    requestAnimationFrame(update);
+    return;
+  }
+
+  updateFPSCounter();
+
   const deltaTime = (now - lastUpdate) / 1000; 
   lastUpdate = now;
 
@@ -34,11 +41,14 @@ function update(now = performance.now()) {
   //enviroment
   drawWroldborder();
   drawAllResources();
+  draw(); //test
   drawPlayer();
-
+  drawOtherPlayers();
   
   ctx.restore();
-
+  
+  //ui
+  drawFPSCounter(); 
   drawDamageTexts();
   drawHUD();
   drawHotbar();
