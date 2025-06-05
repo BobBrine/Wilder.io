@@ -184,7 +184,7 @@ function drawFPSCounter() {
   ctx.textAlign = "left";
   ctx.textBaseline = "bottom";
 
-  const displayText = `FPS: ${fpsDisplay.toFixed(1)} | MS: ${msDisplay.toFixed(1)}`;
+  const displayText = `FPS: ${fpsDisplay.toFixed(1)} | Ping: ${ping.toFixed(1)}ms`;
   ctx.fillText(displayText, 10, canvas.height - 10);
   ctx.restore();
 }

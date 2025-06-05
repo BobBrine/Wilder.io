@@ -40,6 +40,10 @@ io.on('connection', (socket) => {
   //test
   socket.emit('squarePosition', square);
 
+  socket.on("pingCheck", (callback) => {
+    callback(); // just respond immediately
+  });
+
 
   socket.on('setName', (name) => {
       if (players[socket.id]) {
@@ -82,13 +86,18 @@ io.on('connection', (socket) => {
 
 // ⬇ Add this after the io.on block
 setInterval(() => {
-  io.emit("state", {
-    players: Object.fromEntries(Object.entries(players).map(([id, p]) => {
-    return [id, { x: p.x, y: p.y, name: p.name }];
-  })),
-    square
-  });
+  for (const [id, socket] of io.of("/").sockets) {
+    const filteredPlayers = Object.fromEntries(
+      Object.entries(players).filter(([pid]) => pid !== id)
+    );
+
+    socket.emit("state", {
+      players: filteredPlayers,
+      square
+    });
+  }
 }, 1000 / 20);
+
 
 server.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);

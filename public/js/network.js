@@ -1,6 +1,6 @@
 const socket = io("https://survival-io-md0m.onrender.com");
 //const socket = io("http://localhost:3000");
-const autostart = false;
+const devTest = false;
 
 
 let gameStarted = false;
@@ -11,6 +11,15 @@ let otherPlayers = {};
 let player = null;
 
 let latestSquare = null;
+
+let ping = 0;
+
+setInterval(() => {
+  const startTime = performance.now();
+  socket.emit("pingCheck", () => {
+    ping = performance.now() - startTime;
+  });
+}, 1000); // Ping every second
 
 socket.on('connect', () => {
   console.log('Connected as', socket.id);
@@ -27,7 +36,7 @@ socket.on('connect', () => {
     gameStarted = true;
   
   };
-  if (autostart) {
+  if (devTest) {
       document.getElementById("nameEntry").style.display = "none";
       socket.emit("setName", "Tester"); // or any default name
       gameStarted = true;
@@ -73,6 +82,7 @@ socket.on("state", (data) => {
   draw();
 
   const serverPlayers = data.players;
+  /*
   let smoothing = 0.2; 
   // Update your own player
   if (player && serverPlayers[socket.id]) {
@@ -82,6 +92,7 @@ socket.on("state", (data) => {
     const { x, y, ...rest } = serverPlayer;
     Object.assign(player, rest);
   }
+  */
 
   // Update other players
   for (const id in serverPlayers) {
