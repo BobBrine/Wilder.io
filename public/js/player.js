@@ -1,3 +1,7 @@
+let otherPlayers = {};
+
+let player = null;
+
 
 function updatePlayerPosition() {
   let moveX = 0;

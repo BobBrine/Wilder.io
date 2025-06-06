@@ -14,7 +14,7 @@ function drawWroldborder()
 }
 
 function update(now = performance.now()) {
-  if (!player) {
+  if (!player || !resourcesLoaded)  {
     requestAnimationFrame(update);
     return;
   }
@@ -33,14 +33,12 @@ function update(now = performance.now()) {
 
   updateCamera();
   updatePlayerFacing(mouseX, mouseY);
-  updateResourceRespawns(deltaTime);
 
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, -camera.x, -camera.y); 
   //enviroment
   drawWroldborder();
-  drawAllResources();
   draw(); //test
   drawPlayer();
   drawOtherPlayers();

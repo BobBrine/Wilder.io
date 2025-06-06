@@ -2,14 +2,6 @@ const socket = io("https://survival-io-md0m.onrender.com");
 //const socket = io("http://localhost:3000");
 const devTest = false;
 
-
-let gameStarted = false;
- // Change this when deployed
-
-let otherPlayers = {};
-
-let player = null;
-
 let latestSquare = null;
 
 let ping = 0;
@@ -24,6 +16,21 @@ setInterval(() => {
 socket.on('connect', () => {
   console.log('Connected as', socket.id);
 
+  // Update resources from server
+  
+  socket.on("resourceType", (data) => {  
+    resourceTypes = data;
+  });
+
+
+
+
+  socket.on("resources", (data) => {    
+    allResources = data;
+    resourcesLoaded = true;
+  });
+  
+
   // Enable the join button once socket is ready
   document.querySelector("#playerNameInput").disabled = false;
   document.querySelector("button").disabled = false;
@@ -33,19 +40,19 @@ socket.on('connect', () => {
     const name = input.value.trim() || "Unknown";
     document.getElementById("nameEntry").style.display = "none";
     socket.emit("setName", name);
-    gameStarted = true;
+    
   
   };
   if (devTest) {
       document.getElementById("nameEntry").style.display = "none";
       socket.emit("setName", "Tester"); // or any default name
-      gameStarted = true;
+      
       //give player item at the start
-      inventory.addItem("gold_axe", 1);
-      inventory.addItem("wood", 100);
-      inventory.addItem("stone", 100);
-      inventory.addItem("iron", 100);
-      inventory.addItem("gold", 100);
+      //inventory.addItem("gold_axe", 1);
+      //inventory.addItem("wood", 100);
+      //inventory.addItem("stone", 100);
+      //inventory.addItem("iron", 100);
+      //inventory.addItem("gold", 100);
     } 
 });
 
@@ -58,7 +65,6 @@ socket.on('currentPlayers', (players) => {
 
 socket.on('playerSelf', (playerData) => {
   player = playerData;  // ✅ Apply name and other info from server
-  spawnAllResources();
 
 });
 
@@ -79,8 +85,6 @@ socket.on("state", (data) => {
   //if (!gameStarted) return;
   latestSquare = data.square;
   
-  draw();
-
   const serverPlayers = data.players;
   /*
   let smoothing = 0.2; 
@@ -121,17 +125,15 @@ socket.on('playerDisconnected', (id) => {
   delete otherPlayers[id];
 });
 
+
 // Send your position to the server
 function sendPlayerPosition(x, y) {
   socket.emit('move', { x, y });
 }
 
-function draw() //test code
-{
-  if (latestSquare) {
-    
-    //console.log("draw square");
-    ctx.fillStyle = "blue"; // or any color you want for the shared square
-    ctx.fillRect(latestSquare.x, latestSquare.y, latestSquare.size, latestSquare.size);
-  }
+function resourceHealth(){
+  socket.emit('resourcehealth', resource.health);
 }
+
+
+

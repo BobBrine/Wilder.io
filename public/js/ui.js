@@ -14,6 +14,7 @@ function drawHUD() {
       yOffset += 20;
     }
   }
+
 }
 
 function drawHotbar() {
@@ -184,12 +185,43 @@ function drawFPSCounter() {
   ctx.textAlign = "left";
   ctx.textBaseline = "bottom";
 
-  const displayText = `FPS: ${fpsDisplay.toFixed(1)} | Ping: ${ping.toFixed(1)}ms`;
+  const displayText = `FPS: ${fpsDisplay.toFixed(1)} | Ping: ${ping.toFixed(1)} ms`;
   ctx.fillText(displayText, 10, canvas.height - 10);
   ctx.restore();
 }
 
+function drawResources() {
+  const now = Date.now();
+
+  for (const resources of Object.values(allResources)) {
+    for (const r of resources) {
+      if (r.size > 0) {
+        ctx.fillStyle = resourceTypes[r.type].color;
+        ctx.fillRect(r.x, r.y, r.size, r.size);
+        ctx.strokeStyle = "red";
+        ctx.strokeRect(r.x, r.y, r.size, r.size);
+
+        // Draw health bar if recently hit
+        if (r.lastHitTime && now - r.lastHitTime < 1000) {
+          drawHealthBar(r);
+        }
+      }
+    }
+  }
+  
+}
 
 
+function draw() //test code
+{
+  if (latestSquare) {
+    
+    //console.log("draw square");
+    ctx.fillStyle = "blue"; // or any color you want for the shared square
+    ctx.fillRect(latestSquare.x, latestSquare.y, latestSquare.size, latestSquare.size);
+
+    drawResources();
+  }
+}
 
 

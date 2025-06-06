@@ -14,6 +14,12 @@ const io = socketIO(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+const {
+  resourceTypes,
+  allResources,
+  spawnAllResources,
+  updateResourceRespawns
+} = require('./resourceManager');
 
 // Serve static files from the 'public' folder
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -33,12 +39,14 @@ let square = {
 };
 
 
-
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
-
+  
+  spawnAllResources();
   //test
   socket.emit('squarePosition', square);
+  
+  socket.emit("resourceType", resourceTypes);
 
   socket.on("pingCheck", (callback) => {
     callback(); // just respond immediately
@@ -65,17 +73,22 @@ io.on('connection', (socket) => {
 
 
  socket.on('move', (data) => {
-  if (players[socket.id]) {
-    players[socket.id].x = data.x;
-    players[socket.id].y = data.y;
+    if (players[socket.id]) {
+      players[socket.id].x = data.x;
+      players[socket.id].y = data.y;
 
-    socket.broadcast.emit('playerMoved', {
-      id: socket.id,
-      x: data.x,
-      y: data.y
-    });
-  }
-});
+      socket.broadcast.emit('playerMoved', {
+        id: socket.id,
+        x: data.x,
+        y: data.y
+      });
+    }
+  });
+
+
+  
+
+
 
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
@@ -83,6 +96,9 @@ io.on('connection', (socket) => {
     io.emit('playerDisconnected', socket.id);
   });
 });
+
+
+
 
 // ⬇ Add this after the io.on block
 setInterval(() => {
@@ -97,6 +113,22 @@ setInterval(() => {
     });
   }
 }, 1000 / 20);
+
+let lastUpdate = Date.now();
+
+setInterval(() => {
+  const now = Date.now();           // <-- define now here
+  const deltaTime = (now - lastUpdate) / 1000; 
+  lastUpdate = now;
+  updateResourceRespawns(deltaTime);
+
+  // Send updated resource list to all players
+  io.emit("resources", allResources);
+
+  
+
+}, 100); // Every 100ms
+
 
 
 server.listen(PORT, () => {

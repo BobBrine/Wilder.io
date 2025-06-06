@@ -173,7 +173,7 @@ function drawHealthBar(resource) {
 
 
 
-function drawAllResources() {
+function drawResources() {
   const now = Date.now();
 
   for (const resources of Object.values(allResources)) {
@@ -192,6 +192,27 @@ function drawAllResources() {
     }
   }
   
+}
+
+function drawResources() {
+  for (const type in allResources) {
+    for (const res of allResources[type]) {
+      if (res.size > 0) {
+        const screenX = res.x - camera.x;
+        const screenY = res.y - camera.y;
+
+        ctx.fillStyle = resourceTypes[res.type].color || "gray";
+        ctx.fillRect(screenX, screenY, res.size, res.size);
+
+        // Optionally, show health bar
+        ctx.fillStyle = "red";
+        ctx.fillRect(screenX, screenY - 6, res.size, 4);
+        ctx.fillStyle = "green";
+        const healthPercent = res.health / res.maxHealth;
+        ctx.fillRect(screenX, screenY - 6, res.size * healthPercent, 4);
+      }
+    }
+  }
 }
 
 
@@ -242,6 +263,7 @@ function hitResourceInCone() {
 
         const damage = toolDamage[selectedTool] || toolDamage.hand;
         resource.health -= damage;
+        
 
 
         //damage to resources
