@@ -46,7 +46,11 @@ io.on('connection', (socket) => {
   //test
   socket.emit('squarePosition', square);
   
-  socket.emit("resourceType", resourceTypes);
+  
+  
+  io.emit("resourceType", resourceTypes);
+
+  io.emit("resources", allResources);
 
   socket.on("pingCheck", (callback) => {
     callback(); // just respond immediately
@@ -85,6 +89,40 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('resourceHit', ({ id, type, newHealth }) => {
+  const list = allResources[type];
+  const resource = list.find(r => r.id === id);
+  if (!resource) return;
+
+  resource.health = newHealth;
+  resource.lastHitBy = socket.id;
+
+  io.emit("updateResourceHealth", {
+    id,
+    type,
+    health: newHealth
+  });
+  if (resource.health <= 0) {
+      resource.size = 0;
+      resource.respawnTimer = resource.respawnTime;
+
+      const config = resourceTypes[type];
+      const dropAmount = config.getDropAmount(resource.maxHealth);
+
+      // Reward the player
+      socket.emit("itemDrop", {
+        item: config.drop,
+        amount: dropAmount
+      });
+
+      socket.emit("gainXP", 3);
+    }
+
+    
+  });
+
+
+
 
   
 
@@ -102,6 +140,7 @@ io.on('connection', (socket) => {
 
 // ⬇ Add this after the io.on block
 setInterval(() => {
+  
   for (const [id, socket] of io.of("/").sockets) {
     const filteredPlayers = Object.fromEntries(
       Object.entries(players).filter(([pid]) => pid !== id)
@@ -111,6 +150,8 @@ setInterval(() => {
       players: filteredPlayers,
       square
     });
+
+    // Send updated resource list to all players
   }
 }, 1000 / 20);
 
@@ -119,11 +160,11 @@ let lastUpdate = Date.now();
 setInterval(() => {
   const now = Date.now();           // <-- define now here
   const deltaTime = (now - lastUpdate) / 1000; 
-  lastUpdate = now;
   updateResourceRespawns(deltaTime);
+  lastUpdate = now;
 
-  // Send updated resource list to all players
   io.emit("resources", allResources);
+  
 
   
 

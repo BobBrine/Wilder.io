@@ -7,7 +7,7 @@ const crypto = require("crypto");
 
 const resourceTypes = {
   wood: {
-    maxCount: 50,
+    maxCount: 2,
     size: 32,
     get health() {
       return Math.floor(Math.random() * (40 - 20 + 1)) + 20; // 20–40
@@ -22,7 +22,7 @@ const resourceTypes = {
       "iron_axe",
       "gold_axe"
     ],
-    spawntimer: 1, // 🕒 10 seconds (60fps * 10)
+    spawntimer: 10, // 🕒 10 seconds (60fps * 10)
     getDropAmount(health) {
       return health <= 30
         ? Math.floor(Math.random() * 3) + 5   // 5–7
@@ -156,6 +156,7 @@ function updateResourceRespawns(deltaTime) {
     for (const r of resources) {
       if (r.size === 0 && r.respawnTimer > 0) {
         r.respawnTimer -= deltaTime;
+        //console.log(r.respawnTimer);
         if (r.respawnTimer <= 0) {
           const config = resourceTypes[r.type];
           let newX, newY;
@@ -170,6 +171,9 @@ function updateResourceRespawns(deltaTime) {
           r.health = config.health;
           r.maxHealth = r.health;
           r.respawnTimer = 0;
+        
+       
+
         }
       }
     }

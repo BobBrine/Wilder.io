@@ -198,8 +198,7 @@ function drawResources() {
       if (r.size > 0) {
         ctx.fillStyle = resourceTypes[r.type].color;
         ctx.fillRect(r.x, r.y, r.size, r.size);
-        ctx.strokeStyle = "red";
-        ctx.strokeRect(r.x, r.y, r.size, r.size);
+        
 
         // Draw health bar if recently hit
         if (r.lastHitTime && now - r.lastHitTime < 1000) {

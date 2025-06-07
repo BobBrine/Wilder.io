@@ -25,10 +25,28 @@ socket.on('connect', () => {
 
 
 
-  socket.on("resources", (data) => {    
-    allResources = data;
+  socket.on("resources", (data) => {
+    if (!allResources) {
+      allResources = data;
+    } else {
+      for (const type in data) {
+        // Ensure array exists
+        if (!allResources[type]) allResources[type] = [];
+
+        data[type].forEach((serverR, i) => {
+          const existing = allResources[type][i] || {};
+          allResources[type][i] = {
+            ...serverR,
+            lastHitTime: existing.lastHitTime, // keep lastHitTime if any
+          };
+        });
+      }
+    }
+
     resourcesLoaded = true;
   });
+
+
   
 
   // Enable the join button once socket is ready
@@ -48,7 +66,7 @@ socket.on('connect', () => {
       socket.emit("setName", "Tester"); // or any default name
       
       //give player item at the start
-      //inventory.addItem("gold_axe", 1);
+      inventory.addItem("gold_axe", 1);
       //inventory.addItem("wood", 100);
       //inventory.addItem("stone", 100);
       //inventory.addItem("iron", 100);
@@ -126,6 +144,14 @@ socket.on('playerDisconnected', (id) => {
 });
 
 
+socket.on("itemDrop", ({ item, amount }) => {
+  inventory.addItem(item, amount);
+});
+
+socket.on("gainXP", (amount) => {
+  gainXP(amount);
+});
+
 // Send your position to the server
 function sendPlayerPosition(x, y) {
   socket.emit('move', { x, y });
@@ -135,5 +161,15 @@ function resourceHealth(){
   socket.emit('resourcehealth', resource.health);
 }
 
-
+socket.on("updateResourceHealth", ({ id, type, health }) => {
+  const list = getResourceArrayByType(type);
+  const resource = list.find(r => r.id === id);
+  if (resource) {
+    resource.health = health;
+    if (health <= 0) {
+      resource.size = 0;
+      resource.respawnTimer = resource.respawnTime;
+    }
+  }
+});
 

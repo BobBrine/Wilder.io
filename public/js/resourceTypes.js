@@ -1,5 +1,97 @@
 // public/resourceTypes.js
-let resourceTypes = {};
+let resourceTypes = {
+  wood: {
+    maxCount: 50,
+    size: 32,
+    get health() {
+      return Math.floor(Math.random() * (40 - 20 + 1)) + 20; // 20–40
+    },
+    color: "green",
+    itemColor: "green",
+    drop: "wood",
+    tools: [
+      "hand",
+      "wooden_axe",
+      "stone_axe",
+      "iron_axe",
+      "gold_axe"
+    ],
+    spawntimer: 1, // 🕒 10 seconds (60fps * 10)
+    getDropAmount(health) {
+      return health <= 30
+        ? Math.floor(Math.random() * 3) + 5   // 5–7
+        : Math.floor(Math.random() * 4) + 7;  // 7–10
+    },
+  },
+
+  stone: {
+    maxCount: 30,
+    size: 32,
+    get health() {
+      return Math.floor(Math.random() * (60 - 30 + 1)) + 30; // 30–60
+    },
+    color: "darkgray",
+    itemColor: "darkgray",
+    drop: "stone",
+    tools: [
+      "wooden_pickaxe",
+      "stone_pickaxe",
+      "iron_pickaxe",
+      "gold_pickaxe"
+    ],
+    spawntimer: 900,
+    getDropAmount(health) {
+      return health <= 45
+        ? Math.floor(Math.random() * 3) + 5   // 5–7
+        : Math.floor(Math.random() * 4) + 7;  // 7–10
+    }
+    
+  },
+
+  iron: {
+    maxCount: 10,
+    size: 32,
+    get health() {
+      return Math.floor(Math.random() * (80 - 40 + 1)) + 40; // 40–80
+    },
+    color: "white",
+    itemColor: "white",
+    drop: "iron",
+    tools: [
+      "stone_pickaxe",
+      "iron_pickaxe",
+      "gold_pickaxe"
+    ],
+    spawntimer: 1200,
+    getDropAmount(health) {
+      return health <= 60
+        ? Math.floor(Math.random() * 3) + 5   // 5–7
+        : Math.floor(Math.random() * 4) + 7;  // 7–10
+    }
+  },
+
+  gold: {
+    maxCount: 5,
+    size: 32,
+    get health() {
+      return Math.floor(Math.random() * (100 - 50 + 1)) + 50; // 50–100
+    },
+    color: "gold",
+    itemColor: "gold",
+    drop: "gold",
+    tools: [
+      "iron_pickaxe",
+      "gold_pickaxe"
+    ],
+    spawntimer: 1500,
+    getDropAmount(health) {
+      return health <= 75
+        ? Math.floor(Math.random() * 3) + 5   // 5–7
+        : Math.floor(Math.random() * 4) + 7;  // 7–10
+    }
+  }
+};
+
 
 let allResources = {};
 
@@ -68,25 +160,22 @@ function hitResourceInCone() {
 
         const damage = toolDamage[selectedTool] || toolDamage.hand;
         resource.health -= damage;
+        
         socket.emit("resourceHit", {
           type,
           id: resource.id, // ensure resources have a unique id
-          damage,
-          tool: selectedTool
+          newHealth: resource.health,
         });
 
+        //console.log(resource.health);
         //damage to resources
         showDamageText(rx, ry, damage);
         if (resource.health <= 0) {
           resource.size = 0;
           resource.respawnTimer = resource.respawnTime; 
-          const dropAmount = config.getDropAmount(resource.maxHealth);
-            inventory.addItem(config.drop, dropAmount);
-            
-            gainXP(3);
         } 
         else {
-            resource.lastHitTime = Date.now(); // NEW: track when it was hit
+          resource.lastHitTime = Date.now(); // NEW: track when it was hit
         }
 
         return; // only hit one resource
