@@ -190,6 +190,22 @@ function drawFPSCounter() {
   ctx.restore();
 }
 
+function drawCreatorTag() {
+  ctx.save();
+  ctx.fillStyle = "white";
+  ctx.font = "16px monospace";
+  ctx.textAlign = "right";       // aligns text's right edge to the x-position
+  ctx.textBaseline = "bottom";   // aligns text's bottom to the y-position
+
+  const displayText = `@BobBrine`;
+
+  // Position: bottom-right corner with 10px padding
+  ctx.fillText(displayText, canvas.width - 10, canvas.height - 10);
+
+  ctx.restore();
+}
+
+
 function drawResources() {
   const now = Date.now();
 
@@ -219,8 +235,9 @@ function draw() //test code
     ctx.fillStyle = "blue"; // or any color you want for the shared square
     ctx.fillRect(latestSquare.x, latestSquare.y, latestSquare.size, latestSquare.size);
 
-    drawResources();
   }
+  drawResources();
+
 }
 
 

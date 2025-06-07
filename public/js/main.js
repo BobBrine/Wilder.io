@@ -21,10 +21,9 @@ function update(now = performance.now()) {
 
   updateFPSCounter();
 
-  const deltaTime = (now - lastUpdate) / 1000; 
-  lastUpdate = now;
-
+  
   clearCanvas();
+ 
 
   
   
@@ -47,6 +46,7 @@ function update(now = performance.now()) {
   
   //ui
   drawFPSCounter(); 
+  drawCreatorTag();
   drawDamageTexts();
   drawHUD();
   drawHotbar();

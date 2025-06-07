@@ -65,19 +65,19 @@ const recipes = [
   // Iron tools
   {
     name: "Iron Axe",
-    cost: { wood: 36, stone: 15 },
+    cost: { wood: 36, iron: 15 },
     output: { type: "iron_axe", count: 1 },
     itemColor: "white"
   },
   {
     name: "Iron Sword",
-    cost: { wood: 36, stone: 20 },
+    cost: { wood: 36, iron: 20 },
     output: { type: "iron_sword", count: 1 },
     itemColor: "white"
   },
   {
     name: "Iron Pick",
-    cost: { wood: 36, stone: 20 },
+    cost: { wood: 36, iron: 20 },
     output: { type: "iron_pickaxe", count: 1 },
     itemColor: "white"
   },
@@ -85,19 +85,19 @@ const recipes = [
   // Gold tools
   {
     name: "Gold Axe",
-    cost: { wood: 50, iron: 15 },
+    cost: { wood: 50, gold: 15 },
     output: { type: "gold_axe", count: 1 },
     itemColor: "gold"
   },
   {
     name: "Gold Sword",
-    cost: { wood: 50, iron: 20 },
+    cost: { wood: 50, gold: 20 },
     output: { type: "gold_sword", count: 1 },
     itemColor: "gold"
   },
   {
     name: "Gold Pick",
-    cost: { wood: 50, iron: 20 },
+    cost: { wood: 50, gold: 20 },
     output: { type: "gold_pickaxe", count: 1 },
     itemColor: "gold"
   }
