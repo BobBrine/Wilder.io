@@ -7,7 +7,7 @@ const crypto = require("crypto");
 
 const resourceTypes = {
   wood: {
-    maxCount: 2,
+    maxCount: 50,
     size: 32,
     get health() {
       return Math.floor(Math.random() * (40 - 20 + 1)) + 20; // 20–40
