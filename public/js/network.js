@@ -1,5 +1,5 @@
-const socket = io("https://survival-io-md0m.onrender.com");
-//const socket = io("http://localhost:3000");
+let socket = io("https://survival-io-md0m.onrender.com");
+//let socket = io("http://localhost:3000");
 const devTest = false;
 
 let latestSquare = null;
@@ -23,13 +23,6 @@ socket.on("mobType", (data) => {
 
 socket.on('connect', () => {
   console.log('Connected as', socket.id);
-
-  // Update resources from server
-  
-  
-
-
-
 
   socket.on("resources", (data) => {
     if (!allResources) {
@@ -143,6 +136,11 @@ socket.on("state", (data) => {
     }
   }
 
+  // Update player's own health
+  if (data.self && player) {
+    player.health = data.self.health;
+  }
+
 });
 
 // Player moved
@@ -173,6 +171,22 @@ function sendPlayerPosition(x, y) {
   socket.emit('move', { x, y });
 }
 
+// Handle 'playerDied' event
+socket.on('playerDied', () => {
+  // Reset game state
+  player = null;
+  otherPlayers = {};
+  allResources = null;
+  mobs = null;
+  resourcesLoaded = false;
+  mobloaded = false;
+
+  // Show alert and refresh the page
+  showMessage("You died! The page will now refresh.");
+  setTimeout(() => {
+    window.location.reload();
+  }, 2000); // 2-second delay
+});
 
 
 

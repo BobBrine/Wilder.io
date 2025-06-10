@@ -3,11 +3,12 @@ function drawHUD() {
   ctx.font = "16px Arial";
 
   // XP & Level
-  ctx.fillText(`Level: ${player.level}`, 10, 20);
-  ctx.fillText(`XP: ${player.xp} / ${player.xpToNextLevel}`, 10, 40);
+  ctx.fillText(`HP: ${player.health} / ${player.maxHealth} `, 10, 20);
+  ctx.fillText(`Level: ${player.level}`, 10, 40);
+  ctx.fillText(`XP: ${player.xp} / ${player.xpToNextLevel}`, 10, 60);
 
   // Dynamic inventory display
-  let yOffset = 60;
+  let yOffset = 80;
   for (const [item, count] of Object.entries(inventory)) {
     if (typeof count === "number") {
       ctx.fillText(`${item[0].toUpperCase() + item.slice(1)}: ${count}`, 10, yOffset);

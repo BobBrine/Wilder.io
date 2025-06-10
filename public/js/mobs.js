@@ -1,6 +1,6 @@
 let mobtype ={};
 
-const mobs = {}; // mobId -> { x, y, type, etc. }
+let mobs = {}; // mobId -> { x, y, type, etc. }
 
 let mobloaded = false;
 
@@ -28,7 +28,24 @@ function drawMob() {
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
       if (mob.size > 0) {
-        
+        if (mobtype[mob.type].isAggressive) {
+          const aggroRadius = mobtype[mob.type].aggroRadius;
+          const escapeRadius = mobtype[mob.type].escapeRadius;
+          const centerX = mob.x + mob.size / 2;
+          const centerY = mob.y + mob.size / 2;
+          
+          // Draw aggro radius (red circle)
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, aggroRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(255, 0, 0, 0.5)"; // Semi-transparent red
+          ctx.stroke();
+          
+          // Draw escape radius (blue circle)
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, escapeRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(0, 0, 255, 0.5)"; // Semi-transparent blue
+          ctx.stroke();
+        }
       
         const coneLength = 40;
         const centerX = mob.x + mob.size / 2;

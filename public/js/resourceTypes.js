@@ -94,8 +94,6 @@ function drawHealthBarR(resource) {
   if (!config || !resource.maxHealth) return;
   const health = resource.health;
   const maxHealth = resource.maxHealth;
-  console.log(maxHealth);
-  console.log(health);
   health == maxHealth;
   const hpPercent = Math.max(health / maxHealth, 0);
   const barWidth = resource.size;
