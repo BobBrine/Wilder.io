@@ -28,19 +28,20 @@ function drawMob() {
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
       if (mob.size > 0) {
-        const half = mob.size / 2;
         
       
         const coneLength = 40;
-        const coneX = mob.x + Math.cos(mob.facingAngle) * coneLength;
-        const coneY = mob.y + Math.sin(mob.facingAngle) * coneLength;
+        const centerX = mob.x + mob.size / 2;
+        const centerY = mob.y + mob.size / 2;
+        const coneX = centerX + Math.cos(mob.facingAngle) * coneLength;
+        const coneY = centerY + Math.sin(mob.facingAngle) * coneLength;
         ctx.beginPath();
-        ctx.moveTo(mob.x, mob.y);
+        ctx.moveTo(centerX, centerY);
         ctx.lineTo(coneX, coneY);
         ctx.stroke();
         // Draw mob
         ctx.fillStyle = mobtype[mob.type].color || "gray";
-        ctx.fillRect(mob.x - half, mob.y - half, mob.size, mob.size);
+        ctx.fillRect(mob.x, mob.y, mob.size, mob.size);
 
         // Draw health bar if recently hit
         if (mob.lastHitTime && now - mob.lastHitTime < 1000) {
@@ -55,14 +56,13 @@ function drawHealthBar(mob) {
   const config = mobtype[mob.type];
   if (!config || !mob.maxHealth) return;
 
-  const half = mob.size / 2;
   const hpPercent = Math.max(mob.hp / mob.maxHealth, 0);
   const barWidth = mob.size;
   const barHeight = 5;
   const padding = 2;
 
-  const x = mob.x - half;
-  const y = mob.y - barHeight - padding - half;
+  const x = mob.x;
+  const y = mob.y - barHeight - padding;
 
   ctx.fillStyle = "red";
   ctx.fillRect(x, y, barWidth , barHeight);
@@ -91,8 +91,8 @@ function tryHitMob() {
   for (const [type, config] of Object.entries(mobtype)) {
     const list = getMobArrayByType(type); 
     for (const mob of list) {
-        const mobX = mob.x;
-        const mobY = mob.y;
+        const mobX = mob.x + mob.size / 2;
+        const mobY = mob.y + mob.size / 2;
 
 
       if (

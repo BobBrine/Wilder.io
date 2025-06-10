@@ -66,4 +66,5 @@ Things I need to build this game:
 - change attarck to hold
 
 + version 3
+- get wood on hit
 - add enemy

@@ -69,8 +69,8 @@ function createMobSpawner(type, targetArray, isOverlapping) {
     let deadCount = targetArray.filter(r => r.size === 0).length;
   
     while (activeCount + deadCount < config.maxCount) {
-      const x = Math.random() * (WORLD_WIDTH - config.size) + halfSize;
-      const y = Math.random() * (WORLD_HEIGHT - config.size) + halfSize;
+      const x = Math.random() * (WORLD_WIDTH - config.size);
+      const y = Math.random() * (WORLD_HEIGHT - config.size);
   
       if (!isOverlapping(x, y, config.size)) {
         const id = crypto.randomUUID();
@@ -135,11 +135,30 @@ function updateMobs(allResources, deltaTime) {
         const newX = mob.x + dx;
         const newY = mob.y + dy;
 
-        const collideX = isCollidingWithResources(newX - halfSize, mob.y - halfSize, mobSize, allResources);
-        const collideY = isCollidingWithResources(mob.x - halfSize, newY - halfSize, mobSize, allResources);
+        // Boundary checks (top-left based)
+        const minX = 0;
+        const minY = 0;
+        const maxX = WORLD_WIDTH - mobSize;
+        const maxY = WORLD_HEIGHT - mobSize;
 
-        if (!collideX) mob.x = Math.max(halfSize, Math.min(WORLD_WIDTH - halfSize, newX));
-        if (!collideY) mob.y = Math.max(halfSize, Math.min(WORLD_HEIGHT - halfSize, newY));
+        // Collision checks
+        const collideX = isCollidingWithResources(
+          Math.max(minX, Math.min(maxX, newX)),
+          Math.max(minY, Math.min(maxY, mob.y)),
+          mobSize,
+          allResources
+        );
+        const collideY = isCollidingWithResources(
+          Math.max(minX, Math.min(maxX, mob.x)),
+          Math.max(minY, Math.min(maxY, newY)),
+          mobSize,
+          allResources
+        );
+
+        // Update position if no collision
+        if (!collideX) mob.x = Math.max(minX, Math.min(maxX, newX));
+        if (!collideY) mob.y = Math.max(minY, Math.min(maxY, newY));
+
 
         mob.moveTimer -= deltaTime; // now in seconds
       }
@@ -193,12 +212,12 @@ function updateMobRespawns(deltaTime, allResources, players) {
         //console.log(r.respawnTimer);
         if (r.respawnTimer <= 0) {
           const config = mobtype[r.type];
-          const mobSize = r.size;
+          const mobSize = config.size;
           const halfSize = mobSize / 2;
           let newX, newY;
           do {
-            newX = (Math.random() * (WORLD_WIDTH - r.size) + halfSize);
-            newY = (Math.random() * (WORLD_HEIGHT - r.size) + halfSize);
+            newX = (Math.random() * (WORLD_WIDTH - config.size));
+            newY = (Math.random() * (WORLD_HEIGHT - config.size));
           } while (
             isOverlappingAny(allResources, newX, newY, config.size) ||
             isOverlappingAny(mobs, newX, newY, config.size) ||

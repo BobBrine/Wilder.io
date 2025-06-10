@@ -189,8 +189,8 @@ function updateResourceRespawns(deltaTime) {
           const config = resourceTypes[r.type];
           let newX, newY;
           do {
-            newX = Math.random() * (WORLD_WIDTH - r.size);
-            newY = Math.random() * (WORLD_HEIGHT - r.size);
+            newX = Math.random() * (WORLD_WIDTH - config.size);
+            newY = Math.random() * (WORLD_HEIGHT - config.size);
           } while (
             isOverlappingAny(allResources, newX, newY, config.size) ||
             isOverlappingAny(mobs, newX, newY, config.size) ||
