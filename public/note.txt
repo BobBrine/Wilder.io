@@ -63,4 +63,7 @@ Things I need to build this game:
 + version 2
 - add multiplayer
 - fixed bug from version 1
+- change attarck to hold
+
++ version 3
 - add enemy

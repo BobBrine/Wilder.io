@@ -2,6 +2,7 @@ let otherPlayers = {};
 
 let player = null;
 
+const CONE_LENGTH = 50;
 
 function updatePlayerPosition() {
   let moveX = 0;
@@ -56,46 +57,73 @@ function updatePlayerFacing(mouseX, mouseY) {
   player.facingAngle = Math.atan2(dy, dx);
 }
 
-
+function pointInCone(px, py, ox, oy, dir, angle, length) {
+  const dx = px - ox;
+  const dy = py - oy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist > length) return false;
+  const normX = dx / dist;
+  const normY = dy / dist;
+  const coneX = Math.cos(dir);
+  const coneY = Math.sin(dir);
+  const dot = normX * coneX + normY * coneY;
+  return dot > Math.cos(angle / 2);
+}
 
 function drawPlayer() {
   if (!player) return;
+
+  // Draw player body
   ctx.fillStyle = player.color;
   ctx.fillRect(player.x, player.y, player.size, player.size);
 
   const centerX = player.x + player.size / 2;
   const centerY = player.y + player.size / 2;
-  const lineLength = 30;
-  const endX = centerX + Math.cos(player.facingAngle) * lineLength;
-  const endY = centerY + Math.sin(player.facingAngle) * lineLength;
+  const coneLength = CONE_LENGTH;
+  const coneAngle = Math.PI / 4;
 
-  ctx.strokeStyle = "yellow";
-  ctx.lineWidth = 3;
+
+
+  // Draw center-facing line
   ctx.beginPath();
   ctx.moveTo(centerX, centerY);
-  ctx.lineTo(endX, endY);
+  ctx.lineTo(
+    centerX + Math.cos(player.facingAngle) * coneLength,
+    centerY + Math.sin(player.facingAngle) * coneLength
+  );
+  ctx.strokeStyle = "red";
+  ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Draw interaction cone
-  ctx.fillStyle = "rgba(255, 255, 0, 0.2)";
+
   ctx.beginPath();
   ctx.moveTo(centerX, centerY);
-  const coneLength = 50;
-  const coneAngle = Math.PI / 4;
-  ctx.lineTo(centerX + Math.cos(player.facingAngle - coneAngle / 2) * coneLength, centerY + Math.sin(player.facingAngle - coneAngle / 2) * coneLength);
-  ctx.arc(centerX, centerY, coneLength, player.facingAngle - coneAngle / 2, player.facingAngle + coneAngle / 2);
-  ctx.lineTo(centerX, centerY);
+  ctx.lineTo(
+    centerX + Math.cos(player.facingAngle - coneAngle / 2) * coneLength,
+    centerY + Math.sin(player.facingAngle - coneAngle / 2) * coneLength
+  );
+  ctx.arc(
+    centerX,
+    centerY,
+    coneLength,
+    player.facingAngle - coneAngle / 2,
+    player.facingAngle + coneAngle / 2
+  );
+  ctx.closePath();
+  ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
   ctx.fill();
-  
-  // ✅ Draw your name
+
+
+  // ✅ Draw player name
   ctx.fillStyle = "white";
   ctx.font = "14px Arial";
   ctx.textAlign = "center";
   ctx.fillText(player.name || "You", centerX, player.y - 10);
 
   drawTool();
-
 }
+
+
 
 function drawTool() {
   const selected = hotbar.slots[hotbar.selectedIndex];
@@ -125,20 +153,6 @@ function drawTool() {
   }
 }
 
-
-
-
-function isCollidingWithObjects(objects, newX, newY, objectSize = 30) {
-  return objects.some(obj => {
-    if (obj.size <= 0) return false;
-    return (
-      newX < obj.x + objectSize &&
-      newX + player.size > obj.x &&
-      newY < obj.y + objectSize &&
-      newY + player.size > obj.y
-    );
-  });
-}
 
 
 

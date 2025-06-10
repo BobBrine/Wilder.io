@@ -1,6 +1,6 @@
-const socket = io("https://survival-io-md0m.onrender.com");
-//const socket = io("http://localhost:3000");
-const devTest = false;
+//const socket = io("https://survival-io-md0m.onrender.com");
+const socket = io("http://localhost:3000");
+const devTest = true;
 
 let latestSquare = null;
 
@@ -13,14 +13,20 @@ setInterval(() => {
   });
 }, 1000); // Ping every second
 
+socket.on("resourceType", (data) => {  
+    resourceTypes = data;
+});
+
+socket.on("mobType", (data) => {  
+    mobtype = data;
+});
+
 socket.on('connect', () => {
   console.log('Connected as', socket.id);
 
   // Update resources from server
   
-  socket.on("resourceType", (data) => {  
-    resourceTypes = data;
-  });
+  
 
 
 
@@ -46,6 +52,27 @@ socket.on('connect', () => {
     resourcesLoaded = true;
   });
 
+  socket.on("mobs", (data) => {
+    if (!mobs) {
+      mobs = data;
+    } else {
+      for (const type in data) {
+        // Ensure array exists
+        if (!mobs[type]) mobs[type] = [];
+
+        data[type].forEach((serverR, i) => {
+          const existing = mobs[type][i] || {};
+          mobs[type][i] = {
+            ...serverR,
+            lastHitTime: existing.lastHitTime, // keep lastHitTime if any
+          };
+        });
+      }
+    }
+
+    mobloaded = true;
+  });
+
 
   
 
@@ -66,8 +93,8 @@ socket.on('connect', () => {
       socket.emit("setName", "Tester"); // or any default name
       
       //give player item at the start
-      inventory.addItem("gold_axe", 1);
-      //inventory.addItem("wood", 100);
+      inventory.addItem("gold_sword", 1);
+      inventory.addItem("wood", 100);
       //inventory.addItem("stone", 100);
       //inventory.addItem("iron", 100);
       //inventory.addItem("gold", 100);
@@ -104,17 +131,6 @@ socket.on("state", (data) => {
   latestSquare = data.square;
   
   const serverPlayers = data.players;
-  /*
-  let smoothing = 0.2; 
-  // Update your own player
-  if (player && serverPlayers[socket.id]) {
-    let serverPlayer = serverPlayers[socket.id];
-    player.x += (serverPlayer.x - player.x) * smoothing;
-    player.y += (serverPlayer.y - player.y) * smoothing;
-    const { x, y, ...rest } = serverPlayer;
-    Object.assign(player, rest);
-  }
-  */
 
   // Update other players
   for (const id in serverPlayers) {
@@ -157,19 +173,8 @@ function sendPlayerPosition(x, y) {
   socket.emit('move', { x, y });
 }
 
-function resourceHealth(){
-  socket.emit('resourcehealth', resource.health);
-}
 
-socket.on("updateResourceHealth", ({ id, type, health }) => {
-  const list = getResourceArrayByType(type);
-  const resource = list.find(r => r.id === id);
-  if (resource) {
-    resource.health = health;
-    if (health <= 0) {
-      resource.size = 0;
-      resource.respawnTimer = resource.respawnTime;
-    }
-  }
-});
+
+
+
 

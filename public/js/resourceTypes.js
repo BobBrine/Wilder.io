@@ -1,95 +1,5 @@
 // public/resourceTypes.js
 let resourceTypes = {
-  wood: {
-    maxCount: 50,
-    size: 32,
-    get health() {
-      return Math.floor(Math.random() * (40 - 20 + 1)) + 20; // 20–40
-    },
-    color: "green",
-    itemColor: "green",
-    drop: "wood",
-    tools: [
-      "hand",
-      "wooden_axe",
-      "stone_axe",
-      "iron_axe",
-      "gold_axe"
-    ],
-    spawntimer: 1, // 🕒 10 seconds (60fps * 10)
-    getDropAmount(health) {
-      return health <= 30
-        ? Math.floor(Math.random() * 3) + 5   // 5–7
-        : Math.floor(Math.random() * 4) + 7;  // 7–10
-    },
-  },
-
-  stone: {
-    maxCount: 30,
-    size: 32,
-    get health() {
-      return Math.floor(Math.random() * (60 - 30 + 1)) + 30; // 30–60
-    },
-    color: "darkgray",
-    itemColor: "darkgray",
-    drop: "stone",
-    tools: [
-      "wooden_pickaxe",
-      "stone_pickaxe",
-      "iron_pickaxe",
-      "gold_pickaxe"
-    ],
-    spawntimer: 900,
-    getDropAmount(health) {
-      return health <= 45
-        ? Math.floor(Math.random() * 3) + 5   // 5–7
-        : Math.floor(Math.random() * 4) + 7;  // 7–10
-    }
-    
-  },
-
-  iron: {
-    maxCount: 10,
-    size: 32,
-    get health() {
-      return Math.floor(Math.random() * (80 - 40 + 1)) + 40; // 40–80
-    },
-    color: "white",
-    itemColor: "white",
-    drop: "iron",
-    tools: [
-      "stone_pickaxe",
-      "iron_pickaxe",
-      "gold_pickaxe"
-    ],
-    spawntimer: 1200,
-    getDropAmount(health) {
-      return health <= 60
-        ? Math.floor(Math.random() * 3) + 5   // 5–7
-        : Math.floor(Math.random() * 4) + 7;  // 7–10
-    }
-  },
-
-  gold: {
-    maxCount: 5,
-    size: 32,
-    get health() {
-      return Math.floor(Math.random() * (100 - 50 + 1)) + 50; // 50–100
-    },
-    color: "gold",
-    itemColor: "gold",
-    drop: "gold",
-    tools: [
-      "iron_pickaxe",
-      "gold_pickaxe"
-    ],
-    spawntimer: 1500,
-    getDropAmount(health) {
-      return health <= 75
-        ? Math.floor(Math.random() * 3) + 5   // 5–7
-        : Math.floor(Math.random() * 4) + 7;  // 7–10
-    }
-  }
 };
 
 
@@ -113,25 +23,16 @@ function isCollidingWithResources(newX, newY, size = player.size) {
   );
 }
 
-function pointInCone(px, py, ox, oy, dir, angle, length) {
-  const dx = px - ox;
-  const dy = py - oy;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist > length) return false;
-  const normX = dx / dist;
-  const normY = dy / dist;
-  const coneX = Math.cos(dir);
-  const coneY = Math.sin(dir);
-  const dot = normX * coneX + normY * coneY;
-  return dot > Math.cos(angle / 2);
-}
+
 
 function hitResourceInCone() {
   if (!player) return false;
-  const coneLength = 50;
+  const coneLength = CONE_LENGTH + 20;
   const coneAngle = Math.PI / 4;
   const centerX = player.x + player.size / 2;
   const centerY = player.y + player.size / 2;
+  
+
 
     const selected = hotbar.slots[hotbar.selectedIndex];
     let selectedTool = selected?.type || "hand";
@@ -147,6 +48,10 @@ function hitResourceInCone() {
     for (const resource of list) {
       const rx = resource.x + resource.size / 2;
       const ry = resource.y + resource.size / 2;
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(0, 255, 255, 0.92)';
+      ctx.arc(rx, ry, 5, 0, Math.PI * 2);
+      ctx.fill();
 
       if (
         resource.size > 0 &&
@@ -184,11 +89,15 @@ function hitResourceInCone() {
   }
 }
 
-function drawHealthBar(resource) {
+function drawHealthBarR(resource) {
   const config = resourceTypes[resource.type];
   if (!config || !resource.maxHealth) return;
-
-  const healthRatio = resource.health / resource.maxHealth;
+  const health = resource.health;
+  const maxHealth = resource.maxHealth;
+  console.log(maxHealth);
+  console.log(health);
+  health == maxHealth;
+  const hpPercent = Math.max(health / maxHealth, 0);
   const barWidth = resource.size;
   const barHeight = 5;
   const padding = 2;
@@ -200,8 +109,47 @@ function drawHealthBar(resource) {
   ctx.fillRect(x, y, barWidth , barHeight);
 
   ctx.fillStyle = "lime";
-  ctx.fillRect(x, y, barWidth * healthRatio, barHeight);
+  ctx.fillRect(x, y, barWidth * hpPercent, barHeight);
 
-  //ctx.strokeStyle = "black";
-  //ctx.strokeRect(x, y, barWidth, barHeight);
+}
+
+function tryHitResource() {
+  const now = Date.now();
+  if (now - lastHitTime >= hitDelay) {
+    lastHitTime = now;
+    tryHitMob();
+    hitResourceInCone();
+  }
+}
+
+socket.on("updateResourceHealth", ({ id, type, health }) => {
+  const list = getResourceArrayByType(type);
+  const resource = list.find(r => r.id === id);
+  if (resource) {
+    resource.health = health;
+    if (health <= 0) {
+      resource.size = 0;
+      resource.respawnTimer = resource.respawnTime;
+    }
+  }
+});
+
+function drawResources() {
+  const now = Date.now();
+
+  for (const resources of Object.values(allResources)) {
+    for (const r of resources) {
+      if (r.size > 0) {
+        ctx.fillStyle = resourceTypes[r.type].color;
+        ctx.fillRect(r.x, r.y, r.size, r.size);
+        
+
+        // Draw health bar if recently hit
+        if (r.lastHitTime && now - r.lastHitTime < 1000) {
+          drawHealthBarR(r);
+        }
+      }
+    }
+  }
+  
 }

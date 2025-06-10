@@ -4,6 +4,20 @@ const WORLD_HEIGHT = 2000;
 
 const crypto = require("crypto");
 
+const {
+
+  mobs,
+
+
+} = require('./mobdata');
+
+const {
+
+  players,
+
+
+} = require('./playerdata');
+
 
 const resourceTypes = {
   wood: {
@@ -22,7 +36,7 @@ const resourceTypes = {
       "iron_axe",
       "gold_axe"
     ],
-    spawntimer: 10, // 🕒 10 seconds (60fps * 10)
+    spawntimer: 1, // 🕒 10 seconds (60fps * 10)
     getDropAmount(health) {
       return health <= 30
         ? Math.floor(Math.random() * 3) + 5   // 5–7
@@ -45,7 +59,7 @@ const resourceTypes = {
       "iron_pickaxe",
       "gold_pickaxe"
     ],
-    spawntimer: 900,
+    spawntimer: 15,
     getDropAmount(health) {
       return health <= 45
         ? Math.floor(Math.random() * 3) + 5   // 5–7
@@ -68,7 +82,7 @@ const resourceTypes = {
       "iron_pickaxe",
       "gold_pickaxe"
     ],
-    spawntimer: 1200,
+    spawntimer: 20,
     getDropAmount(health) {
       return health <= 60
         ? Math.floor(Math.random() * 3) + 5   // 5–7
@@ -89,7 +103,7 @@ const resourceTypes = {
       "iron_pickaxe",
       "gold_pickaxe"
     ],
-    spawntimer: 1500,
+    spawntimer: 25,
     getDropAmount(health) {
       return health <= 75
         ? Math.floor(Math.random() * 3) + 5   // 5–7
@@ -110,9 +124,17 @@ function checkOverlap(x1, y1, size1, x2, y2, size2) {
   return x1 < x2 + size2 && x1 + size1 > x2 && y1 < y2 + size2 && y1 + size1 > y2;
 }
 
-function isOverlappingAny(allResources, x, y, size) {
-  return Object.values(allResources).flat().some(r => r.size > 0 && checkOverlap(x, y, size, r.x, r.y, r.size));
+function isOverlappingAny(source, x, y, size) {
+  if (!source) return false;
+  const list = Array.isArray(source)
+    ? source
+    : Object.values(source || {}).flat();
+
+  return list.some(r => r.size > 0 && checkOverlap(x, y, size, r.x, r.y, r.size));
 }
+
+
+
 
 function createResourceSpawner(type, targetArray, isOverlapping) {
   const config = resourceTypes[type];
@@ -125,17 +147,17 @@ function createResourceSpawner(type, targetArray, isOverlapping) {
     const x = Math.random() * (WORLD_WIDTH - config.size);
     const y = Math.random() * (WORLD_HEIGHT - config.size);
 
-    const id = crypto.randomUUID();
     if (!isOverlapping(x, y, config.size)) {
       const id = crypto.randomUUID();
+      const initialHealth = config.health;
       targetArray.push({
         id,
         type,
         x,
         y,
         size: config.size,
-        health: config.health,
-        maxHealth: config.health,
+        health: initialHealth,
+        maxHealth: initialHealth,
         respawnTimer: 0,
         respawnTime: config.spawntimer
       });
@@ -147,9 +169,15 @@ function createResourceSpawner(type, targetArray, isOverlapping) {
 function spawnAllResources() {
   for (const type in allResources) {
     allResources[type] = allResources[type].filter(r => r.size > 0);
-    createResourceSpawner(type, allResources[type], (x, y, size) => isOverlappingAny(allResources, x, y, size));
+    createResourceSpawner(type, allResources[type], (x, y, size) => isOverlappingAny(allResources, x, y, size) ||
+    isOverlappingAny(mobs, x, y, size) || isOverlappingAny(players, x, y, size)
+    
+  );
+
+    
   }
 }
+
 
 function updateResourceRespawns(deltaTime) {
   for (const resources of Object.values(allResources)) {
@@ -163,15 +191,20 @@ function updateResourceRespawns(deltaTime) {
           do {
             newX = Math.random() * (WORLD_WIDTH - r.size);
             newY = Math.random() * (WORLD_HEIGHT - r.size);
-          } while (isOverlappingAny(allResources, newX, newY, config.size));
+          } while (
+            isOverlappingAny(allResources, newX, newY, config.size) ||
+            isOverlappingAny(mobs, newX, newY, config.size) ||
+            isOverlappingAny(players, newX, newY, config.size)
+          );
+          const newHealth = config.health;
           r.id = crypto.randomUUID();
           r.x = newX;
           r.y = newY;
           r.size = config.size;
-          r.health = config.health;
-          r.maxHealth = r.health;
+          r.health = newHealth;
+          r.maxHealth = newHealth;
           r.respawnTimer = 0;
-        
+          
        
 
         }
@@ -184,5 +217,6 @@ module.exports = {
   resourceTypes,
   allResources,
   spawnAllResources,
-  updateResourceRespawns
+  updateResourceRespawns,
+  isOverlappingAny
 };

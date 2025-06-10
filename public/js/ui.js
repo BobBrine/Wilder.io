@@ -206,25 +206,6 @@ function drawCreatorTag() {
 }
 
 
-function drawResources() {
-  const now = Date.now();
-
-  for (const resources of Object.values(allResources)) {
-    for (const r of resources) {
-      if (r.size > 0) {
-        ctx.fillStyle = resourceTypes[r.type].color;
-        ctx.fillRect(r.x, r.y, r.size, r.size);
-        
-
-        // Draw health bar if recently hit
-        if (r.lastHitTime && now - r.lastHitTime < 1000) {
-          drawHealthBar(r);
-        }
-      }
-    }
-  }
-  
-}
 
 
 function draw() //test code
@@ -237,7 +218,7 @@ function draw() //test code
 
   }
   drawResources();
-
+  drawMob();
 }
 
 

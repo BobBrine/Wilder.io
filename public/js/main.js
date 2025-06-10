@@ -38,7 +38,7 @@ function update(now = performance.now()) {
   ctx.setTransform(1, 0, 0, 1, -camera.x, -camera.y); 
   //enviroment
   drawWroldborder();
-  draw(); //test
+  draw(); 
   drawPlayer();
   drawOtherPlayers();
   
