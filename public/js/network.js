@@ -1,6 +1,6 @@
-//const socket = io("https://survival-io-md0m.onrender.com");
-const socket = io("http://localhost:3000");
-const devTest = true;
+const socket = io("https://survival-io-md0m.onrender.com");
+//const socket = io("http://localhost:3000");
+const devTest = false;
 
 let latestSquare = null;
 
