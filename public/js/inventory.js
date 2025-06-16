@@ -17,3 +17,11 @@ const inventory = {
   }
 };
 
+inventory.clear = function () {
+  for (const key in this) {
+    if (typeof this[key] === "number") {
+      delete this[key];
+    }
+  }
+  updateHotbarFromInventory(); // Refresh UI after clearing
+};

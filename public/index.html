@@ -15,6 +15,11 @@
   <button onclick="submitName()" disabled>Join</button>
 
   </div>
+  <div id="deathScreen" style="display: none; position: absolute; z-index: 10; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #300; padding: 20px; border-radius: 8px; color: white;">
+  <h2>You Died!</h2>
+  <button onclick="backToMain()">Back to Main</button>
+  </div>
+
   <canvas id="gameCanvas"></canvas>
   <script src="js/canvas.js"></script> 
   <script src="js/network.js"></script>
@@ -35,16 +40,7 @@
 
   <script src="js/ui.js"></script>
 
-  <script>
-  let playerName = "Unknown";
 
-  function submitName() {
-    const input = document.getElementById("playerNameInput");
-    playerName = input.value.trim() || "Unknown";
-    document.getElementById("nameEntry").style.display = "none";
-    socket.emit('setName', playerName);
-  }
-  </script>
 
   <script src="js/main.js"></script>
 

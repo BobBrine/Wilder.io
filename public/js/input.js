@@ -9,7 +9,7 @@ let lastHitTime = 0;
 let holdInterval = null;
 
 // Configurable delay between hits (e.g., 200ms)
-const hitDelay = 250;
+const hitDelay = 0.25;
 
 const startHitting = () => {
   if (!holdInterval) {
@@ -118,11 +118,10 @@ canvas.addEventListener("mouseup", (e) => {
   const mouseY = e.clientY - rect.top;
 
   if (draggingSlotIndex !== null) {
-    const slotSize = 40;
-    const padding = 4;
+ 
     const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
     const startX = (canvas.width - totalWidth) / 2;
-    const y = canvas.height - slotSize - 10;
+    const y = canvas.height - slotSize - 20;
 
     for (let i = 0; i < hotbar.slots.length; i++) {
       const x = startX + i * (slotSize + padding);
@@ -161,11 +160,10 @@ function getUIElementAtMouse(e) {
   const mouseY = e.clientY - rect.top;
 
   // === Check Hotbar ===
-  const slotSize = 40;
-  const padding = 4;
+
   const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
   const startX = (canvas.width - totalWidth) / 2;
-  const hotbarY = canvas.height - slotSize - 10;
+  const hotbarY = canvas.height - slotSize - 20;
 
   for (let i = 0; i < hotbar.slots.length; i++) {
     const x = startX + i * (slotSize + padding);
@@ -181,7 +179,7 @@ function getUIElementAtMouse(e) {
 
   // === Check Crafting UI ===
   let craftX = canvas.width - 110;
-  let craftY = 10;
+  let craftY = 40;
   const craftWidth = 140;
   const craftHeight = 30;
 

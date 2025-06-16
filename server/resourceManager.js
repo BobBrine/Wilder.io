@@ -2,6 +2,21 @@
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
 
+const GRID_CELL_SIZE = 100;
+const GRID_COLS = Math.floor(WORLD_WIDTH / GRID_CELL_SIZE);
+const GRID_ROWS = Math.floor(WORLD_HEIGHT / GRID_CELL_SIZE);
+
+
+function getRandomPositionInCell(col, row, size) {
+  const minX = col * GRID_CELL_SIZE;
+  const minY = row * GRID_CELL_SIZE;
+  const maxX = minX + GRID_CELL_SIZE - size;
+  const maxY = minY + GRID_CELL_SIZE - size;
+  const x = Math.random() * (maxX - minX) + minX;
+  const y = Math.random() * (maxY - minY) + minY;
+  return { x, y };
+}
+
 const crypto = require("crypto");
 
 const {
@@ -144,9 +159,9 @@ function createResourceSpawner(type, targetArray, isOverlapping) {
   let deadCount = targetArray.filter(r => r.size === 0).length;
 
   while (activeCount + deadCount < config.maxCount) {
-    const x = Math.random() * (WORLD_WIDTH - config.size);
-    const y = Math.random() * (WORLD_HEIGHT - config.size);
-
+    const col = Math.floor(Math.random() * GRID_COLS);
+    const row = Math.floor(Math.random() * GRID_ROWS);
+    const { x, y } = getRandomPositionInCell(col, row, config.size);
     if (!isOverlapping(x, y, config.size)) {
       const id = crypto.randomUUID();
       const initialHealth = config.health;
@@ -189,8 +204,9 @@ function updateResourceRespawns(deltaTime) {
           const config = resourceTypes[r.type];
           let newX, newY;
           do {
-            newX = Math.random() * (WORLD_WIDTH - config.size);
-            newY = Math.random() * (WORLD_HEIGHT - config.size);
+            const col = Math.floor(Math.random() * GRID_COLS);
+            const row = Math.floor(Math.random() * GRID_ROWS);
+            ({ newX, newY } = getRandomPositionInCell(col, row, config.size));
           } while (
             isOverlappingAny(allResources, newX, newY, config.size) ||
             isOverlappingAny(mobs, newX, newY, config.size) ||

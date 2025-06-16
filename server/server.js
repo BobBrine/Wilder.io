@@ -23,9 +23,11 @@ const {
 } = require('./resourceManager');
 
 const {
-  square,
+  pond,
   mobs,
   mobtype,
+  DAY_LENGTH,
+  CYCLE_LENGTH,
   spawnAllMob,
   updateMobs,
   updateMobRespawns,
@@ -34,6 +36,8 @@ const {
 const {
   players,
 } = require('./playerdata');
+
+let gameTime = 0;
 
 // Serve static files from the 'public' folder
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -44,23 +48,39 @@ app.get('*', (req, res) => {
 });
 
 spawnAllResources();
-spawnAllMob(allResources, players);
+spawnAllMob(allResources, players, gameTime);
 
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
-  
-  socket.emit('squarePosition', square);
-  
+    
   io.emit("resourceType", resourceTypes);
   io.emit("resources", allResources);
   io.emit("mobType", mobtype);
-  io.emit("mobs", mobs);
+  // Transform threatTable to include player names before sending
+  const mobsWithPlayerNames = Object.fromEntries(
+    Object.entries(mobs).map(([type, mobList]) => [
+      type,
+      mobList.map(mob => ({
+        ...mob,
+        threatTable: Object.fromEntries(
+          Object.entries(mob.threatTable || {}).map(([playerId, threat]) => [
+            players[playerId]?.name || 'Unknown',
+            threat
+          ])
+        )
+      }))
+    ])
+  );
+  io.emit("mobs", mobsWithPlayerNames);
 
   socket.on("pingCheck", (callback) => {
     callback();
   });
 
   socket.on('setName', (name) => {
+    if (players[socket.id]) {
+      delete players[socket.id];
+    }
     players[socket.id] = createNewPlayer(socket.id, name);
     socket.emit('currentPlayers', players);
     socket.emit('playerSelf', players[socket.id]);
@@ -68,54 +88,66 @@ io.on('connection', (socket) => {
   });
 
   socket.on('move', (data) => {
-    if (players[socket.id]) {
-      players[socket.id].x = data.x;
-      players[socket.id].y = data.y;
+    const p = players[socket.id];
+    if (p && p.health > 0) {
+      p.x = data.x;
+      p.y = data.y;
       socket.broadcast.emit('playerMoved', {
         id: socket.id,
         x: data.x,
-        y: data.y
+        y: data.y,
       });
     }
   });
 
   socket.on('resourceHit', ({ id, type, newHealth }) => {
+
     const list = allResources[type];
     const resource = list.find(r => r.id === id);
     if (!resource) return;
 
+    const damage = resource.health - newHealth;
     resource.health = newHealth;
     resource.lastHitBy = socket.id;
-
     io.emit("updateResourceHealth", {
       id,
       type,
       health: newHealth
     });
+    const config = resourceTypes[type];
+    const dropAmount = config.getDropAmount(resource.maxHealth);
+    socket.emit("itemDrop", {
+      item: config.drop,
+      amount: damage
+    });
     if (resource.health <= 0) {
       resource.size = 0;
       resource.respawnTimer = resource.respawnTime;
 
-      const config = resourceTypes[type];
-      const dropAmount = config.getDropAmount(resource.maxHealth);
+      
 
-      socket.emit("itemDrop", {
-        item: config.drop,
-        amount: dropAmount
-      });
       socket.emit("gainXP", 3);
     }
   });
 
   socket.on('mobhit', ({ id, type, newHealth }) => {
+
+
     const list = mobs[type];
     if (!list) return;
 
     const mob = list.find(r => r.id === id);
     if (!mob) return;
+    mob.pauseTimer = 0.1; // Pause for 0.1 seconds
 
+    const damage = mob.hp - newHealth;
     mob.hp = newHealth;
     mob.lastHitBy = socket.id;
+
+    const config = mobtype[type];
+    if (config.isAggressive) {
+      mob.threatTable[socket.id] = (mob.threatTable[socket.id] || 0) + (5 + damage * 0.2);
+    }
 
     io.emit("updateMobHealth", {
       id,
@@ -126,7 +158,6 @@ io.on('connection', (socket) => {
       mob.size = 0;
       mob.respawnTimer = mob.respawnTime;
 
-      const config = mobtype[type];
       const dropAmount = config.getDropAmount(mob.maxHealth);
 
       socket.emit("itemDrop", {
@@ -140,43 +171,71 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
     delete players[socket.id];
+    for (const mobList of Object.values(mobs)) {
+      for (const mob of mobList) {
+        if (mob.threatTable && mob.threatTable[socket.id]) {
+          delete mob.threatTable[socket.id];
+        }
+      }
+    }
     io.emit('playerDisconnected', socket.id);
   });
 });
 
 let lastUpdate = Date.now();
-
 setInterval(() => {
+  const now = Date.now();
+  const deltaTime = (now - lastUpdate) / 1000;
+
   for (const [id, socket] of io.of("/").sockets) {
     const filteredPlayers = Object.fromEntries(
       Object.entries(players).filter(([pid]) => pid !== id)
     );
-    const selfData = players[id] ? { health: players[id].health } : {};
+    const selfData = players[id] ? { 
+      health: players[id].health,
+      color: players[id].color,
+      maxStamina: players[id].maxStamina,
+      staminaRegenSpeed: players[id].staminaRegenSpeed,
+    } : {};
     socket.emit("state", {
       players: filteredPlayers,
       self: selfData,
-      square
+      pond
     });
 
-    // Check if the player's health is less than or equal to zero
     if (players[id] && players[id].health <= 0) {
-      socket.emit('playerDied'); // Notify the client they died
-      setTimeout(() => {
-        socket.disconnect(true); // Disconnect the player after a short delay
-      }, 100);
+      socket.emit('playerDied');
+      delete players[id];
+      io.emit('playerDisconnected', id);
     }
   }
-  const now = Date.now();
-  const deltaTime = (now - lastUpdate) / 1000;
+ 
+
   updateResourceRespawns(deltaTime);
-  updateMobRespawns(deltaTime, allResources, players);
+  updateMobRespawns(deltaTime, allResources, players, gameTime);
+  gameTime += deltaTime;
+  gameTime %= CYCLE_LENGTH
   lastUpdate = now;
 
   io.emit("resources", allResources);
-  io.emit("mobs", mobs);
+  // Transform threatTable to include player names before sending
+  const mobsWithPlayerNames = Object.fromEntries(
+    Object.entries(mobs).map(([type, mobList]) => [
+      type,
+      mobList.map(mob => ({
+        ...mob,
+        threatTable: Object.fromEntries(
+          Object.entries(mob.threatTable || {}).map(([playerId, threat]) => [
+            players[playerId]?.name || 'Unknown',
+            threat
+          ])
+        )
+      }))
+    ])
+  );
+  io.emit("mobs", mobsWithPlayerNames);
   updateMobs(allResources, players, deltaTime);
-
-  
+  io.emit("gameTime", gameTime);
 }, 50);
 
 server.listen(PORT, () => {
@@ -209,12 +268,16 @@ function createNewPlayer(id, name) {
     y,
     size,
     color: "lime",
-    speed: 2,
+    speed: 200,
     facingAngle: 0,
-    level: 2,
+    level: 1,
     xp: 0,
     xpToNextLevel: 10,
-    health: 100, // Starting health
-    maxHealth: 100 // Maximum health
+    health: 100,
+    maxHealth: 100,
+    isDead: false,
+    maxStamina: 100,
+    staminaRegenSpeed:40,
   };
 }
+

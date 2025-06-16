@@ -22,6 +22,12 @@ const toolDamage = {
 };
 
 const recipes = [
+  {
+    name: "Torch",
+    cost: { wood: 5 },
+    output: { type: "torch", count: 1 },
+    itemColor: "yellow"
+  },
   // Wooden tools
   {
     name: "Wooden Axe",

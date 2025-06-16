@@ -62,10 +62,15 @@ function hitResourceInCone() {
           showMessage("This tool is not effective.");
           return;
         }
-
         const damage = toolDamage[selectedTool] || toolDamage.hand;
         resource.health -= damage;
-        
+        lastStaminaUseTime = 0;
+        const cost = 2;
+        if (stamina < cost) {
+          showMessage("Low Stamina");
+          return;
+        }
+        stamina -= cost;
         socket.emit("resourceHit", {
           type,
           id: resource.id, // ensure resources have a unique id
@@ -74,7 +79,7 @@ function hitResourceInCone() {
 
         //console.log(resource.health);
         //damage to resources
-        showDamageText(rx, ry, damage);
+        showDamageText(rx, ry, `+${damage} ${resource.type}`);
         if (resource.health <= 0) {
           resource.size = 0;
           resource.respawnTimer = resource.respawnTime; 
@@ -112,8 +117,8 @@ function drawHealthBarR(resource) {
 }
 
 function tryHitResource() {
-  const now = Date.now();
-  if (now - lastHitTime >= hitDelay) {
+  const now = performance.now();
+  if ((now - lastHitTime)/1000 >= hitDelay && stamina > 0) {
     lastHitTime = now;
     tryHitMob();
     hitResourceInCone();

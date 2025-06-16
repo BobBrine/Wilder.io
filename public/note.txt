@@ -68,3 +68,8 @@ Things I need to build this game:
 + version 3
 - get wood on hit
 - add enemy
+- day night cycle
+- stamina
+
++ version 4
+- item drop

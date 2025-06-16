@@ -1,11 +1,30 @@
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
 
-let square = {
-  x: Math.random() * (2000 - 50),
-  y: Math.random() * (2000 - 50),
-  size: 50,
-};
+
+const GRID_CELL_SIZE = 100;
+const GRID_COLS = Math.floor(WORLD_WIDTH / GRID_CELL_SIZE); // 20
+const GRID_ROWS = Math.floor(WORLD_HEIGHT / GRID_CELL_SIZE);
+
+let pond = (() => {
+  const col = Math.floor(Math.random() * GRID_COLS);
+  const row = Math.floor(Math.random() * GRID_ROWS);
+  const { x, y } = getRandomPositionInCell(col, row, 50);
+  return { x, y, size: 50 };
+})();
+
+function getRandomPositionInCell(col, row, size) {
+  const minX = col * GRID_CELL_SIZE;
+  const minY = row * GRID_CELL_SIZE;
+  const maxX = minX + GRID_CELL_SIZE - size;
+  const maxY = minY + GRID_CELL_SIZE - size;
+  const x = Math.random() * (maxX - minX) + minX;
+  const y = Math.random() * (maxY - minY) + minY;
+  return { x, y };
+}
+
+const CYCLE_LENGTH = 180; // 20 minutes in seconds
+const DAY_LENGTH = 120;   // 15 minutes of day, 5 minutes of night
 
 const crypto = require("crypto");
 
@@ -24,8 +43,8 @@ const mobtype = {
       return 6;
     },
     behavior: 'wander',
-    damage: 0, // Non-aggressive
-    turnSpeed:Math.PI,
+    damage: 0,
+    turnSpeed: Math.PI,
   },
   goblin: {
     maxCount: 5,
@@ -41,11 +60,11 @@ const mobtype = {
       return 6;
     },
     behavior: 'wander',
-    damage: 0, 
+    damage: 0,
     turnSpeed: Math.PI,
   },
   wolf: {
-    maxCount: 5,
+    maxCount: (gameTime) => gameTime < DAY_LENGTH ? 5 : 8,
     size: 32,
     hp: 150,
     speed: 100,
@@ -61,23 +80,24 @@ const mobtype = {
     isAggressive: true,
     aggroRadius: 200,
     escapeRadius: 400,
-    damage: 20, 
+    damage: 10,
     turnSpeed: Math.PI * 2,
   },
 };
 
 const mobs = Object.fromEntries(Object.keys(mobtype).map(type => [type, []]));
 
-function createMobSpawner(type, targetArray, isOverlapping) {
+function createMobSpawner(type, targetArray, isOverlapping, gameTime) {
   const config = mobtype[type];
   if (!config) return;
-  const halfSize = config.size / 2;
+  const maxCount = typeof config.maxCount === 'function' ? config.maxCount(gameTime) : config.maxCount;
   let activeCount = targetArray.filter(r => r.size > 0).length;
   let deadCount = targetArray.filter(r => r.size === 0).length;
 
   while (activeCount + deadCount < config.maxCount) {
-    const x = Math.random() * (WORLD_WIDTH - config.size);
-    const y = Math.random() * (WORLD_HEIGHT - config.size);
+    const col = Math.floor(Math.random() * GRID_COLS);
+    const row = Math.floor(Math.random() * GRID_ROWS);
+    const { x, y } = getRandomPositionInCell(col, row, config.size);
 
     if (!isOverlapping(x, y, config.size)) {
       const id = crypto.randomUUID();
@@ -101,20 +121,23 @@ function createMobSpawner(type, targetArray, isOverlapping) {
         isTurning: true,
         respawnTimer: 0,
         respawnTime: config.spawntimer,
-        damageCooldown: 0 // Initialize damage cooldown
+        damageCooldown: 0,
+        threatTable: {}, // Add threatTable to all mobs
+        pauseTimer: 0,
       });
       activeCount++;
     }
   }
 }
 
-function spawnAllMob(allResources, players) {
+function spawnAllMob(allResources, players, gameTime) {
   for (const type in mobs) {
     mobs[type] = mobs[type].filter(r => r.size > 0);
     createMobSpawner(type, mobs[type], (x, y, size) =>
       isOverlappingAny(allResources, x, y, size) ||
       isOverlappingAny(mobs, x, y, size) ||
-      isOverlappingAny(players, x, y, size)
+      isOverlappingAny(players, x, y, size),
+      gameTime
     );
   }
 }
@@ -130,40 +153,83 @@ function updateMobs(allResources, players, deltaTime) {
         mob.damageCooldown -= deltaTime;
       }
 
-      // Handle aggressive behavior switching
+      if (mob.pauseTimer > 0) {
+        mob.pauseTimer -= deltaTime;
+        continue; // Skip all behavior and movement during pause
+      }
+      // Handle aggressive behavior with threat system
       if (config.isAggressive) {
-        if (mob.currentBehavior === 'wander') {
-          for (const player of Object.values(players)) {
-            const dx = player.x - mob.x;
-            const dy = player.y - mob.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance < config.aggroRadius) {
-              mob.currentBehavior = 'chase';
-              mob.targetPlayerId = player.id;
-              mob.chaseTimer = 0;
-              break;
+        // Add players within escape radius to threatTable
+        for (const player of Object.values(players)) {
+          const dx = player.x - mob.x;
+          const dy = player.y - mob.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < config.escapeRadius) {
+            if (!mob.threatTable[player.id]) {
+              mob.threatTable[player.id] = 0;
             }
           }
-        } else if (mob.currentBehavior === 'chase') {
-          const targetPlayer = players[mob.targetPlayerId];
-          if (!targetPlayer) {
-            mob.currentBehavior = 'wander';
-            mob.targetPlayerId = null;
-          } else {
-            const dx = targetPlayer.x - mob.x;
-            const dy = targetPlayer.y - mob.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance > config.escapeRadius) {
-              mob.currentBehavior = 'wander';
-              mob.targetPlayerId = null;
+        }
+
+        // Update threat levels for players in the threatTable
+        for (const playerId in mob.threatTable) {
+          const player = players[playerId];
+          if (!player) {
+            delete mob.threatTable[playerId];
+            continue;
+          }
+          const dx = player.x - mob.x;
+          const dy = player.y - mob.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < config.aggroRadius) {
+            mob.threatTable[playerId] += 1 * deltaTime; // +1 threat per second
+          } else if (distance > config.escapeRadius) {
+            const decay = 2 + (mob.threatTable[playerId] / 50); // Soft cap decay
+            mob.threatTable[playerId] -= decay * deltaTime;
+            if (mob.threatTable[playerId] <= 0) {
+              delete mob.threatTable[playerId];
             }
           }
+        }
+
+        // Determine the player with the highest threat
+        let maxThreat = 0;
+        let targetPlayerId = null;
+        for (const [playerId, threat] of Object.entries(mob.threatTable)) {
+          if (threat > maxThreat) {
+            maxThreat = threat;
+            targetPlayerId = playerId;
+          }
+        }
+
+        // Update mob behavior based on threat
+        if (targetPlayerId && maxThreat > 0) {
+          mob.currentBehavior = 'chase';
+          mob.targetPlayerId = targetPlayerId;
+        } else {
+          mob.currentBehavior = 'wander';
+          mob.targetPlayerId = null;
         }
       }
 
       // Update targetAngle based on behavior
       if (mob.currentBehavior === 'wander') {
-        if (mob.moveTimer <= 0 && !mob.isTurning) {
+        let closestDistance = Infinity;
+        let closestPlayer = null;
+        for (const player of Object.values(players)) {
+          const dx = player.x - mob.x;
+          const dy = player.y - mob.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < config.escapeRadius && distance < closestDistance) {
+            closestDistance = distance;
+            closestPlayer = player;
+          }
+        }
+        if (closestPlayer && mob.moveTimer <= 0 && !mob.isTurning) {
+          mob.targetAngle = Math.atan2(closestPlayer.y - mob.y, closestPlayer.x - mob.x);
+          mob.moveTimer = Math.random() * 3 + 2;
+          mob.isTurning = true;
+        } else if (mob.moveTimer <= 0 && !mob.isTurning) {
           mob.targetAngle = Math.random() * Math.PI * 2;
           mob.moveTimer = Math.random() * 3 + 2;
           mob.isTurning = true;
@@ -232,8 +298,20 @@ function updateMobs(allResources, players, deltaTime) {
           if (checkOverlap(mob.x, mob.y, mob.size, targetPlayer.x, targetPlayer.y, targetPlayer.size)) {
             const damage = config.damage;
             targetPlayer.health -= damage;
+            if (!targetPlayer.originalColor) {
+              targetPlayer.originalColor = targetPlayer.color || "defaultColor"; // fallback if undefined
+            }
+
+            targetPlayer.color = "red";
+
+            // Revert color after 300ms
+            setTimeout(() => {
+              targetPlayer.color = targetPlayer.originalColor;
+            }, 100);
+
             if (targetPlayer.health < 0) targetPlayer.health = 0;
             mob.damageCooldown = 1; // 1 second cooldown
+
           }
         }
       }
@@ -268,18 +346,23 @@ function isCollidingWithResources(newX, newY, size, allResources) {
   );
 }
 
-function updateMobRespawns(deltaTime, allResources, players) {
-  for (const mob of Object.values(mobs)) {
-    for (const r of mob) {
+function updateMobRespawns(deltaTime, allResources, players, gameTime) {
+  for (const type in mobs) {
+    const config = mobtype[type];
+    const maxCount = typeof config.maxCount === 'function' ? config.maxCount(gameTime) : config.maxCount;
+    const mobList = mobs[type];
+    const activeMobs = mobList.filter(r => r.size > 0);
+
+    // Handle respawning of dead mobs
+    for (const r of mobList) {
       if (r.size === 0 && r.respawnTimer > 0) {
         r.respawnTimer -= deltaTime;
         if (r.respawnTimer <= 0) {
-          const config = mobtype[r.type];
-          const mobSize = config.size;
           let newX, newY;
           do {
-            newX = Math.random() * (WORLD_WIDTH - config.size);
-            newY = Math.random() * (WORLD_HEIGHT - config.size);
+            const col = Math.floor(Math.random() * GRID_COLS);
+            const row = Math.floor(Math.random() * GRID_ROWS);
+            ({ newX, newY } = getRandomPositionInCell(col, row, config.size));
           } while (
             isOverlappingAny(allResources, newX, newY, config.size) ||
             isOverlappingAny(mobs, newX, newY, config.size) ||
@@ -298,22 +381,64 @@ function updateMobRespawns(deltaTime, allResources, players) {
           r.chaseTimer = 0;
           r.facingAngle = Math.random() * Math.PI * 2;
           r.targetAngle = Math.random() * Math.PI * 2;
-          r.turnSpeed = config.turnSpeed,
+          r.turnSpeed = config.turnSpeed;
           r.moveSpeed = config.speed;
           r.moveTimer = Math.random() * 3 + 2;
           r.isTurning = true;
-          r.damageCooldown = 0; // Reset damage cooldown
+          r.damageCooldown = 0;
+          r.threatTable = {};
+          r.pauseTimer = 0;
         }
+      }
+    }
+
+    // Spawn additional mobs if below maxCount
+    while (activeMobs.length < maxCount) {
+      const x = Math.random() * (WORLD_WIDTH - config.size);
+      const y = Math.random() * (WORLD_HEIGHT - config.size);
+      if (!isOverlappingAny(allResources, x, y, config.size) &&
+          !isOverlappingAny(mobs, x, y, config.size) &&
+          !isOverlappingAny(players, x, y, config.size)) {
+        const id = crypto.randomUUID();
+        mobList.push({
+          id,
+          type,
+          x,
+          y,
+          size: config.size,
+          hp: config.hp,
+          maxHealth: config.hp,
+          behavior: config.behavior,
+          currentBehavior: config.behavior,
+          targetPlayerId: null,
+          chaseTimer: 0,
+          facingAngle: Math.random() * Math.PI * 2,
+          targetAngle: Math.random() * Math.PI * 2,
+          turnSpeed: config.turnSpeed,
+          moveSpeed: config.speed,
+          moveTimer: Math.random() * 3 + 2,
+          isTurning: true,
+          respawnTimer: 0,
+          respawnTime: config.spawntimer,
+          damageCooldown: 0,
+          threatTable: {},
+        });
+        activeMobs.push(mobList[mobList.length - 1]);
+      } else {
+        break; // Prevent infinite loop if no valid position is found
       }
     }
   }
 }
 
 module.exports = {
-  square,
+  pond,
   mobs,
   mobtype,
+  DAY_LENGTH,
+  CYCLE_LENGTH,
   spawnAllMob,
   updateMobs,
   updateMobRespawns,
 };
+

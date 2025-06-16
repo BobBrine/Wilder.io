@@ -68,7 +68,6 @@ socket.on('connect', () => {
 
 
   
-
   // Enable the join button once socket is ready
   document.querySelector("#playerNameInput").disabled = false;
   document.querySelector("button").disabled = false;
@@ -86,8 +85,10 @@ socket.on('connect', () => {
       socket.emit("setName", "Tester"); // or any default name
       
       //give player item at the start
+      showMobData = true;
       inventory.addItem("gold_sword", 1);
       inventory.addItem("wood", 100);
+      inventory.addItem("torch", 1);
       //inventory.addItem("stone", 100);
       //inventory.addItem("iron", 100);
       //inventory.addItem("gold", 100);
@@ -103,7 +104,10 @@ socket.on('currentPlayers', (players) => {
 
 socket.on('playerSelf', (playerData) => {
   player = playerData;  // ✅ Apply name and other info from server
-
+  maxStamina = playerData.maxStamina;
+  stamina = maxStamina;
+  staminaRegenSpeed = playerData.staminaRegenSpeed;
+  isDead = playerData.isDead;
 });
 
 
@@ -121,9 +125,11 @@ socket.on('newPlayer', (playerData) => {
 
 socket.on("state", (data) => {
   //if (!gameStarted) return;
-  latestSquare = data.square;
+  latestSquare = data.pond;
   
   const serverPlayers = data.players;
+  maxStamina = data.self.maxStamina;
+  staminaRegenSpeed = data.self.staminaRegenSpeed;
 
   // Update other players
   for (const id in serverPlayers) {
@@ -139,6 +145,7 @@ socket.on("state", (data) => {
   // Update player's own health
   if (data.self && player) {
     player.health = data.self.health;
+    player.color = data.self.color || player.color; 
   }
 
 });
@@ -160,6 +167,7 @@ socket.on('playerDisconnected', (id) => {
 
 socket.on("itemDrop", ({ item, amount }) => {
   inventory.addItem(item, amount);
+  showMessage(`+${amount} ${item}`);
 });
 
 socket.on("gainXP", (amount) => {
@@ -169,23 +177,56 @@ socket.on("gainXP", (amount) => {
 // Send your position to the server
 function sendPlayerPosition(x, y) {
   socket.emit('move', { x, y });
+  
 }
-
+let isDead = null;
 // Handle 'playerDied' event
 socket.on('playerDied', () => {
-  // Reset game state
+  isDead = true; 
+  // Reset game variables
   player = null;
   otherPlayers = {};
-  allResources = null;
-  mobs = null;
   resourcesLoaded = false;
   mobloaded = false;
+  // Optionally clear inventory or game-specific state
+  if (inventory && typeof inventory.clear === "function") {
+    inventory.clear(); // implement this if needed
+  }
+  document.getElementById("deathScreen").style.display = "block";
+});
 
-  // Show alert and refresh the page
-  showMessage("You died! The page will now refresh.");
-  setTimeout(() => {
-    window.location.reload();
-  }, 2000); // 2-second delay
+function backToMain() {
+  const deathScreen = document.getElementById("deathScreen");
+  const nameEntry = document.getElementById("nameEntry");
+  
+  deathScreen.style.display = "none";
+  nameEntry.style.display = "block";
+  document.getElementById("playerNameInput").value = "";
+  document.querySelector("button").disabled = false;
+
+
+}
+
+function submitName() {
+  isDead = false; // Reset dead flag on rejoin
+  const input = document.getElementById("playerNameInput");
+  const name = input.value.trim() || "Unknown";
+
+  // Prevent re-joining if socket is null or disconnected
+  if (!socket || socket.disconnected) return;
+
+  document.getElementById("nameEntry").style.display = "none";
+  document.getElementById("deathScreen").style.display = "none";
+  socket.emit("setName", name);
+
+}
+
+let gameTime = 0;
+const CYCLE_LENGTH = 180; // 20 minutes in seconds
+const DAY_LENGTH = 120;    // 15 minutes of day
+
+socket.on('gameTime', (serverTime) => {
+  gameTime = serverTime;
 });
 
 

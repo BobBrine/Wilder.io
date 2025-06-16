@@ -21,7 +21,7 @@ socket.on("updateMobHealth", ({ id, type, health }) => {
   }
 });
 
-
+let showMobData = false;
 function drawMob() {
   const now = Date.now();
   
@@ -34,17 +34,48 @@ function drawMob() {
           const centerX = mob.x + mob.size / 2;
           const centerY = mob.y + mob.size / 2;
           
-          // Draw aggro radius (red circle)
-          ctx.beginPath();
-          ctx.arc(centerX, centerY, aggroRadius, 0, Math.PI * 2);
-          ctx.strokeStyle = "rgba(255, 0, 0, 0.5)"; // Semi-transparent red
-          ctx.stroke();
           
-          // Draw escape radius (blue circle)
-          ctx.beginPath();
-          ctx.arc(centerX, centerY, escapeRadius, 0, Math.PI * 2);
-          ctx.strokeStyle = "rgba(0, 0, 255, 0.5)"; // Semi-transparent blue
-          ctx.stroke();
+          if (showMobData) {
+            // Draw aggro radius (red circle)
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, aggroRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+            ctx.stroke();
+            
+            // Draw escape radius (blue circle)
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, escapeRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = "rgba(0, 0, 255, 0.5)";
+            ctx.stroke();
+            // Draw threat table
+            if (mob.threatTable && Object.keys(mob.threatTable).length > 0) {
+              const sortedThreats = Object.entries(mob.threatTable)
+                .sort(([, a], [, b]) => b - a); // Sort by threat descending
+              let textLines = sortedThreats.map(([name, threat]) => `${name}: ${Math.floor(threat)}`);
+              if (mob.targetPlayerId) {
+                // Find the name of the targeted player
+                const targetName = Object.entries(otherPlayers).find(
+                  ([id, p]) => id === mob.targetPlayerId
+                )?.[1].name || (player && player.id === mob.targetPlayerId ? player.name : 'Unknown');
+                textLines = textLines.map(line => 
+                  line.startsWith(targetName) ? `>${line}` : line
+                );
+              }
+              const fontSize = 12;
+              ctx.font = `${fontSize}px Arial`;
+              ctx.fillStyle = "white";
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 1;
+              const x = mob.x;
+              let y = mob.y - 10; // Start above health bar
+              for (const line of textLines) {
+                ctx.strokeText(line, x, y);
+                ctx.fillText(line, x, y);
+                y -= fontSize + 2; // Move up for next line
+              }
+            }
+
+          }
         }
       
         const coneLength = 40;
@@ -94,7 +125,7 @@ function drawHealthBar(mob) {
 function tryHitMob() {
   if (!player) return; // safety check
 
-  const coneLength = CONE_LENGTH;
+  const coneLength = CONE_LENGTH + 20;
   const coneAngle = Math.PI / 4;
   const centerX = player.x + player.size / 2;
   const centerY = player.y + player.size / 2;
@@ -123,12 +154,19 @@ function tryHitMob() {
         }
         const damage = toolDamage[selectedTool] || toolDamage.hand;
         mob.hp -= damage;
+        lastStaminaUseTime = 0;
+        const cost = 20;
+        if (stamina < cost) {
+          showMessage("Low Stamina");
+          return;
+        }
+        stamina -= cost;
         socket.emit("mobhit", {
           type,
           id: mob.id, 
           newHealth: mob.hp,
         });
-        showDamageText(mobX, mobY, damage);
+        showDamageText(mobX, mobY, -damage);
         mob.lastHitTime = Date.now(); 
 
         return; 

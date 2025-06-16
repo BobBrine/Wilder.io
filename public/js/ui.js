@@ -3,7 +3,7 @@ function drawHUD() {
   ctx.font = "16px Arial";
 
   // XP & Level
-  ctx.fillText(`HP: ${player.health} / ${player.maxHealth} `, 10, 20);
+  ctx.fillText(`HP: ${player.health} / ${player.maxHealth}, Stamina: ${Math.floor(stamina)}`, 10, 20);
   ctx.fillText(`Level: ${player.level}`, 10, 40);
   ctx.fillText(`XP: ${player.xp} / ${player.xpToNextLevel}`, 10, 60);
 
@@ -18,12 +18,12 @@ function drawHUD() {
 
 }
 
+const slotSize = 40;
+const padding = 4;
 function drawHotbar() {
-  const slotSize = 40;
-  const padding = 4;
   const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
   const startX = (canvas.width - totalWidth) / 2;
-  const y = canvas.height - slotSize - 10;
+  const y = canvas.height - slotSize - 20;
 
   for (let i = 0; i < hotbar.slots.length; i++) {
     const x = startX + i * (slotSize + padding);
@@ -77,7 +77,7 @@ function drawHotbar() {
 
 function drawCraftingUI() {
   let x = canvas.width - 110;
-  let y = 10;
+  let y = 40;
   const width = 100;
   const height = 30;
 
@@ -99,19 +99,21 @@ function drawCraftingUI() {
 }
 
 let message = "";
-let messageTimer = 0;
+let messageEndTime = 0; // Timestamp when message should disappear
 
 function showMessage(text, duration = 2) {
   message = text;
-  messageTimer = duration * 60; // Assuming 60 FPS
+  messageEndTime = Date.now() + duration * 1000;
 }
 
 function drawMessage() {
-  if (messageTimer > 0) {
+  if (Date.now() < messageEndTime) {
+    ctx.save();
     ctx.fillStyle = "white";
     ctx.font = "16px sans-serif";
-    ctx.fillText(message, canvas.width / 2 - 50, 50);
-    messageTimer--;
+    ctx.textAlign = "center";
+    ctx.fillText(message, canvas.width / 2, 75);
+    ctx.restore();
   }
 }
 
@@ -120,7 +122,7 @@ function showDamageText(x, y, damage) {
   damageTexts.push({
     x,
     y,
-    text: `-${damage}`,
+    text: `${damage}`,
     opacity: 1,
     life: 120, // 2 seconds at 60 FPS
     maxLife: 120 // Store max life for smooth fade
@@ -183,11 +185,11 @@ function drawFPSCounter() {
   ctx.save();
   ctx.fillStyle = "white";
   ctx.font = "16px monospace";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "bottom";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
 
   const displayText = `FPS: ${fpsDisplay.toFixed(1)} | Ping: ${ping.toFixed(1)} ms`;
-  ctx.fillText(displayText, 10, canvas.height - 10);
+  ctx.fillText(displayText, canvas.width - 10, 10);
   ctx.restore();
 }
 
@@ -223,3 +225,61 @@ function draw() //test code
 }
 
 
+function drawTimeIndicator() {
+  const isDay = gameTime < DAY_LENGTH;
+  ctx.fillStyle = isDay ? 'yellow' : 'gray';
+  ctx.beginPath();
+  ctx.arc(canvas.width / 2, 30, 20, 0, Math.PI * 2); // Top-right corner
+  ctx.fill();
+}
+
+function drawLightSources() {
+  if (gameTime >= DAY_LENGTH) {
+    // Save context state
+    ctx.save();
+
+    // Apply camera transform for world space
+    ctx.setTransform(1, 0, 0, 1, -camera.x, -camera.y);
+
+    // Use additive blending for light glows
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Player's default vision
+    const playerWorldX = player.x + player.size / 2; // Center of player
+    const playerWorldY = player.y + player.size / 2;
+    const playerRadius = 200;
+    let gradient = ctx.createRadialGradient(
+      playerWorldX, playerWorldY, 0,
+      playerWorldX, playerWorldY, playerRadius
+    );
+    gradient.addColorStop(0, 'rgba(255, 255, 245, 0.3)'); // Soft white glow
+    gradient.addColorStop(0.7, 'rgba(255, 255, 245, 0.1)'); // Gentle fade
+    gradient.addColorStop(1, 'rgba(255, 255, 245, 0)'); // Transparent edge
+    ctx.fillStyle = gradient;
+    ctx.fillRect(
+      camera.x - playerRadius, camera.y - playerRadius,
+      canvas.width + 2 * playerRadius, canvas.height + 2 * playerRadius
+    );
+
+    // Torch light (if selected)
+    if (hotbar.slots[hotbar.selectedIndex]?.type === 'torch') {
+      const torchRadius = 400;
+      gradient = ctx.createRadialGradient(
+        playerWorldX, playerWorldY, 0,
+        playerWorldX, playerWorldY, torchRadius
+      );
+      gradient.addColorStop(0, 'rgba(255, 255, 245, 0.3)'); // Bright yellow glow
+      gradient.addColorStop(0.5, 'rgba(255, 140, 50, 0.2)'); // Orange transition
+      gradient.addColorStop(1, 'rgba(255, 100, 0, 0)'); // Transparent edge
+      ctx.fillStyle = gradient;
+      ctx.fillRect(
+        camera.x - torchRadius, camera.y - torchRadius,
+        canvas.width + 2 * torchRadius, canvas.height + 2 * torchRadius
+      );
+    }
+
+    // Restore context
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+  }
+}

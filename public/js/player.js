@@ -1,39 +1,53 @@
 let otherPlayers = {};
 
 let player = null;
-
+let maxStamina = 0;
+let stamina = 0;
+let staminaRegenSpeed = 0;
 const CONE_LENGTH = 50;
+function updatePlayerPosition(deltaTime) {
+  if (isDead) return;
 
-function updatePlayerPosition() {
   let moveX = 0;
   let moveY = 0;
+  let speed = player.speed;
 
   if (keys["a"]) moveX -= 1;
   if (keys["d"]) moveX += 1;
   if (keys["w"]) moveY -= 1;
   if (keys["s"]) moveY += 1;
-
+  const wantsToSprint = keys[" "];
   // Normalize diagonal movement
   if (moveX !== 0 && moveY !== 0) {
     const norm = Math.sqrt(2) / 2;
     moveX *= norm;
     moveY *= norm;
   }
-
-  const newX = player.x + moveX * player.speed;
-  const newY = player.y + moveY * player.speed;
+  
+  if (stamina < 10 * deltaTime) {
+    showMessage("Low Stamina");
+  }
+  if (wantsToSprint && stamina > 0) {
+    
+    speed *= 1.5;
+    stamina -= 20 * deltaTime; // Deplete 10 stamina per second
+    lastStaminaUseTime = 0;
+    
+  }
+  const newX = player.x + moveX * speed * deltaTime;
+  const newY = player.y + moveY * speed * deltaTime;
 
   
 
- // Check X axis separately
-if (!isCollidingWithResources(newX, player.y)) {
-  player.x = newX;
-}
+  // Check X axis separately
+  if (!isCollidingWithResources(newX, player.y)) {
+    player.x = newX;
+  }
 
-// Check Y axis separately
-if (!isCollidingWithResources(player.x, newY)) {
-  player.y = newY;
-}
+  // Check Y axis separately
+  if (!isCollidingWithResources(player.x, newY)) {
+    player.y = newY;
+  }
 
 
 
@@ -42,9 +56,22 @@ if (!isCollidingWithResources(player.x, newY)) {
   // Clamp within canvas
   player.x = Math.max(0, Math.min(WORLD_WIDTH - player.size, player.x));
   player.y = Math.max(0, Math.min(WORLD_HEIGHT - player.size, player.y));
+
 }
 
+lastStaminaUseTime = 0;
 
+function staminaRegen(deltaTime)
+{
+  lastStaminaUseTime += deltaTime;
+  
+  if (lastStaminaUseTime >= 0.5){
+    stamina = Math.min(maxStamina, stamina + staminaRegenSpeed * deltaTime);
+
+  }
+  
+  if (stamina < 0) stamina = 0;
+}
 
 function updatePlayerFacing(mouseX, mouseY) {
   // Convert mouse screen coordinates to world coordinates
@@ -71,7 +98,7 @@ function pointInCone(px, py, ox, oy, dir, angle, length) {
 }
 
 function drawPlayer() {
-  if (!player) return;
+  if (!player || isDead) return;
 
   // Draw player body
   ctx.fillStyle = player.color;
@@ -121,6 +148,7 @@ function drawPlayer() {
   ctx.fillText(player.name || "You", centerX, player.y - 10);
 
   drawTool();
+
 }
 
 
@@ -163,10 +191,10 @@ function gainXP(amount) {
   while (player.xp >= player.xpToNextLevel) {
     player.xp -= player.xpToNextLevel;
     player.level++;
-    player.xpToNextLevel = Math.floor(player.xpToNextLevel * 1.5);
+    player.xpToNextLevel = Math.floor(player.xpToNextLevel * 2);
 
     // Optional: level-up effect
-    console.log(`Level Up! You are now level ${player.level}`);
+    showMessage(`Level Up! You are now level ${player.level}`);
   }
 }
 
@@ -182,7 +210,7 @@ function drawOtherPlayers() {
     const screenY = p.y;
 
 
-    ctx.fillStyle = 'blue';
+    ctx.fillStyle = p.color;
     ctx.fillRect(screenX, screenY, p.size || 20, p.size || 20); 
 
     ctx.fillStyle = 'white';
@@ -191,3 +219,20 @@ function drawOtherPlayers() {
   }
 }
 
+
+
+function drawStaminaBar() {
+  const barWidth = canvas.width;
+  const barHeight = 10;
+  const barX = 0; // start at the left edge
+  const barY = canvas.height - barHeight; // position at the bottom
+
+  // Draw background
+  ctx.fillStyle = "gray";
+  ctx.fillRect(barX, barY, barWidth, barHeight);
+
+  // Draw current stamina
+  const staminaRatio = stamina / maxStamina;
+  ctx.fillStyle = "yellow";
+  ctx.fillRect(barX, barY, barWidth * staminaRatio, barHeight);
+}
