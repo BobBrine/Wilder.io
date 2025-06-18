@@ -223,12 +223,12 @@ function drawOtherPlayers() {
     ctx.fillText(p.name || 'Unnamed', centerX, screenY - 10);
 
     if (p.lastHitTime && now - p.lastHitTime < 1000) {
-      drawHealthBar(p);
+      drawHealthBarP(p);
     }
   }
 }
 
-function drawHealthBar(p) {
+function drawHealthBarP(p) {
   ctx.save();
   const maxHealth = p.maxHealth || 100;
   const hpPercent = Math.max(p.health / maxHealth, 0);

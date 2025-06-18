@@ -138,7 +138,7 @@ socket.on("updateResourceHealth", ({ id, type, health }) => {
 });
 
 function drawResources() {
-  const now = Date.now();
+  const now = performance.now();
 
   for (const resources of Object.values(allResources)) {
     for (const r of resources) {
