@@ -38,11 +38,10 @@ const {
 } = require('./playerdata');
 
 let gameTime = 0;
+let droppedItems = [];
+let nextItemId = 0;
 
-// Serve static files from the 'public' folder
 app.use(express.static(path.join(__dirname, '..', 'public')));
-
-// Fallback route to serve index.html for SPA support
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
@@ -56,7 +55,6 @@ io.on('connection', (socket) => {
   io.emit("resourceType", resourceTypes);
   io.emit("resources", allResources);
   io.emit("mobType", mobtype);
-  // Transform threatTable to include player names before sending
   const mobsWithPlayerNames = Object.fromEntries(
     Object.entries(mobs).map(([type, mobList]) => [
       type,
@@ -101,7 +99,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('resourceHit', ({ id, type, newHealth }) => {
-
     const list = allResources[type];
     const resource = list.find(r => r.id === id);
     if (!resource) return;
@@ -109,64 +106,99 @@ io.on('connection', (socket) => {
     const damage = resource.health - newHealth;
     resource.health = newHealth;
     resource.lastHitBy = socket.id;
-    io.emit("updateResourceHealth", {
-      id,
-      type,
-      health: newHealth
-    });
+    io.emit("updateResourceHealth", { id, type, health: newHealth });
     const config = resourceTypes[type];
     const dropAmount = config.getDropAmount(resource.maxHealth);
-    socket.emit("itemDrop", {
-      item: config.drop,
-      amount: damage
-    });
+    socket.emit("itemDrop", { item: config.drop, amount: damage });
     if (resource.health <= 0) {
       resource.size = 0;
       resource.respawnTimer = resource.respawnTime;
-
-      
-
       socket.emit("gainXP", 3);
     }
   });
 
   socket.on('mobhit', ({ id, type, newHealth }) => {
-
-
     const list = mobs[type];
     if (!list) return;
-
     const mob = list.find(r => r.id === id);
     if (!mob) return;
-    mob.pauseTimer = 0.1; // Pause for 0.1 seconds
-
+    mob.pauseTimer = 0.1;
     const damage = mob.hp - newHealth;
     mob.hp = newHealth;
     mob.lastHitBy = socket.id;
-
     const config = mobtype[type];
     if (config.isAggressive) {
       mob.threatTable[socket.id] = (mob.threatTable[socket.id] || 0) + (5 + damage * 0.2);
     }
-
-    io.emit("updateMobHealth", {
-      id,
-      type,
-      hp: newHealth
-    });
+    io.emit("updateMobHealth", { id, type, hp: newHealth });
     if (mob.hp <= 0) {
       mob.size = 0;
       mob.respawnTimer = mob.respawnTime;
-
       const dropAmount = config.getDropAmount(mob.maxHealth);
-
-      socket.emit("itemDrop", {
-        item: config.drop,
-        amount: dropAmount
-      });
+      socket.emit("itemDrop", { item: config.drop, amount: dropAmount });
       socket.emit("gainXP", 3);
     }
   });
+
+  socket.on('dropItem', ({ type, amount, x, y }) => {
+    const item = {
+      id: nextItemId++,
+      type,
+      amount,
+      x,
+      y,
+      despawnTimer: 60, // 60 seconds
+      pickupDelay: 1, // 1 second delay
+    };
+    droppedItems.push(item);
+    io.emit("newDroppedItem", item);
+  });
+
+  socket.on('pickupItem', (itemId) => {
+    const item = droppedItems.find(i => i.id === itemId);
+    if (!item) return;
+    const p = players[socket.id];
+    if (!p) return;
+
+    const dx = p.x + p.size / 2 - item.x;
+    const dy = p.y + p.size / 2 - item.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance > 26 || item.pickupDelay > 0) return;
+
+    droppedItems = droppedItems.filter(i => i.id !== itemId);
+    io.emit("removeDroppedItem", itemId);
+    socket.emit("addItem", { type: item.type, amount: item.amount });
+  });
+
+  // Inside io.on('connection', (socket) => {...})
+  socket.on('playerhit', ({ targetId, newHealth }) => {
+  const attacker = players[socket.id];
+  const target = players[targetId];
+  if (!attacker || !target || target.health <= 0 || targetId === socket.id) return; // No self-damage or dead targets
+
+  // Basic validation: ensure newHealth is less than or equal to current health
+  if (newHealth > target.health) return;
+
+  target.health = newHealth;
+  target.lastDamageTime = Date.now();
+  target.lastHitBy = socket.id; // Track attacker
+
+  if (!target.originalColor) {
+    target.originalColor = target.color || "defaultColor";
+  }
+  target.color = "red";
+  setTimeout(() => {
+    target.color = target.originalColor;
+  }, 100);
+
+  io.emit("updatePlayerHealth", { id: targetId, health: target.health });
+
+  if (target.health <= 0) {
+    target.isDead = true;
+    io.emit('playerDisconnected', targetId);
+    // Optional: Add item drops or other death effects similar to mobhit if desired
+  }
+});
 
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
@@ -188,6 +220,14 @@ setInterval(() => {
   const deltaTime = (now - lastUpdate) / 1000;
 
   for (const [id, socket] of io.of("/").sockets) {
+    const p = players[id];
+    if (p && p.health > 0 && p.health < p.maxHealth) {
+      // Regenerate health if not recently damaged
+      if (!p.lastDamageTime || (now - p.lastDamageTime) / 1000 >= 5) {
+        p.health = Math.min(p.maxHealth, p.health + p.healthRegen * deltaTime);
+      }
+    }
+
     const filteredPlayers = Object.fromEntries(
       Object.entries(players).filter(([pid]) => pid !== id)
     );
@@ -200,7 +240,8 @@ setInterval(() => {
     socket.emit("state", {
       players: filteredPlayers,
       self: selfData,
-      pond
+      pond,
+      droppedItems
     });
 
     if (players[id] && players[id].health <= 0) {
@@ -209,16 +250,24 @@ setInterval(() => {
       io.emit('playerDisconnected', id);
     }
   }
- 
+
+  droppedItems = droppedItems.filter(item => {
+    if (item.pickupDelay > 0) item.pickupDelay -= deltaTime;
+    item.despawnTimer -= deltaTime;
+    if (item.despawnTimer <= 0) {
+      io.emit("removeDroppedItem", item.id);
+      return false;
+    }
+    return true;
+  });
 
   updateResourceRespawns(deltaTime);
   updateMobRespawns(deltaTime, allResources, players, gameTime);
   gameTime += deltaTime;
-  gameTime %= CYCLE_LENGTH
+  gameTime %= CYCLE_LENGTH;
   lastUpdate = now;
 
   io.emit("resources", allResources);
-  // Transform threatTable to include player names before sending
   const mobsWithPlayerNames = Object.fromEntries(
     Object.entries(mobs).map(([type, mobList]) => [
       type,
@@ -251,12 +300,9 @@ function createNewPlayer(id, name) {
     x = Math.random() * (2000 - size);
     y = Math.random() * (2000 - size);
     attempts++;
-
     const overlapsResource = isOverlappingAny(allResources, x, y, size);
     const overlapsMob = isOverlappingAny(mobs, x, y, size);
-
     if (!overlapsResource && !overlapsMob) break;
-
     if (attempts % 1000 === 0) {
       console.warn(`⚠️ Still trying to place player ${id}, attempts: ${attempts}`);
     }
@@ -275,9 +321,10 @@ function createNewPlayer(id, name) {
     xpToNextLevel: 10,
     health: 100,
     maxHealth: 100,
+    healthRegen: 10,
+    lastDamageTime: null,
     isDead: false,
     maxStamina: 100,
-    staminaRegenSpeed:40,
+    staminaRegenSpeed: 40,
   };
 }
-

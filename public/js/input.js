@@ -1,14 +1,9 @@
 let mouseX = 0;
 let mouseY = 0;
-
 const keys = {};
-
 let isMouseDown = false;
 let lastHitTime = 0;
-
 let holdInterval = null;
-
-// Configurable delay between hits (e.g., 200ms)
 const hitDelay = 0.25;
 
 const startHitting = () => {
@@ -17,7 +12,7 @@ const startHitting = () => {
       if (isMouseDown) {
         tryHitResource();
       }
-    }, 50); // Check often, but throttle with `tryHitResource()`
+    }, 50);
   }
 };
 
@@ -26,9 +21,6 @@ const stopHitting = () => {
   clearInterval(holdInterval);
   holdInterval = null;
 };
-
-
-
 
 window.addEventListener("keydown", (e) => {
   if (!e.key || typeof e.key !== "string" || typeof keys === "undefined") return;
@@ -40,8 +32,6 @@ window.addEventListener("keyup", (e) => {
   keys[e.key.toLowerCase()] = false;
 });
 
-
-
 canvas.addEventListener("mousemove", (e) => {
   const rect = canvas.getBoundingClientRect();
   mouseX = e.clientX - rect.left;
@@ -50,13 +40,10 @@ canvas.addEventListener("mousemove", (e) => {
 
 document.addEventListener("keydown", (e) => {
   if (!e.key || typeof e.key !== "string") return;
-
   const key = e.key.toLowerCase();
-
   if (typeof keys !== "undefined") {
     keys[key] = true;
   }
-
   const num = parseInt(e.key, 10);
   if (!isNaN(num) && typeof hotbar !== "undefined") {
     if (num === 0) {
@@ -67,46 +54,37 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// Allow Enter key to submit drop amount
+document.addEventListener('keydown', (event) => {
+  if (document.getElementById('dropAmountPrompt').style.display === 'block' && event.key === 'Enter') {
+    submitDropAmount();
+  }
+});
 
 let draggingSlotIndex = null;
 let draggedItem = null;
 
 canvas.addEventListener("mousedown", (e) => {
-  if (e.button !== 0) return; // only left click
-
+  if (e.button !== 0) return;
   const uiElement = getUIElementAtMouse(e);
-
   if (uiElement) {
-    // Handle UI clicks
-
     if (uiElement.type === "hotbar") {
       hotbar.selectedIndex = uiElement.index;
-
-      // Start dragging if there is an item in that slot
       if (hotbar.slots[uiElement.index]) {
         draggingSlotIndex = uiElement.index;
         draggedItem = { ...hotbar.slots[uiElement.index] };
       }
     } else if (uiElement.type === "crafting") {
-      // Craft the recipe clicked
       craftItem(uiElement.recipe);
     }
-
-    // Since clicked UI, do NOT hit resource
     isMouseDown = false;
     stopHitting();
-
-    return; // Stop here, don't start hitting
+    return;
   }
-
-  // Not clicking UI → start hitting resource
   isMouseDown = true;
   tryHitResource();
   startHitting();
 });
-
-
-
 
 canvas.addEventListener("mouseup", (e) => {
   if (e.button !== 0) return;
@@ -118,10 +96,10 @@ canvas.addEventListener("mouseup", (e) => {
   const mouseY = e.clientY - rect.top;
 
   if (draggingSlotIndex !== null) {
- 
     const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
     const startX = (canvas.width - totalWidth) / 2;
     const y = canvas.height - slotSize - 20;
+    let dropped = true;
 
     for (let i = 0; i < hotbar.slots.length; i++) {
       const x = startX + i * (slotSize + padding);
@@ -131,24 +109,42 @@ canvas.addEventListener("mouseup", (e) => {
         mouseY >= y &&
         mouseY <= y + slotSize
       ) {
-        // Swap items
         const temp = hotbar.slots[i];
         hotbar.slots[i] = hotbar.slots[draggingSlotIndex];
         hotbar.slots[draggingSlotIndex] = temp;
-
-        // Also select the clicked slot
         hotbar.selectedIndex = i;
+        dropped = false;
         break;
       }
     }
-    
+
+    if (dropped) {
+      const slot = hotbar.slots[draggingSlotIndex];
+      if (slot) {
+        promptDropAmount(slot.type, slot.count);
+      }
+    }
   }
 
   draggingSlotIndex = null;
   draggedItem = null;
 });
 
-// Also stop hitting if mouse leaves canvas
+canvas.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+  const uiElement = getUIElementAtMouse({ clientX: e.clientX, clientY: e.clientY });
+
+  if (uiElement && uiElement.type === "hotbar") {
+    const slot = hotbar.slots[uiElement.index];
+    if (slot) {
+      promptDropAmount(slot.type, slot.count);
+    }
+  }
+});
+
 canvas.addEventListener("mouseleave", () => {
   isMouseDown = false;
   stopHitting();
@@ -158,8 +154,6 @@ function getUIElementAtMouse(e) {
   const rect = canvas.getBoundingClientRect();
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
-
-  // === Check Hotbar ===
 
   const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
   const startX = (canvas.width - totalWidth) / 2;
@@ -177,7 +171,6 @@ function getUIElementAtMouse(e) {
     }
   }
 
-  // === Check Crafting UI ===
   let craftX = canvas.width - 110;
   let craftY = 40;
   const craftWidth = 140;
@@ -199,10 +192,3 @@ function getUIElementAtMouse(e) {
 
   return null;
 }
-
-
-
-
-
-
-

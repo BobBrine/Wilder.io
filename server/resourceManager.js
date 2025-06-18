@@ -51,7 +51,7 @@ const resourceTypes = {
       "iron_axe",
       "gold_axe"
     ],
-    spawntimer: 1, // 🕒 10 seconds (60fps * 10)
+    spawntimer: 10, // 🕒 10 seconds (60fps * 10)
     getDropAmount(health) {
       return health <= 30
         ? Math.floor(Math.random() * 3) + 5   // 5–7
@@ -74,7 +74,7 @@ const resourceTypes = {
       "iron_pickaxe",
       "gold_pickaxe"
     ],
-    spawntimer: 15,
+    spawntimer: 10,
     getDropAmount(health) {
       return health <= 45
         ? Math.floor(Math.random() * 3) + 5   // 5–7
@@ -97,7 +97,7 @@ const resourceTypes = {
       "iron_pickaxe",
       "gold_pickaxe"
     ],
-    spawntimer: 20,
+    spawntimer: 10,
     getDropAmount(health) {
       return health <= 60
         ? Math.floor(Math.random() * 3) + 5   // 5–7
@@ -118,7 +118,7 @@ const resourceTypes = {
       "iron_pickaxe",
       "gold_pickaxe"
     ],
-    spawntimer: 25,
+    spawntimer: 10,
     getDropAmount(health) {
       return health <= 75
         ? Math.floor(Math.random() * 3) + 5   // 5–7

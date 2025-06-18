@@ -119,14 +119,24 @@ function canCraft(recipe) {
 
 function craftItem(recipe) {
   if (!canCraft(recipe)) return false;
+  
+  const output = recipe.output;
+  const currentTypes = Object.keys(inventory).filter(key => typeof inventory[key] === "number").length;
+  const removedTypes = Object.keys(recipe.cost).filter(key => inventory[key] === recipe.cost[key]).length;
+  const willAddNewType = !inventory[output.type];
 
+  const typesAfterCrafting = currentTypes - removedTypes + (willAddNewType ? 1 : 0);
+
+  if (typesAfterCrafting > 12) {
+    showMessage("Inventory full! Cannot craft item.");
+    return false;
+  }
   // Deduct cost using inventory.removeItem
   for (const key in recipe.cost) {
     inventory.removeItem(key, recipe.cost[key]);
   }
 
   // Add crafted item using inventory.addItem
-  const output = recipe.output;
   inventory.addItem(output.type, output.count);
 
   return true;

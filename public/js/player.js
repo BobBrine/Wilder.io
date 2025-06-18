@@ -104,6 +104,10 @@ function drawPlayer() {
   ctx.fillStyle = player.color;
   ctx.fillRect(player.x, player.y, player.size, player.size);
 
+  //draw border around mob
+  ctx.strokeStyle = "white";
+  ctx.strokeRect(player.x, player.y, player.size, player.size);
+
   const centerX = player.x + player.size / 2;
   const centerY = player.y + player.size / 2;
   const coneLength = CONE_LENGTH;
@@ -199,6 +203,7 @@ function gainXP(amount) {
 }
 
 function drawOtherPlayers() {
+  const now = performance.now();
   ctx.font = '14px Arial';
   ctx.textAlign = 'center';
   ctx.fillStyle = 'white';
@@ -206,22 +211,45 @@ function drawOtherPlayers() {
   for (const id in otherPlayers) {
     const p = otherPlayers[id];
     if (!p) continue;
+
     const screenX = p.x;
     const screenY = p.y;
 
-
-    ctx.fillStyle = p.color;
+    ctx.fillStyle = p.color || 'gray';
     ctx.fillRect(screenX, screenY, p.size || 20, p.size || 20); 
 
     ctx.fillStyle = 'white';
     const centerX = screenX + (p.size || 20) / 2;
     ctx.fillText(p.name || 'Unnamed', centerX, screenY - 10);
+
+    if (p.lastHitTime && now - p.lastHitTime < 1000) {
+      drawHealthBar(p);
+    }
   }
 }
 
+function drawHealthBar(p) {
+  ctx.save();
+  const maxHealth = p.maxHealth || 100;
+  const hpPercent = Math.max(p.health / maxHealth, 0);
+  const barWidth = p.size || 20;
+  const barHeight = 5;
+  const padding = 2;
+
+  const x = p.x + barWidth / 2 - barWidth / 2; // center horizontally (simplify)
+  const y = p.y - barHeight - padding;
+
+  ctx.fillStyle = "red";
+  ctx.fillRect(x, y, barWidth , barHeight);
+
+  ctx.fillStyle = "lime";
+  ctx.fillRect(x, y, barWidth * hpPercent, barHeight);
+  ctx.restore();
+}
 
 
 function drawStaminaBar() {
+  
   const barWidth = canvas.width;
   const barHeight = 10;
   const barX = 0; // start at the left edge
@@ -236,3 +264,57 @@ function drawStaminaBar() {
   ctx.fillStyle = "yellow";
   ctx.fillRect(barX, barY, barWidth * staminaRatio, barHeight);
 }
+
+socket.on("updatePlayerHealth", ({ id, health }) => {
+  if (otherPlayers[id]) {
+    otherPlayers[id].health = health;
+  }
+});
+
+function tryAttack() {
+  if (!player) return; // Safety check
+
+  const selected = hotbar.slots[hotbar.selectedIndex];
+  let selectedTool = selected?.type || "hand";
+  const swordTypes = ["wooden_sword", "stone_sword", "iron_sword", "gold_sword","hand"];
+
+  if (!toolDamage[selectedTool]) {
+    selectedTool = "hand";
+  }
+
+  if (!swordTypes.includes(selectedTool)) {
+    showMessage("This tool is not effective.");
+    return;
+  }
+
+  const coneLength = CONE_LENGTH + 20;
+  const coneAngle = Math.PI / 4;
+  const centerX = player.x + player.size / 2;
+  const centerY = player.y + player.size / 2;
+
+  for (const id in otherPlayers) {
+    const p = otherPlayers[id];
+    if (p.isDead) continue; // Skip dead players
+    const px = p.x + p.size / 2;
+    const py = p.y + p.size / 2;
+    if (p.size > 0 && pointInCone(px, py, centerX, centerY, player.facingAngle, coneAngle, coneLength)) {
+      const damage = toolDamage[selectedTool] || toolDamage.hand;
+      const cost = 10;
+      if (stamina < cost) {
+        showMessage("Low Stamina");
+        return;
+      }
+      stamina -= cost;
+      lastStaminaUseTime = 0;
+      p.health -= damage; // Local update for immediate feedback
+      socket.emit("playerhit", {
+        targetId: id,
+        newHealth: Math.max(0, p.health), // Ensure health doesn't go below 0
+      });
+      showDamageText(px, py, -damage);
+      otherPlayers[id].lastHitTime = performance.now();
+      return; // Hit one target per attack
+    }
+  }
+}
+

@@ -23,11 +23,11 @@ socket.on("updateMobHealth", ({ id, type, health }) => {
 
 let showMobData = false;
 function drawMob() {
-  const now = Date.now();
+  const now = performance.now();
   
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
-      if (mob.size > 0) {
+      if (mob.hp > 0) {
         if (mobtype[mob.type].isAggressive) {
           const aggroRadius = mobtype[mob.type].aggroRadius;
           const escapeRadius = mobtype[mob.type].escapeRadius;
@@ -91,6 +91,9 @@ function drawMob() {
         ctx.fillStyle = mobtype[mob.type].color || "gray";
         ctx.fillRect(mob.x, mob.y, mob.size, mob.size);
 
+        //draw border around mob
+        ctx.strokeStyle = "red";
+        ctx.strokeRect(mob.x, mob.y, mob.size, mob.size);
         // Draw health bar if recently hit
         if (mob.lastHitTime && now - mob.lastHitTime < 1000) {
           drawHealthBar(mob);
@@ -155,7 +158,7 @@ function tryHitMob() {
         const damage = toolDamage[selectedTool] || toolDamage.hand;
         mob.hp -= damage;
         lastStaminaUseTime = 0;
-        const cost = 20;
+        const cost = 10;
         if (stamina < cost) {
           showMessage("Low Stamina");
           return;
@@ -167,7 +170,7 @@ function tryHitMob() {
           newHealth: mob.hp,
         });
         showDamageText(mobX, mobY, -damage);
-        mob.lastHitTime = Date.now(); 
+        mob.lastHitTime = performance.now(); 
 
         return; 
       }

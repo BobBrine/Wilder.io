@@ -79,13 +79,13 @@ function hitResourceInCone() {
 
         //console.log(resource.health);
         //damage to resources
-        showDamageText(rx, ry, `+${damage} ${resource.type}`);
+        showDamageText(rx, ry, -damage);
         if (resource.health <= 0) {
           resource.size = 0;
           resource.respawnTimer = resource.respawnTime; 
         } 
         else {
-          resource.lastHitTime = Date.now(); // NEW: track when it was hit
+          resource.lastHitTime = performance.now(); // NEW: track when it was hit
         }
 
         return; // only hit one resource
@@ -99,7 +99,6 @@ function drawHealthBarR(resource) {
   if (!config || !resource.maxHealth) return;
   const health = resource.health;
   const maxHealth = resource.maxHealth;
-  health == maxHealth;
   const hpPercent = Math.max(health / maxHealth, 0);
   const barWidth = resource.size;
   const barHeight = 5;
@@ -122,6 +121,7 @@ function tryHitResource() {
     lastHitTime = now;
     tryHitMob();
     hitResourceInCone();
+    tryAttack();
   }
 }
 

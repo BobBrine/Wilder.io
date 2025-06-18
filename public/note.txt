@@ -73,3 +73,5 @@ Things I need to build this game:
 
 + version 4
 - item drop
+- hp healing
+- food source

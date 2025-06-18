@@ -78,8 +78,8 @@ const mobtype = {
     },
     behavior: 'wander',
     isAggressive: true,
-    aggroRadius: 200,
-    escapeRadius: 400,
+    aggroRadius: 100,
+    escapeRadius: 225,
     damage: 10,
     turnSpeed: Math.PI * 2,
   },
@@ -292,12 +292,13 @@ function updateMobs(allResources, players, deltaTime) {
       }
 
       // Check for collision and deal damage
-      if (config.isAggressive && mob.currentBehavior === 'chase' && mob.damageCooldown <= 0) {
+      if (config.isAggressive && mob.currentBehavior === 'chase' && mob.damageCooldown <= 0 && mob.hp > 0) {
         const targetPlayer = players[mob.targetPlayerId];
         if (targetPlayer) {
           if (checkOverlap(mob.x, mob.y, mob.size, targetPlayer.x, targetPlayer.y, targetPlayer.size)) {
             const damage = config.damage;
             targetPlayer.health -= damage;
+            targetPlayer.lastDamageTime = Date.now();
             if (!targetPlayer.originalColor) {
               targetPlayer.originalColor = targetPlayer.color || "defaultColor"; // fallback if undefined
             }
@@ -351,81 +352,104 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
     const config = mobtype[type];
     const maxCount = typeof config.maxCount === 'function' ? config.maxCount(gameTime) : config.maxCount;
     const mobList = mobs[type];
-    const activeMobs = mobList.filter(r => r.size > 0);
 
-    // Handle respawning of dead mobs
+    // Step 1: Handle respawning of dead mobs
     for (const r of mobList) {
       if (r.size === 0 && r.respawnTimer > 0) {
         r.respawnTimer -= deltaTime;
         if (r.respawnTimer <= 0) {
           let newX, newY;
+          let attempts = 0;
+          const maxAttempts = 10;
           do {
             const col = Math.floor(Math.random() * GRID_COLS);
             const row = Math.floor(Math.random() * GRID_ROWS);
-            ({ newX, newY } = getRandomPositionInCell(col, row, config.size));
+            ({ x: newX, y: newY } = getRandomPositionInCell(col, row, config.size));
+            attempts++;
+            if (attempts > maxAttempts) {
+              console.warn(`Failed to find valid spawn position for ${type} after ${maxAttempts} attempts.`);
+              break;
+            }
           } while (
             isOverlappingAny(allResources, newX, newY, config.size) ||
             isOverlappingAny(mobs, newX, newY, config.size) ||
             isOverlappingAny(players, newX, newY, config.size)
           );
-          r.id = crypto.randomUUID();
-          r.x = newX;
-          r.y = newY;
-          r.size = config.size;
-          r.hp = config.hp;
-          r.maxHealth = config.hp;
-          r.respawnTimer = 0;
-          r.behavior = config.behavior;
-          r.currentBehavior = config.behavior;
-          r.targetPlayerId = null;
-          r.chaseTimer = 0;
-          r.facingAngle = Math.random() * Math.PI * 2;
-          r.targetAngle = Math.random() * Math.PI * 2;
-          r.turnSpeed = config.turnSpeed;
-          r.moveSpeed = config.speed;
-          r.moveTimer = Math.random() * 3 + 2;
-          r.isTurning = true;
-          r.damageCooldown = 0;
-          r.threatTable = {};
-          r.pauseTimer = 0;
+          if (attempts <= maxAttempts) {
+            r.id = crypto.randomUUID();
+            r.x = newX;
+            r.y = newY;
+            r.size = config.size;
+            r.hp = config.hp;
+            r.maxHealth = config.hp;
+            r.respawnTimer = 0;
+            r.behavior = config.behavior;
+            r.currentBehavior = config.behavior;
+            r.targetPlayerId = null;
+            r.chaseTimer = 0;
+            r.facingAngle = Math.random() * Math.PI * 2;
+            r.targetAngle = Math.random() * Math.PI * 2;
+            r.turnSpeed = config.turnSpeed;
+            r.moveSpeed = config.speed;
+            r.moveTimer = Math.random() * 3 + 2;
+            r.isTurning = true;
+            r.damageCooldown = 0;
+            r.threatTable = {};
+            r.pauseTimer = 0;
+          }
         }
       }
     }
 
-    // Spawn additional mobs if below maxCount
-    while (activeMobs.length < maxCount) {
-      const x = Math.random() * (WORLD_WIDTH - config.size);
-      const y = Math.random() * (WORLD_HEIGHT - config.size);
-      if (!isOverlappingAny(allResources, x, y, config.size) &&
-          !isOverlappingAny(mobs, x, y, config.size) &&
-          !isOverlappingAny(players, x, y, config.size)) {
-        const id = crypto.randomUUID();
-        mobList.push({
-          id,
-          type,
-          x,
-          y,
-          size: config.size,
-          hp: config.hp,
-          maxHealth: config.hp,
-          behavior: config.behavior,
-          currentBehavior: config.behavior,
-          targetPlayerId: null,
-          chaseTimer: 0,
-          facingAngle: Math.random() * Math.PI * 2,
-          targetAngle: Math.random() * Math.PI * 2,
-          turnSpeed: config.turnSpeed,
-          moveSpeed: config.speed,
-          moveTimer: Math.random() * 3 + 2,
-          isTurning: true,
-          respawnTimer: 0,
-          respawnTime: config.spawntimer,
-          damageCooldown: 0,
-          threatTable: {},
-        });
-        activeMobs.push(mobList[mobList.length - 1]);
-      } else {
-        break; // Prevent infinite loop if no valid position is found
+    // Step 2: Adjust total mob instances to match maxCount
+    const totalInstances = mobList.length;
+    if (totalInstances < maxCount) {
+      const toSpawn = maxCount - totalInstances;
+      for (let i = 0; i < toSpawn; i++) {
+        let newX, newY;
+        let attempts = 0;
+        const maxAttempts = 10;
+        do {
+          const col = Math.floor(Math.random() * GRID_COLS);
+          const row = Math.floor(Math.random() * GRID_ROWS);
+          ({ x: newX, y: newY } = getRandomPositionInCell(col, row, config.size));
+          attempts++;
+          if (attempts > maxAttempts) {
+            console.warn(`Failed to spawn new ${type} after ${maxAttempts} attempts.`);
+            break;
+          }
+        } while (
+          isOverlappingAny(allResources, newX, newY, config.size) ||
+          isOverlappingAny(mobs, newX, newY, config.size) ||
+          isOverlappingAny(players, newX, newY, config.size)
+        );
+        if (attempts <= maxAttempts) {
+          const id = crypto.randomUUID();
+          mobList.push({
+            id,
+            type,
+            x: newX,
+            y: newY,
+            size: config.size,
+            hp: config.hp,
+            maxHealth: config.hp,
+            behavior: config.behavior,
+            currentBehavior: config.behavior,
+            targetPlayerId: null,
+            chaseTimer: 0,
+            facingAngle: Math.random() * Math.PI * 2,
+            targetAngle: Math.random() * Math.PI * 2,
+            turnSpeed: config.turnSpeed,
+            moveSpeed: config.speed,
+            moveTimer: Math.random() * 3 + 2,
+            isTurning: true,
+            respawnTimer: 0,
+            respawnTime: config.spawntimer,
+            damageCooldown: 0,
+            threatTable: {},
+            pauseTimer: 0,
+          });
+        }
       }
     }
   }

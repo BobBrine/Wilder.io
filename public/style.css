@@ -12,3 +12,32 @@ canvas {
   background-color: #333;
   display: block;
 }
+#nameEntry, #deathScreen, #dropAmountPrompt {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(0, 0, 0, 0.8);
+  padding: 20px;
+  border: 2px solid #fff;
+  color: #fff;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#nameEntry input, #dropAmountPrompt input {
+  padding: 5px;
+  font-size: 16px;
+}
+#nameEntry button, #deathScreen button, #dropAmountPrompt button {
+  padding: 10px;
+  font-size: 16px;
+  background-color: #333;
+  color: #fff;
+  border: 1px solid #fff;
+  cursor: pointer;
+}
+#nameEntry button:hover, #deathScreen button:hover, #dropAmountPrompt button:hover {
+  background-color: #555;
+}

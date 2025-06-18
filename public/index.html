@@ -9,17 +9,25 @@
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
+
   <div id="nameEntry" style="position: absolute; z-index: 10; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #222; padding: 20px; border-radius: 8px; color: white;">
   <h2>Enter Your Name</h2>
   <input type="text" id="playerNameInput" placeholder="Your name" />
   <button onclick="submitName()" disabled>Join</button>
-
   </div>
+
   <div id="deathScreen" style="display: none; position: absolute; z-index: 10; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #300; padding: 20px; border-radius: 8px; color: white;">
   <h2>You Died!</h2>
   <button onclick="backToMain()">Back to Main</button>
   </div>
 
+  <div id="dropAmountPrompt" style="display: none">
+    <h1>Drop Item</h1>
+    <input id="dropAmountInput" type="number" min="1" placeholder="Amount to drop" />
+    <button onclick="submitDropAmount()">Drop</button>
+    <button onclick="dropAll()">Drop All</button>
+  </div>
+  
   <canvas id="gameCanvas"></canvas>
   <script src="js/canvas.js"></script> 
   <script src="js/network.js"></script>
