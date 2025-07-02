@@ -123,8 +123,9 @@ setInterval(() => {
   io.emit("gameTime", gameTime);
 }, 50);
 
-server.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+const HOST = process.env.HOST || 'localhost'; // Default to localhost
+server.listen(PORT, HOST, () => {
+  console.log(`✅ Server running on http://${HOST}:${PORT}`);
 });
 
 function createNewPlayer(id, name) {
