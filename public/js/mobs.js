@@ -27,22 +27,12 @@ function drawMob() {
   
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
-      if (!mob.interpolated) {
-        mob.interpolated = { x: mob.x, y: mob.y, targetX: mob.x, targetY: mob.y, time: now };
-      }
-
-      // Interpolate position
-      const interpDuration = 200;
-      const t = Math.min((now - mob.interpolated.time) / interpDuration, 1);
-      const displayX = mob.interpolated.x + (mob.interpolated.targetX - mob.interpolated.x) * t;
-      const displayY = mob.interpolated.y + (mob.interpolated.targetY - mob.interpolated.y) * t;
-
       if (mob.health > 0) {
         if (mobtype[mob.type].isAggressive) {
           const aggroRadius = mobtype[mob.type].aggroRadius;
           const escapeRadius = mobtype[mob.type].escapeRadius;
-          const centerX = displayX + mob.size / 2;
-          const centerY = displayY + mob.size / 2;
+          const centerX = mob.x + mob.size / 2;
+          const centerY = mob.y + mob.size / 2;
           
           
           if (showMobData) {
@@ -89,8 +79,8 @@ function drawMob() {
         }
       
         const coneLength = 40;
-        const centerX = displayX + mob.size / 2;
-        const centerY = displayY + mob.size / 2;
+        const centerX = mob.x + mob.size / 2;
+        const centerY = mob.y + mob.size / 2;
         const coneX = centerX + Math.cos(mob.facingAngle) * coneLength;
         const coneY = centerY + Math.sin(mob.facingAngle) * coneLength;
         ctx.beginPath();
@@ -99,13 +89,14 @@ function drawMob() {
         ctx.stroke();
         // Draw mob
         ctx.fillStyle = mobtype[mob.type].color || "gray";
-        ctx.fillRect(displayX, displayY, mob.size, mob.size);
+        ctx.fillRect(mob.x, mob.y, mob.size, mob.size);
 
         //draw border around mob
         ctx.strokeStyle = "red";
-        ctx.strokeRect(displayX, displayY, mob.size, mob.size);        // Draw health bar if recently hit
+        ctx.strokeRect(mob.x, mob.y, mob.size, mob.size);
+        // Draw health bar if recently hit
         if (mob.lastHitTime && now - mob.lastHitTime < 1000) {
-          drawHealthBar({ ...mob, x: displayX, y: displayY });
+          drawHealthBar(mob);
         }
       }
     }
