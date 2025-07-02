@@ -13,7 +13,7 @@ socket.on("updateMobHealth", ({ id, type, health }) => {
   const list = getMobArrayByType(type);
   const mob = list.find(r => r.id === id);
   if (mob) {
-    mob.hp = health;
+    mob.health = health;
     if (health <= 0) {
       mob.size = 0;
       mob.respawnTimer = mob.respawnTime;
@@ -27,7 +27,7 @@ function drawMob() {
   
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
-      if (mob.hp > 0) {
+      if (mob.health > 0) {
         if (mobtype[mob.type].isAggressive) {
           const aggroRadius = mobtype[mob.type].aggroRadius;
           const escapeRadius = mobtype[mob.type].escapeRadius;
@@ -107,7 +107,7 @@ function drawHealthBar(mob) {
   const config = mobtype[mob.type];
   if (!config || !mob.maxHealth) return;
 
-  const hpPercent = Math.max(mob.hp / mob.maxHealth, 0);
+  const hpPercent = Math.max(mob.health / mob.maxHealth, 0);
   const barWidth = mob.size;
   const barHeight = 5;
   const padding = 2;
@@ -156,7 +156,7 @@ function tryHitMob() {
           return;
         }
         const damage = toolDamage[selectedTool] || toolDamage.hand;
-        mob.hp -= damage;
+        mob.health -= damage;
         lastStaminaUseTime = 0;
         const cost = 10;
         if (stamina < cost) {
@@ -167,7 +167,7 @@ function tryHitMob() {
         socket.emit("mobhit", {
           type,
           id: mob.id, 
-          newHealth: mob.hp,
+          newHealth: mob.health,
         });
         showDamageText(mobX, mobY, -damage);
         mob.lastHitTime = performance.now(); 

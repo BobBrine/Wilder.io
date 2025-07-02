@@ -118,26 +118,25 @@ function canCraft(recipe) {
 }
 
 function craftItem(recipe) {
-  if (!canCraft(recipe)) return false;
-  
+  if (!canCraft(recipe)) {
+    showMessage("Not enough resources to craft!");
+    return false;
+  }
+
   const output = recipe.output;
-  const currentTypes = Object.keys(inventory).filter(key => typeof inventory[key] === "number").length;
-  const removedTypes = Object.keys(recipe.cost).filter(key => inventory[key] === recipe.cost[key]).length;
-  const willAddNewType = !inventory[output.type];
-
-  const typesAfterCrafting = currentTypes - removedTypes + (willAddNewType ? 1 : 0);
-
-  if (typesAfterCrafting > 12) {
+  // Check if adding the new item would exceed inventory type limit
+  if (!inventory.canAddItem(output.type)) {
     showMessage("Inventory full! Cannot craft item.");
     return false;
   }
-  // Deduct cost using inventory.removeItem
-  for (const key in recipe.cost) {
-    inventory.removeItem(key, recipe.cost[key]);
+
+  // Deduct resources
+  for (const [key, amount] of Object.entries(recipe.cost)) {
+    inventory.removeItem(key, amount);
   }
 
-  // Add crafted item using inventory.addItem
+  // Add crafted item
   inventory.addItem(output.type, output.count);
-
+  showMessage(`Crafted ${output.count} ${output.type}!`);
   return true;
 }

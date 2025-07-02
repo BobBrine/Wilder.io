@@ -81,6 +81,13 @@ canvas.addEventListener("mousedown", (e) => {
     stopHitting();
     return;
   }
+  const selected = hotbar.slots[hotbar.selectedIndex];
+  if (selected?.type === "food") {
+    consumeFood();
+    isMouseDown = false;
+    stopHitting();
+    return;
+  }
   isMouseDown = true;
   tryHitResource();
   startHitting();
@@ -171,9 +178,9 @@ function getUIElementAtMouse(e) {
     }
   }
 
-  let craftX = canvas.width - 110;
+  const craftX = canvas.width - scoreboardWidth - 110 - 10; // 10px gap from scoreboard
   let craftY = 40;
-  const craftWidth = 140;
+  const craftWidth = 100;
   const craftHeight = 30;
 
   for (const recipe of recipes) {

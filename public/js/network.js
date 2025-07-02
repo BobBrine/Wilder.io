@@ -1,6 +1,7 @@
-let socket = io("https://survival-io-md0m.onrender.com");
-//let socket = io("http://localhost:3000");
-const devTest = false;
+// Socket connection
+// let socket = io("https://survival-io-md0m.onrender.com"); // For complete game testing
+let socket = io("http://localhost:3000"); // For local testing
+const devTest = true;
 
 let latestSquare = null;
 let ping = 0;
@@ -8,6 +9,7 @@ let droppedItems = [];
 let currentDropType = null;
 let currentMaxCount = 0;
 
+// Ping check
 setInterval(() => {
   const startTime = performance.now();
   socket.emit("pingCheck", () => {
@@ -15,12 +17,13 @@ setInterval(() => {
   });
 }, 1000);
 
+// Socket event handlers
 socket.on("resourceType", (data) => {  
-    resourceTypes = data;
+  resourceTypes = data;
 });
 
 socket.on("mobType", (data) => {  
-    mobtype = data;
+  mobtype = data;
 });
 
 socket.on('connect', () => {
@@ -71,6 +74,7 @@ socket.on('connect', () => {
     document.getElementById("nameEntry").style.display = "none";
     socket.emit("setName", name);
   };
+
   if (devTest) {
     document.getElementById("nameEntry").style.display = "none";
     socket.emit("setName", "Tester");
@@ -78,15 +82,9 @@ socket.on('connect', () => {
     inventory.addItem("gold_sword", 1);
     inventory.addItem("wood", 100);
     inventory.addItem("torch", 1);
-    inventory.addItem("stone", 10);
-    inventory.addItem("iron", 10);
-    inventory.addItem("gold", 10);
-    inventory.addItem("coal", 10);
-    inventory.addItem("diamond", 10);
-    inventory.addItem("stick", 10);
-    inventory.addItem("plank", 10);
-    inventory.addItem("ingot", 10);
-    inventory.addItem("crafting_table", 1);
+    inventory.addItem("wooden_axe", 1);
+    inventory.addItem("food", 10);
+ 
   }
 });
 
@@ -100,6 +98,8 @@ socket.on('playerSelf', (playerData) => {
   maxStamina = playerData.maxStamina;
   stamina = maxStamina;
   staminaRegenSpeed = playerData.staminaRegenSpeed;
+  maxHunger = playerData.maxHunger;
+  hunger = playerData.hunger;
   isDead = playerData.isDead;
 });
 
@@ -119,15 +119,15 @@ socket.on("state", (data) => {
   const serverPlayers = data.players;
   maxStamina = data.self.maxStamina;
   staminaRegenSpeed = data.self.staminaRegenSpeed;
+  maxHunger = data.self.maxHunger;
+  hunger = data.self.hunger;
   droppedItems = data.droppedItems || [];
 
   for (const id in serverPlayers) {
     if (id !== socket.id) {
       if (!otherPlayers[id]) {
-        // Copy the server data and initialize lastHitTime as undefined or 0
         otherPlayers[id] = { ...serverPlayers[id], lastHitTime: undefined };
       } else {
-        // Preserve existing lastHitTime while merging new data
         const existing = otherPlayers[id];
         otherPlayers[id] = {
           ...serverPlayers[id],
@@ -137,10 +137,11 @@ socket.on("state", (data) => {
     }
   }
 
-
   if (data.self && player) {
     player.health = data.self.health;
     player.color = data.self.color || player.color;
+    player.hunger = data.self.hunger;
+    player.maxHunger = data.self.maxHunger;
   }
 });
 
@@ -165,6 +166,14 @@ socket.on("gainXP", (amount) => {
   gainXP(amount);
 });
 
+//new
+socket.on("playerLevelUpdated", ({ id, level }) => {
+  if (otherPlayers[id]) {
+    otherPlayers[id].level = level;
+  }
+});
+
+
 socket.on("addItem", ({ type, amount }) => {
   if (inventory.addItem(type, amount)) {
     showMessage(`Picked up ${amount} ${type}`);
@@ -175,9 +184,7 @@ socket.on("removeDroppedItem", (itemId) => {
   droppedItems = droppedItems.filter(item => item.id !== itemId);
 });
 
-
-
-//function
+// Functions
 function sendPlayerPosition(x, y) {
   socket.emit('move', { x, y });
 }
@@ -225,7 +232,7 @@ socket.on('gameTime', (serverTime) => {
 function dropItem(type, amount) {
   if (inventory.removeItem(type, amount)) {
     socket.emit("dropItem", { type, amount, x: player.x + player.size / 2, y: player.y + player.size / 2 });
-    updateHotbarFromInventory();
+    // No need for updateHotbarFromInventory() here; handled by removeItem
     showMessage(`You dropped ${amount} ${type}`);
   } else {
     showMessage("Failed to drop item");

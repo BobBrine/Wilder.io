@@ -1,29 +1,55 @@
+const scoreboardWidth = 200;
 function drawHUD() {
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
-  ctx.fillText(`HP: ${Math.floor(player.health)} / ${player.maxHealth}, Stamina: ${Math.floor(stamina)}`, 10, 20);
+  ctx.fillText(`HP: ${Math.floor(player.health)} / ${player.maxHealth}, Stamina: ${Math.floor(stamina)}, Hunger: ${Math.floor(hunger)}`, 10, 20);
   ctx.fillText(`Level: ${player.level}`, 10, 40);
   ctx.fillText(`XP: ${player.xp} / ${player.xpToNextLevel}`, 10, 60);
 
-  if (devTest)
-  {
-
+  if (devTest) {
     let yOffset = 80;
-    for (const [item, count] of Object.entries(inventory)) {
-      if (typeof count === "number") {
-        ctx.fillText(`${item[0].toUpperCase() + item.slice(1)}: ${count}`, 10, yOffset);
-        yOffset += 20;
-      }
+    for (const [item, count] of Object.entries(inventory.items)) {
+      ctx.fillText(`${item[0].toUpperCase() + item.slice(1)}: ${count}`, 10, yOffset);
+      yOffset += 20;
     }
   }
+
+  // Draw scoreboard at top right, under FPS counter, capped at 5 players
+  
+  const scoreboardX = canvas.width - scoreboardWidth - 10;
+  const scoreboardY = 40; // Below FPS counter (FPS at y=10, 16px font + padding)
+  const maxPlayers = 5;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+  ctx.fillRect(scoreboardX, scoreboardY, scoreboardWidth, 20 + 20 * (maxPlayers + 1)); // Fixed height for 5 players + header
+  ctx.fillStyle = "white";
+  ctx.font = "16px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("Scoreboard", scoreboardX + 10, scoreboardY + 15);
+
+  // Collect all players, including self
+  const allPlayers = [
+    ...(player ? [{ id: socket.id, name: player.name, level: player.level }] : []),
+    ...Object.entries(otherPlayers).map(([id, p]) => ({ id, name: p.name, level: p.level }))
+  ].sort((a, b) => b.level - a.level).slice(0, maxPlayers); // Sort by level and limit to top 5
+
+  let yOffset = scoreboardY + 40;
+  allPlayers.forEach((p, index) => {
+    ctx.fillText(`${index + 1}. ${p.name}: Lv ${p.level}`, scoreboardX + 10, yOffset);
+    yOffset += 20;
+  });
+  ctx.textAlign = "left";
 }
 
 const slotSize = 40;
 const padding = 4;
+const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
+
 function drawHotbar() {
-  const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
   const startX = (canvas.width - totalWidth) / 2;
   const y = canvas.height - slotSize - 20;
+
+  drawHealthbar(startX, y);
+  drawHungerBar(startX, y);
 
   for (let i = 0; i < hotbar.slots.length; i++) {
     const x = startX + i * (slotSize + padding);
@@ -50,19 +76,19 @@ function drawHotbar() {
       ctx.font = "10px Arial";
       ctx.fillText(slot.type, x + 2, y + slotSize - 16);
 
-      const liveCount = inventory[slot.type] ?? 0;
       ctx.font = "12px Arial";
-      ctx.fillText(liveCount, x + 2, y + slotSize - 4);
+      // Use slot.count directly, as it’s updated by the inventory system
+      ctx.fillText(slot.count, x + 2, y + slotSize - 4);
     }
   }
-
+  
   if (draggedItem) {
     const iconSize = 30;
     const draggedConfig = resourceTypes[draggedItem.type];
     const draggedColor = draggedConfig?.itemColor || "black";
     ctx.fillStyle = draggedColor;
     ctx.fillRect(mouseX, mouseY, iconSize, iconSize);
-
+    
     ctx.fillStyle = "white";
     ctx.font = "12px Arial";
     ctx.fillText(draggedItem.type, mouseX + 2, mouseY + 12);
@@ -71,21 +97,23 @@ function drawHotbar() {
 }
 
 function drawCraftingUI() {
-  let x = canvas.width - 110;
-  let y = 40;
+  // Position crafting UI to the left of the scoreboard
+  const scoreboardWidth = 200;
+  const craftX = canvas.width - scoreboardWidth - 110 - 10; // 10px gap from scoreboard
+  let craftY = 40;
   const width = 100;
   const height = 30;
 
   for (const recipe of recipes) {
     if (!canCraft(recipe)) continue;
     ctx.fillStyle = "darkgreen";
-    ctx.fillRect(x, y, width, height);
+    ctx.fillRect(craftX, craftY, width, height);
     ctx.strokeStyle = "white";
-    ctx.strokeRect(x, y, width, height);
+    ctx.strokeRect(craftX, craftY, width, height);
     ctx.fillStyle = "white";
     ctx.font = "14px Arial";
-    ctx.fillText(`${recipe.name}`, x + 5, y + 20);
-    y += height + 10;
+    ctx.fillText(`${recipe.name}`, craftX + 5, craftY + 20);
+    craftY += height + 10;
   }
 }
 
@@ -194,6 +222,7 @@ function draw() {
   drawResources();
   drawMob();
   drawDroppedItems(); // Draw dropped items
+  drawWorldBorder();
 }
 
 function drawDroppedItems() {
@@ -265,4 +294,10 @@ function drawLightSources() {
     ctx.globalCompositeOperation = 'source-over';
     ctx.restore();
   }
+}
+
+function drawWorldBorder() {
+  ctx.strokeStyle = "red";
+  ctx.lineWidth = 5;
+  ctx.strokeRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 }

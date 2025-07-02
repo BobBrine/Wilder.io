@@ -74,4 +74,6 @@ Things I need to build this game:
 + version 4
 - item drop
 - hp healing
+- fix bug where passive mob still exist after killed
 - food source
+- add hamster

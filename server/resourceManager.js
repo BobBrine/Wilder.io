@@ -1,6 +1,6 @@
 // server/resourceManager.js
-const WORLD_WIDTH = 2000;
-const WORLD_HEIGHT = 2000;
+const WORLD_WIDTH = 20000;
+const WORLD_HEIGHT = 20000;
 
 const GRID_CELL_SIZE = 100;
 const GRID_COLS = Math.floor(WORLD_WIDTH / GRID_CELL_SIZE);
@@ -35,8 +35,25 @@ const {
 
 
 const resourceTypes = {
+  food: {
+  maxCount: 500,
+  size: 32,
+  get health() {
+    return Math.floor(Math.random() * (30 - 15 + 1)) + 15; // 15–30
+  },
+  color: "red",
+  itemColor: "red",
+  drop: "food",
+  tools: ["hand"],
+  spawntimer: 10,
+  getDropAmount(health) {
+    return health <= 22.5
+      ? Math.floor(Math.random() * 3) + 3   // 3–5
+      : Math.floor(Math.random() * 4) + 5;  // 5–8
+  }
+},
   wood: {
-    maxCount: 50,
+    maxCount: 1000,
     size: 32,
     get health() {
       return Math.floor(Math.random() * (40 - 20 + 1)) + 20; // 20–40
@@ -60,7 +77,7 @@ const resourceTypes = {
   },
 
   stone: {
-    maxCount: 30,
+    maxCount: 500,
     size: 32,
     get health() {
       return Math.floor(Math.random() * (60 - 30 + 1)) + 30; // 30–60
@@ -84,7 +101,7 @@ const resourceTypes = {
   },
 
   iron: {
-    maxCount: 10,
+    maxCount: 300,
     size: 32,
     get health() {
       return Math.floor(Math.random() * (80 - 40 + 1)) + 40; // 40–80
@@ -106,7 +123,7 @@ const resourceTypes = {
   },
 
   gold: {
-    maxCount: 5,
+    maxCount: 100,
     size: 32,
     get health() {
       return Math.floor(Math.random() * (100 - 50 + 1)) + 50; // 50–100
@@ -128,6 +145,7 @@ const resourceTypes = {
 };
 
 const allResources = {
+  food: [],
   wood: [],
   stone: [],
   iron: [],

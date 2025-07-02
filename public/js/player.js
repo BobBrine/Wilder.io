@@ -56,7 +56,19 @@ function updatePlayerPosition(deltaTime) {
   // Clamp within canvas
   player.x = Math.max(0, Math.min(WORLD_WIDTH - player.size, player.x));
   player.y = Math.max(0, Math.min(WORLD_HEIGHT - player.size, player.y));
-
+  // Update dropped items collision detection
+  if (player) {
+    const playerCenterX = player.x + player.size / 2;
+    const playerCenterY = player.y + player.size / 2;
+    droppedItems.forEach(item => {
+      const dx = playerCenterX - item.x;
+      const dy = playerCenterY - item.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance < 26 && item.pickupDelay <= 0 && inventory.canAddItem(item.type)) { // Player size/2 (16) + item radius (10)
+        socket.emit("pickupItem", item.id);
+      }
+    });
+  }
 }
 
 lastStaminaUseTime = 0;
@@ -71,6 +83,56 @@ function staminaRegen(deltaTime)
   }
   
   if (stamina < 0) stamina = 0;
+  
+}
+
+let maxHunger = 100;
+let hunger = 100;
+
+function consumeFood() {
+  if (!player || isDead) return;
+  const selected = hotbar.slots[hotbar.selectedIndex];
+  if (selected?.type === "food" && inventory.hasItem("food", 1) && player.hunger < player.maxHunger) {
+    inventory.removeItem("food", 1); // Automatically updates hotbar
+    socket.emit("consumeFood", { amount: 1 });
+    showMessage("Ate food, hunger restored!");
+  } else if (selected?.type === "food" && player.hunger >= player.maxHunger) {
+    showMessage("You are not hungry!");
+  } else {
+    showMessage("No food selected!");
+  }
+}
+
+function drawHungerBar(startX, hotbarY) {
+ 
+  const barWidth = totalWidth / 2.5;
+  const barHeight = 10;
+  const barX = startX + totalWidth - barWidth;
+  const barY = hotbarY - barHeight - padding;
+
+  // Draw background
+  ctx.fillStyle = "gray";
+  ctx.fillRect(barX, barY, barWidth, barHeight);
+
+  // Draw current hunger
+  const hungerRatio = player.hunger / player.maxHunger;
+  ctx.fillStyle = "orange";
+  ctx.fillRect(barX, barY, barWidth * hungerRatio, barHeight);
+}
+function drawHealthbar(startX, hotbarY) {
+  const barWidth = totalWidth / 2.5;
+  const barHeight = 10;
+  const barX = startX;
+  const barY = hotbarY - barHeight - padding;
+
+  // Draw background
+  ctx.fillStyle = "gray";
+  ctx.fillRect(barX, barY, barWidth, barHeight);
+
+  // Draw current hunger
+  const healthRatio = player.health / player.maxHealth;
+  ctx.fillStyle = "green";
+  ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
 }
 
 function updatePlayerFacing(mouseX, mouseY) {
@@ -196,6 +258,10 @@ function gainXP(amount) {
     player.xp -= player.xpToNextLevel;
     player.level++;
     player.xpToNextLevel = Math.floor(player.xpToNextLevel * 2);
+    socket.emit("playerLeveledUp", {
+      id: socket.id,
+      level: player.level
+    });
 
     // Optional: level-up effect
     showMessage(`Level Up! You are now level ${player.level}`);
@@ -282,10 +348,7 @@ function tryAttack() {
     selectedTool = "hand";
   }
 
-  if (!swordTypes.includes(selectedTool)) {
-    showMessage("This tool is not effective.");
-    return;
-  }
+  
 
   const coneLength = CONE_LENGTH + 20;
   const coneAngle = Math.PI / 4;
@@ -298,6 +361,10 @@ function tryAttack() {
     const px = p.x + p.size / 2;
     const py = p.y + p.size / 2;
     if (p.size > 0 && pointInCone(px, py, centerX, centerY, player.facingAngle, coneAngle, coneLength)) {
+      if (!swordTypes.includes(selectedTool)) {
+        showMessage("This tool is not effective.");
+        return;
+      }
       const damage = toolDamage[selectedTool] || toolDamage.hand;
       const cost = 10;
       if (stamina < cost) {

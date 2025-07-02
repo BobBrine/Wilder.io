@@ -1,5 +1,5 @@
-const WORLD_WIDTH = 2000;
-const WORLD_HEIGHT = 2000;
+const WORLD_WIDTH = 20000;
+const WORLD_HEIGHT = 20000;
 
 
 const GRID_CELL_SIZE = 100;
@@ -30,33 +30,33 @@ const crypto = require("crypto");
 
 const mobtype = {
   slime: {
-    maxCount: 10,
+    maxCount: 50,
     size: 32,
-    hp: 100,
+    health: 100,
     speed: 50,
     color: "pink",
     itemColor: "pink",
     drop: "slime",
     tools: ["hand", "wooden_sword", "stone_sword", "iron_sword", "gold_sword"],
     spawntimer: 10,
-    getDropAmount(hp) {
+    getDropAmount(health) {
       return 6;
     },
     behavior: 'wander',
     damage: 0,
     turnSpeed: Math.PI,
   },
-  goblin: {
-    maxCount: 5,
+  pig: {
+    maxCount: 50,
     size: 32,
-    hp: 100,
+    health: 100,
     speed: 50,
     color: "red",
     itemColor: "red",
     drop: "stick",
     tools: ["hand", "wooden_sword", "stone_sword", "iron_sword", "gold_sword"],
     spawntimer: 10,
-    getDropAmount(hp) {
+    getDropAmount(health) {
       return 6;
     },
     behavior: 'wander',
@@ -64,16 +64,16 @@ const mobtype = {
     turnSpeed: Math.PI,
   },
   wolf: {
-    maxCount: (gameTime) => gameTime < DAY_LENGTH ? 5 : 8,
+    maxCount: (gameTime) => gameTime < DAY_LENGTH ? 50 : 70,
     size: 32,
-    hp: 150,
+    health: 150,
     speed: 100,
     color: "gray",
     itemColor: "gray",
     drop: "fur",
     tools: ["hand", "wooden_sword", "stone_sword", "iron_sword", "gold_sword"],
     spawntimer: 10,
-    getDropAmount(hp) {
+    getDropAmount(health) {
       return 3;
     },
     behavior: 'wander',
@@ -81,6 +81,46 @@ const mobtype = {
     aggroRadius: 100,
     escapeRadius: 225,
     damage: 10,
+    turnSpeed: Math.PI * 2,
+  },
+  spider: {
+    maxCount: (gameTime) => gameTime < DAY_LENGTH ? 50 : 60,
+    size: 32,
+    health: 200,
+    speed: 100,
+    color: "gray",
+    itemColor: "gray",
+    drop: "web",
+    tools: ["hand", "wooden_sword", "stone_sword", "iron_sword", "gold_sword"],
+    spawntimer: 10,
+    getDropAmount(health) {
+      return 3;
+    },
+    behavior: 'wander',
+    isAggressive: true,
+    aggroRadius: 150,
+    escapeRadius: 350,
+    damage: 20,
+    turnSpeed: Math.PI * 2,
+  },
+  hamster: {
+    maxCount: 50,
+    size: 32,
+    health: 150,
+    speed: 100,
+    color: "yellow",
+    itemColor: "gray",
+    drop: "paw",
+    tools: ["hand", "wooden_sword", "stone_sword", "iron_sword", "gold_sword"],
+    spawntimer: 10,
+    getDropAmount(health) {
+      return 3;
+    },
+    behavior: 'wander',
+    isAggressive: false,
+    aggroRadius: 100,
+    escapeRadius: 225,
+    damage: 0,
     turnSpeed: Math.PI * 2,
   },
 };
@@ -107,8 +147,8 @@ function createMobSpawner(type, targetArray, isOverlapping, gameTime) {
         x,
         y,
         size: config.size,
-        hp: config.hp,
-        maxHealth: config.hp,
+        health: config.health,
+        maxHealth: config.health,
         behavior: config.behavior,
         currentBehavior: config.behavior,
         targetPlayerId: null,
@@ -292,7 +332,7 @@ function updateMobs(allResources, players, deltaTime) {
       }
 
       // Check for collision and deal damage
-      if (config.isAggressive && mob.currentBehavior === 'chase' && mob.damageCooldown <= 0 && mob.hp > 0) {
+      if (config.isAggressive && mob.currentBehavior === 'chase' && mob.damageCooldown <= 0 && mob.health > 0) {
         const targetPlayer = players[mob.targetPlayerId];
         if (targetPlayer) {
           if (checkOverlap(mob.x, mob.y, mob.size, targetPlayer.x, targetPlayer.y, targetPlayer.size)) {
@@ -380,8 +420,8 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
             r.x = newX;
             r.y = newY;
             r.size = config.size;
-            r.hp = config.hp;
-            r.maxHealth = config.hp;
+            r.health = config.health;
+            r.maxHealth = config.health;
             r.respawnTimer = 0;
             r.behavior = config.behavior;
             r.currentBehavior = config.behavior;
@@ -431,8 +471,8 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
             x: newX,
             y: newY,
             size: config.size,
-            hp: config.hp,
-            maxHealth: config.hp,
+            health: config.health,
+            maxHealth: config.health,
             behavior: config.behavior,
             currentBehavior: config.behavior,
             targetPlayerId: null,
