@@ -86,7 +86,6 @@ io.on('connection', (socket) => {
     if (p && p.health > 0) {
       p.level = level;
 
-      // Broadcast to all other clients
       socket.broadcast.emit("playerLevelUpdated", {
         id: socket.id,
         level: level
@@ -99,7 +98,6 @@ io.on('connection', (socket) => {
   socket.on('mobhit', ({ id, type, newHealth }) => handleHit(socket, mobs, type, id, newHealth, mobtype, true));
   socket.on('dropItem', ({ type, amount, x, y }) => handleDropItem(socket, type, amount, x, y));
   socket.on('pickupItem', itemId => handlePickupItem(socket, itemId));
-  // Inside io.on('connection', (socket) => {...})
   socket.on('playerhit', ({ targetId, newHealth }) => handlePlayerHit(socket, targetId, newHealth));
   socket.on('consumeFood', ({ amount }) => handleConsumeFood(socket, amount));
   socket.on('disconnect', () => handleDisconnect(socket));
@@ -123,7 +121,7 @@ setInterval(() => {
   io.emit("gameTime", gameTime);
 }, 50);
 
-const HOST = process.env.HOST || 'localhost'; // Default to localhost
+const HOST = process.env.HOST || 'localhost'; 
 server.listen(PORT, HOST, () => {
   console.log(`✅ Server running on http://${HOST}:${PORT}`);
 });
@@ -163,7 +161,7 @@ function createNewPlayer(id, name) {
     isDead: false,
     maxStamina: 100,
     staminaRegenSpeed: 40,
-    hunger: 100, // Add hunger
+    hunger: 100, 
     maxHunger: 100,
     hungerDepletionSpeed: 2,
     lastHungerDepletion: Date.now(),
@@ -267,27 +265,24 @@ function updatePlayers(deltaTime, now) {
     const p = players[id];
     if (!p) continue;
     if (p && p.health > 0 && p.health < p.maxHealth) {
-      // Regenerate health if not recently damaged and hunger > 0
       if (!p.lastDamageTime || (now - p.lastDamageTime) / 1000 >= 5) {
         if (p.hunger > 25) {
           p.health = Math.min(p.maxHealth, p.health + p.healthRegen * deltaTime);
         }
       }
     }
-    // Hunger depletion every 5 seconds
     if (p.health > 0) {
       
-      if (!p.lastHungerDepletion) p.lastHungerDepletion = now; // Initialize timer
+      if (!p.lastHungerDepletion) p.lastHungerDepletion = now; 
       const timeSinceLastDepletion = (now - p.lastHungerDepletion) / 1000;
       if (timeSinceLastDepletion >= 5) {
         if (p.hunger > 0) {
-          p.hunger = Math.max(0, p.hunger - 5); // Deplete 10 hunger every 5 seconds
+          p.hunger = Math.max(0, p.hunger - 5); 
           p.lastHungerDepletion = now;
         }
       }
-      // Lose health if hunger is 0
       if (p.hunger <= 0) {
-        p.health = Math.max(0, p.health - 1 * deltaTime); // 1 health per second
+        p.health = Math.max(0, p.health - 1 * deltaTime);
       }
     }
 
@@ -295,7 +290,7 @@ function updatePlayers(deltaTime, now) {
       Object.entries(players).filter(([pid]) => pid !== id)
     );
     const selfData = players[id] ? { 
-      x: players[id].x, // Include position for reconciliation
+      x: players[id].x, 
       y: players[id].y,
       health: players[id].health,
       color: players[id].color,

@@ -9,7 +9,6 @@ let droppedItems = [];
 let currentDropType = null;
 let currentMaxCount = 0;
 
-// Ping check
 setInterval(() => {
   const startTime = performance.now();
   socket.emit("pingCheck", () => {
@@ -17,7 +16,6 @@ setInterval(() => {
   });
 }, 1000);
 
-// Socket event handlers
 socket.on("resourceType", (data) => {  
   resourceTypes = data;
 });
@@ -127,7 +125,6 @@ socket.on('newPlayer', (playerData) => {
   otherPlayers[playerData.id] = playerData;
 });
 
-// Handle server state updates with reconciliation
 socket.on('state', (data) => {
   latestSquare = data.pond;
   const serverPlayers = data.players;
@@ -140,7 +137,6 @@ socket.on('state', (data) => {
   for (const id in serverPlayers) {
     if (id !== socket.id) {
       if (!otherPlayers[id]) {
-        // Initialize new player
         otherPlayers[id] = {
           ...serverPlayers[id],
           lastHitTime: undefined,
@@ -155,15 +151,14 @@ socket.on('state', (data) => {
           displayY: serverPlayers[id].y
         };
       } else {
-        // Update existing player
         const p = otherPlayers[id];
         p.x = serverPlayers[id].x;
         p.y = serverPlayers[id].y;
         const now = performance.now();
         p.interpolated = {
-          startX: p.displayX || p.x, // Start from last displayed position
+          startX: p.displayX || p.x, 
           startY: p.displayY || p.y,
-          endX: serverPlayers[id].x,  // Target the new server position
+          endX: serverPlayers[id].x, 
           endY: serverPlayers[id].y,
           startTime: now
         };
@@ -171,7 +166,6 @@ socket.on('state', (data) => {
     }
   }
 
-  // Reconcile self (unchanged)
   if (data.self && player) {
     player.health = data.self.health;
     player.color = data.self.color || player.color;
@@ -204,7 +198,7 @@ socket.on('playerMoved', (playerData) => {
     p.interpolated.targetX = playerData.x;
     p.interpolated.targetY = playerData.y;
     p.interpolated.time = performance.now();
-    p.x = playerData.x; // Update actual position
+    p.x = playerData.x; 
     p.y = playerData.y;
   }
 });
