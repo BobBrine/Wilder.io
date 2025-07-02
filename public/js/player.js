@@ -5,6 +5,10 @@ let maxStamina = 0;
 let stamina = 0;
 let staminaRegenSpeed = 0;
 const CONE_LENGTH = 50;
+// Add variables for client-side prediction
+let pendingMoves = [];
+let lastProcessedServerUpdate = 0; // Track the last server update processed
+
 function updatePlayerPosition(deltaTime) {
   if (isDead) return;
 
@@ -17,45 +21,47 @@ function updatePlayerPosition(deltaTime) {
   if (keys["w"]) moveY -= 1;
   if (keys["s"]) moveY += 1;
   const wantsToSprint = keys[" "];
+  
   // Normalize diagonal movement
   if (moveX !== 0 && moveY !== 0) {
     const norm = Math.sqrt(2) / 2;
     moveX *= norm;
     moveY *= norm;
   }
-  
-  if (stamina < 10 * deltaTime) {
-    showMessage("Low Stamina");
-  }
+
   if (wantsToSprint && stamina > 0) {
-    
     speed *= 1.5;
-    stamina -= 20 * deltaTime; // Deplete 10 stamina per second
+    stamina -= 20 * deltaTime;
     lastStaminaUseTime = 0;
-    
   }
+
   const newX = player.x + moveX * speed * deltaTime;
   const newY = player.y + moveY * speed * deltaTime;
 
-  
-
-  // Check X axis separately
+  // Apply movement locally if no collision
   if (!isCollidingWithResources(newX, player.y)) {
     player.x = newX;
   }
-
-  // Check Y axis separately
   if (!isCollidingWithResources(player.x, newY)) {
     player.y = newY;
   }
 
-
-
-
-
-  // Clamp within canvas
+  // Clamp within world bounds
   player.x = Math.max(0, Math.min(WORLD_WIDTH - player.size, player.x));
   player.y = Math.max(0, Math.min(WORLD_HEIGHT - player.size, player.y));
+
+  // Store pending move
+  const move = {
+    x: player.x,
+    y: player.y,
+    timestamp: performance.now(),
+    sequence: lastProcessedServerUpdate + 1,
+  };
+  pendingMoves.push(move);
+
+  // Send move to server
+  sendPlayerPosition(player.x, player.y);
+
   // Update dropped items collision detection
   if (player) {
     const playerCenterX = player.x + player.size / 2;
@@ -64,7 +70,7 @@ function updatePlayerPosition(deltaTime) {
       const dx = playerCenterX - item.x;
       const dy = playerCenterY - item.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance < 26 && item.pickupDelay <= 0 && inventory.canAddItem(item.type)) { // Player size/2 (16) + item radius (10)
+      if (distance < 26 && item.pickupDelay <= 0 && inventory.canAddItem(item.type)) {
         socket.emit("pickupItem", item.id);
       }
     });
@@ -278,18 +284,36 @@ function drawOtherPlayers() {
     const p = otherPlayers[id];
     if (!p) continue;
 
-    const screenX = p.x;
-    const screenY = p.y;
+    if (!p.interpolated) { // Fixed typo
+      p.interpolated = {
+        startX: p.x,
+        startY: p.y,
+        endX: p.x,
+        endY: p.y,
+        startTime: now
+      };
+      p.displayX = p.x;
+      p.displayY = p.y;
+    }
+    // Calculate interpolation factor
+    const interpDuration = 50; // Adjust based on your server update rate
+    let t = (now - p.interpolated.startTime) / interpDuration;
+    if (t > 1) t = 1;
+    const displayX = p.interpolated.startX + (p.interpolated.endX - p.interpolated.startX) * t;
+    const displayY = p.interpolated.startY + (p.interpolated.endY - p.interpolated.startY) * t;
+    p.displayX = displayX;
+    p.displayY = displayY;
 
+    // Render player
     ctx.fillStyle = p.color || 'gray';
-    ctx.fillRect(screenX, screenY, p.size || 20, p.size || 20); 
+    ctx.fillRect(displayX, displayY, p.size || 20, p.size || 20);
 
     ctx.fillStyle = 'white';
-    const centerX = screenX + (p.size || 20) / 2;
-    ctx.fillText(p.name || 'Unnamed', centerX, screenY - 10);
+    const centerX = displayX + (p.size || 20) / 2;
+    ctx.fillText(p.name || 'Unnamed', centerX, displayY - 10);
 
     if (p.lastHitTime && now - p.lastHitTime < 1000) {
-      drawHealthBarP(p);
+      drawHealthBarP({ ...p, x: displayX, y: displayY });
     }
   }
 }

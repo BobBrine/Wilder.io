@@ -175,7 +175,13 @@ function emitMobsWithPlayerNames() {
     Object.entries(mobs).map(([type, mobList]) => [
       type,
       mobList.map(mob => ({
-        ...mob,
+        type: type,
+        id: mob.id,
+        x: mob.x,
+        y: mob.y,
+        health: mob.health,
+        size: mob.size,
+        facingAngle: mob.facingAngle,
         threatTable: Object.fromEntries(
           Object.entries(mob.threatTable || {}).map(([playerId, threat]) => [players[playerId]?.name || 'Unknown', threat])
         )
@@ -288,6 +294,8 @@ function updatePlayers(deltaTime, now) {
       Object.entries(players).filter(([pid]) => pid !== id)
     );
     const selfData = players[id] ? { 
+      x: players[id].x, // Include position for reconciliation
+      y: players[id].y,
       health: players[id].health,
       color: players[id].color,
       maxStamina: players[id].maxStamina,
@@ -299,7 +307,8 @@ function updatePlayers(deltaTime, now) {
       players: filteredPlayers,
       self: selfData,
       pond,
-      droppedItems
+      droppedItems,
+      timestamp: now,
     });
 
     if (players[id] && players[id].health <= 0) {

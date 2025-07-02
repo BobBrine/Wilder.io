@@ -18,7 +18,6 @@ function update() {
   clearCanvas();
 
   updatePlayerPosition(deltaTime);
-  sendPlayerPosition(player.x, player.y);
   staminaRegen(deltaTime);
   updateCamera();
   updatePlayerFacing(mouseX, mouseY);

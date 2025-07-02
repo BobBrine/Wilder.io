@@ -88,7 +88,7 @@ const mobtype = {
     size: 32,
     health: 200,
     speed: 100,
-    color: "gray",
+    color: "black",
     itemColor: "gray",
     drop: "web",
     tools: ["hand", "wooden_sword", "stone_sword", "iron_sword", "gold_sword"],
@@ -117,11 +117,8 @@ const mobtype = {
       return 3;
     },
     behavior: 'wander',
-    isAggressive: false,
-    aggroRadius: 100,
-    escapeRadius: 225,
     damage: 0,
-    turnSpeed: Math.PI * 2,
+    turnSpeed: Math.PI,
   },
 };
 
