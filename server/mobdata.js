@@ -1,5 +1,5 @@
-const WORLD_WIDTH = 20000;
-const WORLD_HEIGHT = 20000;
+const WORLD_WIDTH = 10000;
+const WORLD_HEIGHT = 10000;
 
 
 const GRID_CELL_SIZE = 100;
@@ -35,13 +35,10 @@ const mobtype = {
     health: 100,
     speed: 50,
     color: "pink",
-    itemColor: "pink",
     drop: "slime",
-    tools: ["hand", "wooden_sword", "stone_sword", "iron_sword", "gold_sword"],
+    requiredTool: { categories: ["hand", "sword"], minTier: 0 },
     spawntimer: 10,
-    getDropAmount(health) {
-      return 6;
-    },
+    getDropAmount: () => 6,
     behavior: 'wander',
     damage: 0,
     turnSpeed: Math.PI,
@@ -52,13 +49,10 @@ const mobtype = {
     health: 100,
     speed: 50,
     color: "red",
-    itemColor: "red",
     drop: "stick",
-    tools: ["hand", "wooden_sword", "stone_sword", "iron_sword", "gold_sword"],
+    requiredTool: { categories: ["hand", "sword"], minTier: 0 },
     spawntimer: 10,
-    getDropAmount(health) {
-      return 6;
-    },
+    getDropAmount: () => 6,
     behavior: 'wander',
     damage: 0,
     turnSpeed: Math.PI,
@@ -69,13 +63,10 @@ const mobtype = {
     health: 150,
     speed: 100,
     color: "gray",
-    itemColor: "gray",
     drop: "fur",
-    tools: ["hand", "wooden_sword", "stone_sword", "iron_sword", "gold_sword"],
+    requiredTool: { categories: ["hand", "sword"], minTier: 0 },
     spawntimer: 10,
-    getDropAmount(health) {
-      return 3;
-    },
+    getDropAmount: () => 3,
     behavior: 'wander',
     isAggressive: true,
     aggroRadius: 100,
@@ -89,13 +80,10 @@ const mobtype = {
     health: 200,
     speed: 100,
     color: "black",
-    itemColor: "gray",
     drop: "web",
-    tools: ["hand", "wooden_sword", "stone_sword", "iron_sword", "gold_sword"],
+    requiredTool: { categories: ["hand", "sword"], minTier: 0 },
     spawntimer: 10,
-    getDropAmount(health) {
-      return 3;
-    },
+    getDropAmount: () => 3,
     behavior: 'wander',
     isAggressive: true,
     aggroRadius: 150,
@@ -109,13 +97,10 @@ const mobtype = {
     health: 150,
     speed: 100,
     color: "yellow",
-    itemColor: "gray",
     drop: "paw",
-    tools: ["hand", "wooden_sword", "stone_sword", "iron_sword", "gold_sword"],
+    requiredTool: { categories: ["hand", "sword"], minTier: 0 },
     spawntimer: 10,
-    getDropAmount(health) {
-      return 3;
-    },
+    getDropAmount: () => 3,
     behavior: 'wander',
     damage: 0,
     turnSpeed: Math.PI,

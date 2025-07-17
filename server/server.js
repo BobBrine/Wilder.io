@@ -39,7 +39,33 @@ let gameTime = 0;
 let droppedItems = [];
 let nextItemId = 0;
 let lastUpdate = Date.now();
-
+const ItemTypes = {
+  // Resources
+  wood: { name: "Wood", color: "green" },
+  stone: { name: "Stone", color: "darkgray" },
+  iron: { name: "Iron", color: "white" },
+  gold: { name: "Gold", color: "gold" },
+  food: { name: "Food", color: "red" },
+  slime: { name: "Slime", color: "pink" },
+  stick: { name: "Stick", color: "brown" },
+  fur: { name: "Fur", color: "gray" },
+  web: { name: "Web", color: "white" },
+  paw: { name: "Paw", color: "yellow" },
+  torch: { name: "Torch", color: "yellow" },
+  // Tools
+  wooden_axe: { name: "Wooden Axe", color: "sienna", isTool: true, category: "axe", tier: 1, damage: 5 },
+  stone_axe: { name: "Stone Axe", color: "darkgray", isTool: true, category: "axe", tier: 2, damage: 10 },
+  iron_axe: { name: "Iron Axe", color: "white", isTool: true, category: "axe", tier: 3, damage: 20 },
+  gold_axe: { name: "Gold Axe", color: "gold", isTool: true, category: "axe", tier: 4, damage: 40 },
+  wooden_pickaxe: { name: "Wooden Pickaxe", color: "sienna", isTool: true, category: "pickaxe", tier: 1, damage: 5 },
+  stone_pickaxe: { name: "Stone Pickaxe", color: "darkgray", isTool: true, category: "pickaxe", tier: 2, damage: 10 },
+  iron_pickaxe: { name: "Iron Pickaxe", color: "white", isTool: true, category: "pickaxe", tier: 3, damage: 20 },
+  gold_pickaxe: { name: "Gold Pickaxe", color: "gold", isTool: true, category: "pickaxe", tier: 4, damage: 40 },
+  wooden_sword: { name: "Wooden Sword", color: "sienna", isTool: true, category: "sword", tier: 1, damage: 5 },
+  stone_sword: { name: "Stone Sword", color: "darkgray", isTool: true, category: "sword", tier: 2, damage: 10 },
+  iron_sword: { name: "Iron Sword", color: "white", isTool: true, category: "sword", tier: 3, damage: 20 },
+  gold_sword: { name: "Gold Sword", color: "gold", isTool: true, category: "sword", tier: 4, damage: 40 },
+};
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.get('*', (req, res) => {
@@ -54,6 +80,7 @@ io.on('connection', (socket) => {
   io.emit("resourceType", resourceTypes);
   io.emit("resources", allResources);
   io.emit("mobType", mobtype);
+  io.emit("itemTypes", ItemTypes);
 
   socket.on("pingCheck", (callback) => {callback();});
 
@@ -180,6 +207,7 @@ function emitMobsWithPlayerNames() {
         x: mob.x,
         y: mob.y,
         health: mob.health,
+        maxHealth: mob.maxHealth,
         size: mob.size,
         facingAngle: mob.facingAngle,
         threatTable: Object.fromEntries(

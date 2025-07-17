@@ -1,7 +1,6 @@
 const inventory = {
-  items: {}, // Use an object for cleaner key management
+  items: {},
   maxTypes: 12,
-
   addItem(type, count = 1) {
     const currentTypes = Object.keys(this.items).length;
     if (!this.items[type] && currentTypes >= this.maxTypes) {
@@ -12,7 +11,6 @@ const inventory = {
     updateHotbarFromInventory(this.items);
     return true;
   },
-
   removeItem(type, count = 1) {
     if (!this.items[type] || this.items[type] < count) return false;
     this.items[type] -= count;
@@ -20,15 +18,12 @@ const inventory = {
     updateHotbarFromInventory(this.items);
     return true;
   },
-
   hasItem(type, count = 1) {
     return (this.items[type] || 0) >= count;
   },
-
   canAddItem(type) {
     return this.items[type] !== undefined || Object.keys(this.items).length < this.maxTypes;
   },
-
   clear() {
     this.items = {};
     updateHotbarFromInventory(this.items);

@@ -1,6 +1,6 @@
 // server/resourceManager.js
-const WORLD_WIDTH = 20000;
-const WORLD_HEIGHT = 20000;
+const WORLD_WIDTH = 10000;
+const WORLD_HEIGHT = 10000;
 
 const GRID_CELL_SIZE = 100;
 const GRID_COLS = Math.floor(WORLD_WIDTH / GRID_CELL_SIZE);
@@ -36,111 +36,54 @@ const {
 
 const resourceTypes = {
   food: {
-  maxCount: 500,
-  size: 32,
-  get health() {
-    return Math.floor(Math.random() * (30 - 15 + 1)) + 15; // 15–30
+    maxCount: 500,
+    size: 32,
+    get health() { return Math.floor(Math.random() * (30 - 15 + 1)) + 15; },
+    color: "red",
+    drop: "food",
+    requiredTool: { categories: ["hand"], minTier: 0 },
+    spawntimer: 10,
+    getDropAmount(health) { return health <= 22.5 ? Math.floor(Math.random() * 3) + 3 : Math.floor(Math.random() * 4) + 5; }
   },
-  color: "red",
-  itemColor: "red",
-  drop: "food",
-  tools: ["hand"],
-  spawntimer: 10,
-  getDropAmount(health) {
-    return health <= 22.5
-      ? Math.floor(Math.random() * 3) + 3   // 3–5
-      : Math.floor(Math.random() * 4) + 5;  // 5–8
-  }
-},
   wood: {
     maxCount: 1000,
     size: 32,
-    get health() {
-      return Math.floor(Math.random() * (40 - 20 + 1)) + 20; // 20–40
-    },
+    get health() { return Math.floor(Math.random() * (40 - 20 + 1)) + 20; },
     color: "green",
-    itemColor: "green",
     drop: "wood",
-    tools: [
-      "hand",
-      "wooden_axe",
-      "stone_axe",
-      "iron_axe",
-      "gold_axe"
-    ],
-    spawntimer: 10, // 🕒 10 seconds (60fps * 10)
-    getDropAmount(health) {
-      return health <= 30
-        ? Math.floor(Math.random() * 3) + 5   // 5–7
-        : Math.floor(Math.random() * 4) + 7;  // 7–10
-    },
+    requiredTool: { categories: ["hand", "axe"], minTier: 0 },
+    spawntimer: 10,
+    getDropAmount(health) { return health <= 30 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
   },
-
   stone: {
     maxCount: 500,
     size: 32,
-    get health() {
-      return Math.floor(Math.random() * (60 - 30 + 1)) + 30; // 30–60
-    },
+    get health() { return Math.floor(Math.random() * (60 - 30 + 1)) + 30; },
     color: "darkgray",
-    itemColor: "darkgray",
     drop: "stone",
-    tools: [
-      "wooden_pickaxe",
-      "stone_pickaxe",
-      "iron_pickaxe",
-      "gold_pickaxe"
-    ],
+    requiredTool: { categories: ["pickaxe"], minTier: 1 },
     spawntimer: 10,
-    getDropAmount(health) {
-      return health <= 45
-        ? Math.floor(Math.random() * 3) + 5   // 5–7
-        : Math.floor(Math.random() * 4) + 7;  // 7–10
-    }
-    
+    getDropAmount(health) { return health <= 45 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
   },
-
   iron: {
     maxCount: 300,
     size: 32,
-    get health() {
-      return Math.floor(Math.random() * (80 - 40 + 1)) + 40; // 40–80
-    },
+    get health() { return Math.floor(Math.random() * (80 - 40 + 1)) + 40; },
     color: "white",
-    itemColor: "white",
     drop: "iron",
-    tools: [
-      "stone_pickaxe",
-      "iron_pickaxe",
-      "gold_pickaxe"
-    ],
+    requiredTool: { categories: ["pickaxe"], minTier: 2 },
     spawntimer: 10,
-    getDropAmount(health) {
-      return health <= 60
-        ? Math.floor(Math.random() * 3) + 5   // 5–7
-        : Math.floor(Math.random() * 4) + 7;  // 7–10
-    }
+    getDropAmount(health) { return health <= 60 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
   },
-
   gold: {
     maxCount: 100,
     size: 32,
-    get health() {
-      return Math.floor(Math.random() * (100 - 50 + 1)) + 50; // 50–100
-    },
+    get health() { return Math.floor(Math.random() * (100 - 50 + 1)) + 50; },
     color: "gold",
-    itemColor: "gold",
     drop: "gold",
-    tools: [
-      "iron_pickaxe",
-      "gold_pickaxe"
-    ],
+    requiredTool: { categories: ["pickaxe"], minTier: 3 },
     spawntimer: 10,
-    getDropAmount(health) {
-      return health <= 75
-        ? Math.floor(Math.random() * 3) + 5   // 5–7
-        : Math.floor(Math.random() * 4) + 7;  // 7–10
-    }
+    getDropAmount(health) { return health <= 75 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
   }
 };
 

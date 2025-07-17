@@ -11,5 +11,5 @@ resizeCanvas();
 // Resize canvas when window is resized
 window.addEventListener('resize', resizeCanvas);
 
-const WORLD_WIDTH = 20000;
-const WORLD_HEIGHT = 20000;
+const WORLD_WIDTH = 10000;
+const WORLD_HEIGHT = 10000;

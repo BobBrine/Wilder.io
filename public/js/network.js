@@ -26,6 +26,9 @@ socket.on("mobType", (data) => {
   mobtype = data;
 });
 
+socket.on("itemTypes", (data) => ItemTypes = data);
+
+
 socket.on('connect', () => {
   console.log('Connected as', socket.id);
 
