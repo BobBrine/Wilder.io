@@ -1,6 +1,6 @@
 // Socket connection
 let socket = io("https://survival-io-md0m.onrender.com"); // For complete game testing
-//let socket = io("http://localhost:3000"); // For local testing
+//let socket = io("http://10.141.21.216:3000"); // For local testing
 const devTest = false;
 
 let latestSquare = null;

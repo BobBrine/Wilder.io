@@ -150,8 +150,9 @@ setInterval(() => {
   io.emit("gameTime", gameTime);
 }, 50);
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`✅ Server running on http://10.141.21.216:${PORT} (LAN accessible)`);
 });
 
 function createNewPlayer(id, name) {
