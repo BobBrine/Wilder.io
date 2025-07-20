@@ -3,9 +3,9 @@ body {
   background-color: #1e1e1e;
   display: flex;
   justify-content: center;
+  overflow: hidden; 
   align-items: center;
   height: 100vh;
-  overflow: hidden;
 }
 canvas {
   border: 2px solid #fff;
@@ -25,7 +25,6 @@ canvas {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 20; /* Ensure UI overlays are above ads */
 }
 #nameEntry input, #dropAmountPrompt input {
   padding: 5px;
@@ -41,9 +40,4 @@ canvas {
 }
 #nameEntry button:hover, #deathScreen button:hover, #dropAmountPrompt button:hover {
   background-color: #555;
-}
-#ad-container {
-  z-index: 10; /* Below UI overlays but above canvas */
-  max-width: 100%; /* Prevent ad from overflowing */
-  overflow: hidden; /* Handle any overflow from responsive ads */
 }

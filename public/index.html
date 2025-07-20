@@ -1,69 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Survival Game</title>
-  <link rel="stylesheet" href="style.css">
-  <!-- Google AdSense Verification (if required) -->
-  <meta name="google-adsense-account" content="ca-pub-7905241559451131">
-  <!-- Google AdSense Script -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Survival IO Game</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7905241559451131"
-          crossorigin="anonymous"></script>
+     crossorigin="anonymous"></script>
 </head>
 <body>
-  <div id="nameEntry">
-    <h2>Enter Your Name</h2>
-    <input id="playerNameInput" type="text" placeholder="Your name">
-    <button onclick="submitName()">Join</button>
-    <!-- AdSense Ad Container -->
-    <div id="ad-container" style="padding-top: 20px; text-align: center;">
-      <ins class="adsbygoogle"
-           style="display:block"
-           data-ad-client="ca-pub-7905241559451131"
-           data-ad-slot="3049240056"
-           data-ad-format="auto"
-           data-full-width-responsive="true"
-           data-adtest="on"></ins>
-      <div id="ad-fallback" style="display: none; color: white; font-size: 14px;">
-        Ad not loaded
-      </div>
-    </div>
+
+  <div id="nameEntry" style="position: absolute; z-index: 10; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #222; padding: 20px; border-radius: 8px; color: white;">
+  <h2>Enter Your Name</h2>
+  <input type="text" id="playerNameInput" placeholder="Your name" />
+  <button onclick="submitName()" disabled>Join</button>
   </div>
 
-  <div id="deathScreen" style="display: none;">
-    <h2>You Died!</h2>
-    <button onclick="backToMain()">Back to Main</button>
+  <div id="deathScreen" style="display: none; position: absolute; z-index: 10; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #300; padding: 20px; border-radius: 8px; color: white;">
+  <h2>You Died!</h2>
+  <button onclick="backToMain()">Back to Main</button>
   </div>
 
-  <div id="dropAmountPrompt" style="display: none;">
-    <h3>Drop Item</h3>
-    <input id="dropAmountInput" type="number" min="1">
+  <div id="dropAmountPrompt" style="display: none">
+    <h1>Drop Item</h1>
+    <input id="dropAmountInput" type="number" min="1" placeholder="Amount to drop" />
     <button onclick="submitDropAmount()">Drop</button>
     <button onclick="dropAll()">Drop All</button>
   </div>
-
+  
   <canvas id="gameCanvas"></canvas>
+  <script src="js/canvas.js"></script> 
+  <script src="js/network.js"></script>
+  
+  <script src="js/player.js"></script>
+  <script src="js/resourceTypes.js"></script> 
+  
+  <script src="js/world.js"></script> 
+  <script src="js/camera.js"></script> 
+  <script src="js/mobs.js"></script>
+  <script src="js/input.js"></script>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="client.js"></script>
-  <script>
-    // Initialize AdSense only if not on localhost
-    if (window.location.hostname !== 'localhost') {
-      (adsbygoogle = window.adsbygoogle || []).push({});
-    }
-    // Fallback and placeholder for localhost
-    setTimeout(() => {
-      const adElement = document.querySelector('.adsbygoogle');
-      if (!adElement || !adElement.innerHTML.trim()) {
-        document.getElementById('ad-fallback').style.display = 'block';
-        if (window.location.hostname === 'localhost') {
-          adElement.style.border = '1px solid red';
-          adElement.style.background = 'rgba(255, 0, 0, 0.1)';
-          adElement.style.minHeight = '100px'; // Ensure placeholder is visible
-        }
-      }
-    }, 2000);
-  </script>
+  <script src="js/hotbar.js"></script> 
+
+  <script src="js/inventory.js"></script>
+  <script src="js/crafting&tool.js"></script>
+
+
+  <script src="js/ui.js"></script>
+
+
+
+  <script src="js/main.js"></script>
+
 </body>
 </html>
