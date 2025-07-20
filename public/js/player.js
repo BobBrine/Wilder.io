@@ -130,8 +130,8 @@ function drawPlayer() {
   const coneLength = CONE_LENGTH;
   const coneAngle = Math.PI / 4;
   
-  ctx.fillStyle = player.color;
-  ctx.fillRect(player.x, player.y, player.size, player.size);
+  // ctx.fillStyle = "rgba(0, 0, 0, 0)"
+  // ctx.fillRect(player.x, player.y, player.size, player.size);
 
   
 
@@ -150,24 +150,25 @@ function drawPlayer() {
   ctx.closePath();
   ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
   ctx.fill();
+  
+  drawTool();
+  ctx.save();
+
+  // Translate to player position and rotate based on facing angle
+  ctx.translate(centerX, centerY);
+  ctx.rotate(player.facingAngle + Math.PI/2)
+  ctx.drawImage(
+      playerImage,
+      -player.size / 2 - 10, // Center image horizontally
+      -player.size / 2 - 10, // Center image vertically
+      50,
+      45
+    );
+  ctx.restore();
   ctx.fillStyle = "white";
   ctx.font = "14px Arial";
   ctx.textAlign = "center";
   ctx.fillText(player.name || "You", centerX, player.y - 10);
-  drawTool();
-  // ctx.save();
-
-  // // Translate to player position and rotate based on facing angle
-  // ctx.translate(centerX, centerY);
-  // ctx.rotate(player.facingAngle + Math.PI/2)
-  // ctx.drawImage(
-  //     playerImage,
-  //     -player.size / 2 - 10, // Center image horizontally
-  //     -player.size / 2 - 10, // Center image vertically
-  //     50,
-  //     45
-  //   );
-  //   ctx.restore();
 }
 
 function drawTool() {

@@ -118,10 +118,11 @@ function drawMessage() {
 const damageTexts = [];
 
 function showDamageText(x, y, damage) {
-  damageTexts.push({ x, y, text: `${damage}`, opacity: 1, life: 120, maxLife: 120 });
+  damageTexts.push({ x, y, text: `${damage}`, opacity: 1, life: 1, maxLife: 1 });
 }
 
 function drawDamageTexts() {
+  const deltaTime = (performance.now() - lastUpdate) / 1000;
   for (let i = damageTexts.length - 1; i >= 0; i--) {
     const dmg = damageTexts[i];
     const screenX = dmg.x - camera.x;
@@ -135,8 +136,8 @@ function drawDamageTexts() {
     ctx.strokeText(dmg.text, screenX, screenY);
     ctx.fillText(dmg.text, screenX, screenY);
     ctx.restore();
-    dmg.y -= 0.3;
-    dmg.life--;
+    dmg.y -= 15 * deltaTime;
+    dmg.life -= deltaTime;
     dmg.opacity = dmg.life / dmg.maxLife;
     if (dmg.life <= 0) damageTexts.splice(i, 1);
   }

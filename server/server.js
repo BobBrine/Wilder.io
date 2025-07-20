@@ -39,6 +39,7 @@ let gameTime = 0;
 let droppedItems = [];
 let nextItemId = 0;
 let lastUpdate = Date.now();
+let lastStaticUpdate = Date.now();
 const ItemTypes = {
   // Resources
   wood: { name: "Wood", color: "green" },
@@ -94,6 +95,8 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('newPlayer', players[socket.id]);
   });
 
+  
+
   socket.on('move', (data) => {
     const p = players[socket.id];
     if (p && p.health > 0) {
@@ -134,25 +137,37 @@ io.on('connection', (socket) => {
 });
 
 
-
+//update contiunous
 setInterval(() => {
   const now = Date.now();
   const deltaTime = (now - lastUpdate) / 1000;
-  updatePlayers(deltaTime, now);
-  updateResourceRespawns(deltaTime);
-  updateMobRespawns(deltaTime, allResources, players, gameTime);
-  gameTime = (gameTime + deltaTime) % CYCLE_LENGTH;
   lastUpdate = now;
+  updatePlayers(deltaTime, now);
+  
+  gameTime = (gameTime + deltaTime) % CYCLE_LENGTH;
 
-  io.emit("resources", allResources);
+  
   emitMobsWithPlayerNames();
   updateMobs(allResources, players, deltaTime);
   io.emit("gameTime", gameTime);
 }, 50);
 
+// Static update loop (every 10s)
+setInterval(() => {
+  const now = Date.now();
+  const deltaTime = (now - lastStaticUpdate) / 1000; // in seconds
+  lastStaticUpdate = now;
+
+  updateResourceRespawns(deltaTime);
+  updateMobRespawns(deltaTime, allResources, players, gameTime);
+  io.emit("resources", allResources);
+
+
+}, 10000);
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
-  console.log(`✅ Server running on http://10.141.21.216:${PORT} (LAN accessible)`);
+  console.log(`✅ Server running on http://192.168.56.1:${PORT} (LAN accessible)`);
 });
 
 function createNewPlayer(id, name) {
