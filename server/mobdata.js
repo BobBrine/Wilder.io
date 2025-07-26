@@ -1,10 +1,13 @@
-const WORLD_WIDTH = 10000;
-const WORLD_HEIGHT = 10000;
-
+const WORLD_SIZE = 5000;
 
 const GRID_CELL_SIZE = 100;
-const GRID_COLS = Math.floor(WORLD_WIDTH / GRID_CELL_SIZE); // 20
-const GRID_ROWS = Math.floor(WORLD_HEIGHT / GRID_CELL_SIZE);
+const GRID_COLS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE); // 50
+const GRID_ROWS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE);
+
+let difficulty = 1; // Set difficulty level (1 = normal, 2 = hard, etc.)
+const gameTime = 0; // Example game time
+const mobtype = initializeMobTypes(gameTime, difficulty);
+const mobs = Object.fromEntries(Object.keys(mobtype).map(type => [type, []]));
 
 let pond = (() => {
   const col = Math.floor(Math.random() * GRID_COLS);
@@ -23,165 +26,454 @@ function getRandomPositionInCell(col, row, size) {
   return { x, y };
 }
 
-const CYCLE_LENGTH = 180; // 20 minutes in seconds
-const DAY_LENGTH = 120;   // 15 minutes of day, 5 minutes of night
-
 const crypto = require("crypto");
+const CYCLE_LENGTH = 180; // 20 minutes in seconds
 
-const mobtype = {
-  slime: {
-    maxCount: 50,
-    size: 32,
-    health: 100,
-    speed: 50,
-    color: "pink",
-    drop: "slime",
+// Constants
+const passiveColors = ["green", "yellow", "lightblue", "pink", "orange"];
+const aggressiveColors = ["red", "darkred", "purple", "black", "darkgray"];
+const DAY_LENGTH = 120; // 15 minutes of day, 5 minutes of night
+
+// Helper function to generate random numbers within a range
+function randomBetween(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
+// Function to generate a passive mob type
+function generatePassiveMobType(id, difficulty) {
+  const baseHealth = { min: 50, max: 150 };
+  const baseSize = { min: 20, max: 40 };
+  const baseSpeed = { min: 30, max: 70 };
+  const baseTurnSpeed = Math.PI;
+  const baseDropAmount = 1; // Drops one "pure core"
+
+  const health = {
+    min: baseHealth.min * (1 + 0.5 * (difficulty - 1)),
+    max: baseHealth.max * (1 + 0.5 * (difficulty - 1)),
+  };
+  const size = {
+    min: baseSize.min * (1 + 0.2 * (difficulty - 1)),
+    max: baseSize.max * (1 + 0.2 * (difficulty - 1)),
+  };
+  const speed = {
+    min: baseSpeed.min * (1 + 0.2 * (difficulty - 1)),
+    max: baseSpeed.max * (1 + 0.2 * (difficulty - 1)),
+  };
+  const turnSpeed = baseTurnSpeed * (1 + 0.1 * (difficulty - 1));
+  const dropAmount = baseDropAmount * difficulty;
+
+  return {
+    maxCount: 25,
+    size,
+    health,
+    speed,
+    color: () => passiveColors[Math.floor(Math.random() * passiveColors.length)],
+    drop: "pure_core",
     requiredTool: { categories: ["hand", "sword"], minTier: 0 },
     spawntimer: 10,
-    getDropAmount: () => 6,
+    getDropAmount: () => dropAmount,
     behavior: 'wander',
     damage: 0,
-    turnSpeed: Math.PI,
-  },
-  pig: {
-    maxCount: 50,
-    size: 32,
-    health: 100,
-    speed: 50,
-    color: "red",
-    drop: "stick",
+    turnSpeed,
+  };
+}
+
+// Function to generate an aggressive mob type with profiles
+function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 50) {
+  const baseTurnSpeed = Math.PI * 2;
+  const turnSpeed = baseTurnSpeed * (1 + 0.1 * (difficulty - 1));
+  const baseAggroRadius = 100;
+  const baseEscapeRadius = 225;
+  const aggroRadius = baseAggroRadius * (1 + 0.2 * (difficulty - 1));
+  const escapeRadius = baseEscapeRadius * (1 + 0.2 * (difficulty - 1));
+  const baseDropAmount = 1 * difficulty;
+
+  return {
+    maxCount: (gameTime) => (gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4),
+    profiles: {
+      tank: {
+        count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.2),
+        health: { min: 200 * (1 + 0.5 * (difficulty - 1)), max: 300 * (1 + 0.5 * (difficulty - 1)) },
+        size: { min: 40 * (1 + 0.2 * (difficulty - 1)), max: 60 * (1 + 0.2 * (difficulty - 1)) },
+        speed: { min: 20 * (1 + 0.2 * (difficulty - 1)), max: 40 * (1 + 0.2 * (difficulty - 1)) },
+        damage: { min: 15 * (1 + 0.3 * (difficulty - 1)), max: 25 * (1 + 0.3 * (difficulty - 1)) },
+      },
+      speedster: {
+        count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.2),
+        health: { min: 50 * (1 + 0.5 * (difficulty - 1)), max: 100 * (1 + 0.5 * (difficulty - 1)) },
+        size: { min: 15 * (1 + 0.2 * (difficulty - 1)), max: 25 * (1 + 0.2 * (difficulty - 1)) },
+        speed: { min: 80 * (1 + 0.2 * (difficulty - 1)), max: 120 * (1 + 0.2 * (difficulty - 1)) },
+        damage: { min: 5 * (1 + 0.3 * (difficulty - 1)), max: 10 * (1 + 0.3 * (difficulty - 1)) },
+      },
+      longRange: {
+        count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.2),
+        health: { min: 80 * (1 + 0.5 * (difficulty - 1)), max: 150 * (1 + 0.5 * (difficulty - 1)) },
+        size: { min: 20 * (1 + 0.2 * (difficulty - 1)), max: 30 * (1 + 0.2 * (difficulty - 1)) },
+        speed: { min: 60 * (1 + 0.2 * (difficulty - 1)), max: 90 * (1 + 0.2 * (difficulty - 1)) },
+        damage: { min: 8 * (1 + 0.3 * (difficulty - 1)), max: 12 * (1 + 0.3 * (difficulty - 1)) },
+        aggroRadius: aggroRadius * 1.5,
+        escapeRadius: escapeRadius * 1.5,
+      },
+      balanced: {
+        count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.4),
+        health: { min: 100 * (1 + 0.5 * (difficulty - 1)), max: 200 * (1 + 0.5 * (difficulty - 1)) },
+        size: { min: 25 * (1 + 0.2 * (difficulty - 1)), max: 35 * (1 + 0.2 * (difficulty - 1)) },
+        speed: { min: 50 * (1 + 0.2 * (difficulty - 1)), max: 80 * (1 + 0.2 * (difficulty - 1)) },
+        damage: { min: 10 * (1 + 0.3 * (difficulty - 1)), max: 15 * (1 + 0.3 * (difficulty - 1)) },
+      },
+    },
+    color: () => aggressiveColors[Math.floor(Math.random() * aggressiveColors.length)],
+    drop: "dark_core",
     requiredTool: { categories: ["hand", "sword"], minTier: 0 },
     spawntimer: 10,
-    getDropAmount: () => 6,
-    behavior: 'wander',
-    damage: 0,
-    turnSpeed: Math.PI,
-  },
-  wolf: {
-    maxCount: (gameTime) => gameTime < DAY_LENGTH ? 50 : 70,
-    size: 32,
-    health: 150,
-    speed: 100,
-    color: "gray",
-    drop: "fur",
-    requiredTool: { categories: ["hand", "sword"], minTier: 0 },
-    spawntimer: 10,
-    getDropAmount: () => 3,
+    getDropAmount: () => baseDropAmount,
     behavior: 'wander',
     isAggressive: true,
-    aggroRadius: 100,
-    escapeRadius: 225,
-    damage: 10,
-    turnSpeed: Math.PI * 2,
-  },
-  spider: {
-    maxCount: (gameTime) => gameTime < DAY_LENGTH ? 50 : 60,
-    size: 32,
-    health: 200,
-    speed: 100,
-    color: "black",
-    drop: "web",
-    requiredTool: { categories: ["hand", "sword"], minTier: 0 },
-    spawntimer: 10,
-    getDropAmount: () => 3,
+    aggroRadius,
+    escapeRadius,
+    turnSpeed,
+  };
+}
+
+// Function to generate a special aggressive mob
+function generateSpecialAggressiveMobType(id, gameTime, difficulty) {
+  const baseHealth = { min: 400, max: 600 };
+  const baseSize = { min: 25, max: 35 };
+  const baseSpeed = { min: 80, max: 120 };
+  const baseDamage = { min: 25, max: 35 };
+  const baseTurnSpeed = Math.PI * 2;
+  const baseAggroRadius = 200;
+  const baseEscapeRadius = 400;
+  const baseDropAmount = 3 * difficulty;
+
+  const health = {
+    min: baseHealth.min * (1 + 0.5 * (difficulty - 1)),
+    max: baseHealth.max * (1 + 0.5 * (difficulty - 1)),
+  };
+  const size = {
+    min: baseSize.min * (1 + 0.2 * (difficulty - 1)),
+    max: baseSize.max * (1 + 0.2 * (difficulty - 1)),
+  };
+  const speed = {
+    min: baseSpeed.min * (1 + 0.2 * (difficulty - 1)),
+    max: baseSpeed.max * (1 + 0.2 * (difficulty - 1)),
+  };
+  const damage = {
+    min: baseDamage.min * (1 + 0.3 * (difficulty - 1)),
+    max: baseDamage.max * (1 + 0.3 * (difficulty - 1)),
+  };
+  const turnSpeed = baseTurnSpeed * (1 + 0.1 * (difficulty - 1));
+  const aggroRadius = baseAggroRadius * (1 + 0.2 * (difficulty - 1));
+  const escapeRadius = baseEscapeRadius * (1 + 0.2 * (difficulty - 1));
+
+  return {
+    maxCount: 1,
+    size,
+    health,
+    speed,
+    color: "white",
+    drop: ["pure_core", "dark_core", "mythic_core"],
+    requiredTool: { categories: ["sword"], minTier: 2 },
+    spawntimer: 60,
+    getDropAmount: () => [
+      { type: "pure_core", amount: baseDropAmount },
+      { type: "dark_core", amount: baseDropAmount },
+      { type: "mythic_core", amount: 1 },
+    ],
     behavior: 'wander',
     isAggressive: true,
-    aggroRadius: 150,
-    escapeRadius: 350,
-    damage: 20,
-    turnSpeed: Math.PI * 2,
-  },
-  hamster: {
-    maxCount: 50,
-    size: 32,
-    health: 150,
-    speed: 100,
-    color: "yellow",
-    drop: "paw",
-    requiredTool: { categories: ["hand", "sword"], minTier: 0 },
-    spawntimer: 10,
-    getDropAmount: () => 3,
-    behavior: 'wander',
-    damage: 0,
-    turnSpeed: Math.PI,
-  },
-};
+    aggroRadius,
+    escapeRadius,
+    damage,
+    turnSpeed,
+  };
+}
 
-const mobs = Object.fromEntries(Object.keys(mobtype).map(type => [type, []]));
+// Generate mob types and update mobtype object
+function initializeMobTypes(gameTime, difficulty) {
+  const mobtype = {
+    passive_mob: generatePassiveMobType("passive_mob", difficulty),
+    aggressive_mob: generateAggressiveMobType("aggressive_mob", gameTime, difficulty),
+    special_mob: generateSpecialAggressiveMobType("special_mob", gameTime, difficulty),
+  };
+  return mobtype;
+}
 
+// Modified createMobSpawner to handle profiles and scale attributes
 function createMobSpawner(type, targetArray, isOverlapping, gameTime) {
   const config = mobtype[type];
   if (!config) return;
+
   const maxCount = typeof config.maxCount === 'function' ? config.maxCount(gameTime) : config.maxCount;
   let activeCount = targetArray.filter(r => r.size > 0).length;
-  let deadCount = targetArray.filter(r => r.size === 0).length;
 
-  while (activeCount + deadCount < config.maxCount) {
-    const col = Math.floor(Math.random() * GRID_COLS);
-    const row = Math.floor(Math.random() * GRID_ROWS);
-    const { x, y } = getRandomPositionInCell(col, row, config.size);
+  let profiles = {};
+  if (type === "aggressive_mob") {
+    profiles = config.profiles;
+  } else {
+    profiles.default = {
+      count: () => maxCount,
+      health: config.health,
+      size: config.size,
+      speed: config.speed,
+      damage: config.damage || { min: 0, max: 0 },
+      aggroRadius: config.aggroRadius || 0,
+      escapeRadius: config.escapeRadius || 0,
+    };
+  }
 
-    if (!isOverlapping(x, y, config.size)) {
-      const id = crypto.randomUUID();
-      targetArray.push({
-        id,
-        type,
-        x,
-        y,
-        size: config.size,
+  for (const [profileName, profile] of Object.entries(profiles)) {
+    const profileMaxCount = profile.count(gameTime);
+    let profileActiveCount = targetArray.filter(r => r.size > 0 && r.profile === profileName).length;
+
+    while (profileActiveCount < profileMaxCount) {
+      const health = randomBetween(profile.health.min, profile.health.max);
+      const sizeFactor = (health - profile.health.min) / (profile.health.max - profile.health.min);
+      const size = randomBetween(profile.size.min, profile.size.max) * (1 + 0.5 * sizeFactor);
+      const damage = profile.damage
+        ? randomBetween(profile.damage.min, profile.damage.max) * (1 + 0.3 * sizeFactor)
+        : 0;
+      const speed = randomBetween(profile.speed.min, profile.speed.max) * (1 - 0.3 * sizeFactor);
+      const aggroRadius = profile.aggroRadius || config.aggroRadius || 0;
+      const escapeRadius = profile.escapeRadius || config.escapeRadius || 0;
+
+      const col = Math.floor(Math.random() * GRID_COLS);
+      const row = Math.floor(Math.random() * GRID_ROWS);
+      const { x, y } = getRandomPositionInCell(col, row, size);
+
+      if (!isOverlapping(x, y, size, size)) {
+        const id = crypto.randomUUID();
+        const color = typeof config.color === "function" ? config.color() : config.color;
+        targetArray.push({
+          id,
+          type,
+          profile: profileName,
+          x,
+          y,
+          size,
+          health,
+          maxHealth: health,
+          moveSpeed: speed,
+          damage,
+          behavior: config.behavior,
+          currentBehavior: config.behavior,
+          targetPlayerId: null,
+          chaseTimer: 0,
+          facingAngle: Math.random() * Math.PI * 2,
+          targetAngle: Math.random() * Math.PI * 2,
+          turnSpeed: config.turnSpeed,
+          moveTimer: Math.random() * 3 + 2,
+          isTurning: true,
+          respawnTimer: 0,
+          respawnTime: config.spawntimer,
+          damageCooldown: 0,
+          threatTable: {},
+          pauseTimer: 0,
+          color,
+          aggroRadius,
+          escapeRadius,
+        });
+        profileActiveCount++;
+        activeCount++;
+      }
+    }
+  }
+}
+
+// Modified updateMobRespawns to handle profiles
+function updateMobRespawns(deltaTime, allResources, players, gameTime) {
+  for (const type in mobs) {
+    const config = mobtype[type];
+    const maxCount = typeof config.maxCount === 'function' ? config.maxCount(gameTime) : config.maxCount;
+    const mobList = mobs[type];
+
+    let profiles = {};
+    if (type === "aggressive_mob") {
+      profiles = config.profiles;
+    } else {
+      profiles.default = {
+        count: () => maxCount,
         health: config.health,
-        maxHealth: config.health,
-        behavior: config.behavior,
-        currentBehavior: config.behavior,
-        targetPlayerId: null,
-        chaseTimer: 0,
-        facingAngle: Math.random() * Math.PI * 2,
-        targetAngle: Math.random() * Math.PI * 2,
-        turnSpeed: config.turnSpeed,
-        moveSpeed: config.speed,
-        moveTimer: Math.random() * 3 + 2,
-        isTurning: true,
-        respawnTimer: 0,
-        respawnTime: config.spawntimer,
-        damageCooldown: 0,
-        threatTable: {}, // Add threatTable to all mobs
-        pauseTimer: 0,
-      });
-      activeCount++;
+        size: config.size,
+        speed: config.speed,
+        damage: config.damage || { min: 0, max: 0 },
+        aggroRadius: config.aggroRadius || 0,
+        escapeRadius: config.escapeRadius || 0,
+      };
+    }
+
+    for (const r of mobList) {
+      if (r.size === 0 && r.respawnTimer > 0) {
+        r.respawnTimer -= deltaTime;
+        if (r.respawnTimer <= 0) {
+          const profile = profiles[r.profile || "default"];
+          const health = randomBetween(profile.health.min, profile.health.max);
+          const sizeFactor = (health - profile.health.min) / (profile.health.max - profile.health.min);
+          const size = randomBetween(profile.size.min, profile.size.max) * (1 + 0.5 * sizeFactor);
+          const damage = profile.damage
+            ? randomBetween(profile.damage.min, profile.damage.max) * (1 + 0.3 * sizeFactor)
+            : 0;
+          const speed = randomBetween(profile.speed.min, profile.speed.max) * (1 - 0.3 * sizeFactor);
+          const aggroRadius = profile.aggroRadius || config.aggroRadius || 0;
+          const escapeRadius = profile.escapeRadius || config.escapeRadius || 0;
+          const color = typeof config.color === "function" ? config.color() : config.color;
+
+          let newX, newY;
+          let attempts = 0;
+          const maxAttempts = 10;
+          do {
+            const col = Math.floor(Math.random() * GRID_COLS);
+            const row = Math.floor(Math.random() * GRID_ROWS);
+            ({ x: newX, y: newY } = getRandomPositionInCell(col, row, size));
+            attempts++;
+            if (attempts > maxAttempts) {
+              console.warn(`Failed to find valid spawn position for ${type} (${r.profile}) after ${maxAttempts} attempts.`);
+              break;
+            }
+          } while (
+            isOverlappingAny(allResources, newX, newY, size, size) ||
+            isOverlappingAny(mobs, newX, newY, size, size) ||
+            isOverlappingAny(players, newX, newY, size, size) ||
+            checkOverlap(newX, newY, size, size, pond.x, pond.y, pond.size, pond.size)
+          );
+          if (attempts <= maxAttempts) {
+            r.id = crypto.randomUUID();
+            r.x = newX;
+            r.y = newY;
+            r.size = size;
+            r.health = health;
+            r.maxHealth = health;
+            r.moveSpeed = speed;
+            r.damage = damage;
+            r.color = color;
+            r.aggroRadius = aggroRadius;
+            r.escapeRadius = escapeRadius;
+            r.respawnTimer = 0;
+            r.behavior = config.behavior;
+            r.currentBehavior = config.behavior;
+            r.targetPlayerId = null;
+            r.chaseTimer = 0;
+            r.facingAngle = Math.random() * Math.PI * 2;
+            r.targetAngle = Math.random() * Math.PI * 2;
+            r.turnSpeed = config.turnSpeed;
+            r.moveTimer = Math.random() * 3 + 2;
+            r.isTurning = true;
+            r.damageCooldown = 0;
+            r.threatTable = {};
+            r.pauseTimer = 0;
+          }
+        }
+      }
+    }
+
+    const totalInstances = mobList.length;
+    if (totalInstances < maxCount) {
+      const toSpawn = maxCount - totalInstances;
+      for (const [profileName, profile] of Object.entries(profiles)) {
+        const profileMaxCount = profile.count(gameTime);
+        const profileCurrentCount = mobList.filter(r => r.profile === profileName).length;
+        const profileToSpawn = Math.min(profileMaxCount - profileCurrentCount, toSpawn);
+        for (let i = 0; i < profileToSpawn; i++) {
+          const health = randomBetween(profile.health.min, profile.health.max);
+          const sizeFactor = (health - profile.health.min) / (profile.health.max - profile.health.min);
+          const size = randomBetween(profile.size.min, profile.size.max) * (1 + 0.5 * sizeFactor);
+          const damage = profile.damage
+            ? randomBetween(profile.damage.min, profile.damage.max) * (1 + 0.3 * sizeFactor)
+            : 0;
+          const speed = randomBetween(profile.speed.min, profile.speed.max) * (1 - 0.3 * sizeFactor);
+          const aggroRadius = profile.aggroRadius || config.aggroRadius || 0;
+          const escapeRadius = profile.escapeRadius || config.escapeRadius || 0;
+          const color = typeof config.color === "function" ? config.color() : config.color;
+
+          let newX, newY;
+          let attempts = 0;
+          const maxAttempts = 10;
+          do {
+            const col = Math.floor(Math.random() * GRID_COLS);
+            const row = Math.floor(Math.random() * GRID_ROWS);
+            ({ x: newX, y: newY } = getRandomPositionInCell(col, row, size));
+            attempts++;
+            if (attempts > maxAttempts) {
+              console.warn(`Failed to spawn new ${type} (${profileName}) after ${maxAttempts} attempts.`);
+              break;
+            }
+          } while (
+            isOverlappingAny(allResources, newX, newY, size, size) ||
+            isOverlappingAny(mobs, newX, newY, size, size) ||
+            isOverlappingAny(players, newX, newY, size, size) ||
+            checkOverlap(newX, newY, size, size, pond.x, pond.y, pond.size, pond.size)
+          );
+          if (attempts <= maxAttempts) {
+            const id = crypto.randomUUID();
+            mobList.push({
+              id,
+              type,
+              profile: profileName,
+              x: newX,
+              y: newY,
+              size,
+              health,
+              maxHealth: health,
+              moveSpeed: speed,
+              damage,
+              color,
+              aggroRadius,
+              escapeRadius,
+              behavior: config.behavior,
+              currentBehavior: config.behavior,
+              targetPlayerId: null,
+              chaseTimer: 0,
+              facingAngle: Math.random() * Math.PI * 2,
+              targetAngle: Math.random() * Math.PI * 2,
+              turnSpeed: config.turnSpeed,
+              moveTimer: Math.random() * 3 + 2,
+              isTurning: true,
+              respawnTimer: 0,
+              respawnTime: config.spawntimer,
+              damageCooldown: 0,
+              threatTable: {},
+              pauseTimer: 0,
+            });
+          }
+        }
+      }
     }
   }
 }
 
 function spawnAllMob(allResources, players, gameTime) {
+  let totalMobCount = 0;
   for (const type in mobs) {
     mobs[type] = mobs[type].filter(r => r.size > 0);
-    createMobSpawner(type, mobs[type], (x, y, size) =>
-      isOverlappingAny(allResources, x, y, size) ||
-      isOverlappingAny(mobs, x, y, size) ||
-      isOverlappingAny(players, x, y, size),
+    createMobSpawner(type, mobs[type], (x, y, sizeX, sizeY) =>
+      isOverlappingAny(allResources, x, y, sizeX, sizeY) ||
+      isOverlappingAny(mobs, x, y, sizeX, sizeY) ||
+      isOverlappingAny(players, x, y, sizeX, sizeY) ||
+      checkOverlap(x, y, sizeX, sizeY, pond.x, pond.y, pond.size, pond.size),
       gameTime
     );
+    const activeCount = mobs[type].filter(r => r.size > 0).length;
+    totalMobCount += activeCount;
   }
+  console.log(`Total mobs spawned: ${totalMobCount} (${Object.entries(mobs).map(([type, list]) => `${type}: ${list.filter(r => r.size > 0).length}`).join(', ')})`);
 }
 
 function updateMobs(allResources, players, deltaTime) {
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
       const config = mobtype[mob.type];
-      const mobSize = config.size;
+      const mobSize = mob.size;
 
-      // Decrease damage cooldown
       if (mob.damageCooldown > 0) {
         mob.damageCooldown -= deltaTime;
       }
 
       if (mob.pauseTimer > 0) {
         mob.pauseTimer -= deltaTime;
-        continue; // Skip all behavior and movement during pause
+        continue;
       }
-      // Handle aggressive behavior with threat system
+
       if (config.isAggressive) {
-        // Add players within escape radius to threatTable
         for (const player of Object.values(players)) {
           const dx = player.x - mob.x;
           const dy = player.y - mob.y;
@@ -193,7 +485,6 @@ function updateMobs(allResources, players, deltaTime) {
           }
         }
 
-        // Update threat levels for players in the threatTable
         for (const playerId in mob.threatTable) {
           const player = players[playerId];
           if (!player) {
@@ -204,9 +495,9 @@ function updateMobs(allResources, players, deltaTime) {
           const dy = player.y - mob.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
           if (distance < config.aggroRadius) {
-            mob.threatTable[playerId] += 1 * deltaTime; // +1 threat per second
+            mob.threatTable[playerId] += 1 * deltaTime;
           } else if (distance > config.escapeRadius) {
-            const decay = 2 + (mob.threatTable[playerId] / 50); // Soft cap decay
+            const decay = 2 + (mob.threatTable[playerId] / 50);
             mob.threatTable[playerId] -= decay * deltaTime;
             if (mob.threatTable[playerId] <= 0) {
               delete mob.threatTable[playerId];
@@ -214,7 +505,6 @@ function updateMobs(allResources, players, deltaTime) {
           }
         }
 
-        // Determine the player with the highest threat
         let maxThreat = 0;
         let targetPlayerId = null;
         for (const [playerId, threat] of Object.entries(mob.threatTable)) {
@@ -224,7 +514,6 @@ function updateMobs(allResources, players, deltaTime) {
           }
         }
 
-        // Update mob behavior based on threat
         if (targetPlayerId && maxThreat > 0) {
           mob.currentBehavior = 'chase';
           mob.targetPlayerId = targetPlayerId;
@@ -234,7 +523,6 @@ function updateMobs(allResources, players, deltaTime) {
         }
       }
 
-      // Update targetAngle based on behavior
       if (mob.currentBehavior === 'wander') {
         let closestDistance = Infinity;
         let closestPlayer = null;
@@ -272,7 +560,6 @@ function updateMobs(allResources, players, deltaTime) {
         }
       }
 
-      // Smooth Turning
       const angleDiff = normalizeAngle(mob.targetAngle - mob.facingAngle);
       const turning = Math.abs(angleDiff) > 0.01;
       if (turning) {
@@ -284,7 +571,6 @@ function updateMobs(allResources, players, deltaTime) {
         mob.isTurning = false;
       }
 
-      // Move if not turning
       if (!mob.isTurning) {
         const dx = Math.cos(mob.facingAngle) * mob.moveSpeed * deltaTime;
         const dy = Math.sin(mob.facingAngle) * mob.moveSpeed * deltaTime;
@@ -293,48 +579,64 @@ function updateMobs(allResources, players, deltaTime) {
 
         const minX = 0;
         const minY = 0;
-        const maxX = WORLD_WIDTH - mobSize;
-        const maxY = WORLD_HEIGHT - mobSize;
+        const maxX = WORLD_SIZE - mobSize;
+        const maxY = WORLD_SIZE - mobSize;
 
         const collideX = isCollidingWithResources(
           Math.max(minX, Math.min(maxX, newX)),
           Math.max(minY, Math.min(maxY, mob.y)),
           mobSize,
+          mobSize,
           allResources
+        ) || checkOverlap(
+          Math.max(minX, Math.min(maxX, newX)),
+          Math.max(minY, Math.min(maxY, mob.y)),
+          mobSize,
+          mobSize,
+          pond.x,
+          pond.y,
+          pond.size,
+          pond.size
         );
         const collideY = isCollidingWithResources(
           Math.max(minX, Math.min(maxX, mob.x)),
           Math.max(minY, Math.min(maxY, newY)),
           mobSize,
+          mobSize,
           allResources
+        ) || checkOverlap(
+          Math.max(minX, Math.min(maxX, mob.x)),
+          Math.max(minY, Math.min(maxY, newY)),
+          mobSize,
+          mobSize,
+          pond.x,
+          pond.y,
+          pond.size,
+          pond.size
         );
 
         if (!collideX) mob.x = Math.max(minX, Math.min(maxX, newX));
         if (!collideY) mob.y = Math.max(minY, Math.min(maxY, newY));
       }
 
-      // Check for collision and deal damage
       if (config.isAggressive && mob.currentBehavior === 'chase' && mob.damageCooldown <= 0 && mob.health > 0) {
         const targetPlayer = players[mob.targetPlayerId];
         if (targetPlayer) {
-          if (checkOverlap(mob.x, mob.y, mob.size, targetPlayer.x, targetPlayer.y, targetPlayer.size)) {
-            const damage = config.damage;
+          if (checkOverlap(mob.x, mob.y, mob.size, mob.size, targetPlayer.x, targetPlayer.y, targetPlayer.size, targetPlayer.size)) {
+            const damage = mob.damage;
             targetPlayer.health -= damage;
             targetPlayer.lastDamageTime = Date.now();
             if (!targetPlayer.originalColor) {
-              targetPlayer.originalColor = targetPlayer.color || "defaultColor"; // fallback if undefined
+              targetPlayer.originalColor = targetPlayer.color || "defaultColor";
             }
 
-            targetPlayer.color = "red";
-
-            // Revert color after 300ms
+            targetPlayer.color = "rgba(255, 0, 0, 0.5)";
             setTimeout(() => {
               targetPlayer.color = targetPlayer.originalColor;
             }, 100);
 
             if (targetPlayer.health < 0) targetPlayer.health = 0;
-            mob.damageCooldown = 1; // 1 second cooldown
-
+            mob.damageCooldown = 1;
           }
         }
       }
@@ -346,135 +648,33 @@ function normalizeAngle(angle) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 
-function isOverlappingAny(source, x, y, size) {
+function checkOverlap(x1, y1, sizeX1, sizeY1, x2, y2, sizeX2, sizeY2) {
+  return (
+    x1 < x2 + sizeX2 &&
+    x1 + sizeX1 > x2 &&
+    y1 < y2 + sizeY2 &&
+    y1 + sizeY1 > y2
+  );
+}
+
+function isOverlappingAny(source, x, y, sizeX, sizeY) {
   if (!source) return false;
   const list = Array.isArray(source)
     ? source
     : Object.values(source || {}).flat();
-  return list.some(r => r.size > 0 && checkOverlap(x, y, size, r.x, r.y, r.size));
+  return list.some(r => {
+    const rSizeX = r.sizeX !== undefined ? r.sizeX : r.size;
+    const rSizeY = r.sizeY !== undefined ? r.sizeY : r.size;
+    return rSizeX > 0 && rSizeY > 0 && checkOverlap(x, y, sizeX, sizeY, r.x, r.y, rSizeX, rSizeY);
+  });
 }
 
-function checkOverlap(x1, y1, size1, x2, y2, size2) {
-  return x1 < x2 + size2 &&
-         x1 + size1 > x2 &&
-         y1 < y2 + size2 &&
-         y1 + size1 > y2;
-}
-
-function isCollidingWithResources(newX, newY, size, allResources) {
+function isCollidingWithResources(newX, newY, sizeX, sizeY, allResources) {
   const all = Object.values(allResources).flat();
   return all.some(resource =>
-    resource.size > 0 &&
-    checkOverlap(newX, newY, size, resource.x, resource.y, resource.size)
+    resource.sizeX > 0 && resource.sizeY > 0 &&
+    checkOverlap(newX, newY, sizeX, sizeY, resource.x, resource.y, resource.sizeX, resource.sizeY)
   );
-}
-
-function updateMobRespawns(deltaTime, allResources, players, gameTime) {
-  for (const type in mobs) {
-    const config = mobtype[type];
-    const maxCount = typeof config.maxCount === 'function' ? config.maxCount(gameTime) : config.maxCount;
-    const mobList = mobs[type];
-
-    // Step 1: Handle respawning of dead mobs
-    for (const r of mobList) {
-      if (r.size === 0 && r.respawnTimer > 0) {
-        r.respawnTimer -= deltaTime;
-        if (r.respawnTimer <= 0) {
-          let newX, newY;
-          let attempts = 0;
-          const maxAttempts = 10;
-          do {
-            const col = Math.floor(Math.random() * GRID_COLS);
-            const row = Math.floor(Math.random() * GRID_ROWS);
-            ({ x: newX, y: newY } = getRandomPositionInCell(col, row, config.size));
-            attempts++;
-            if (attempts > maxAttempts) {
-              console.warn(`Failed to find valid spawn position for ${type} after ${maxAttempts} attempts.`);
-              break;
-            }
-          } while (
-            isOverlappingAny(allResources, newX, newY, config.size) ||
-            isOverlappingAny(mobs, newX, newY, config.size) ||
-            isOverlappingAny(players, newX, newY, config.size)
-          );
-          if (attempts <= maxAttempts) {
-            r.id = crypto.randomUUID();
-            r.x = newX;
-            r.y = newY;
-            r.size = config.size;
-            r.health = config.health;
-            r.maxHealth = config.health;
-            r.respawnTimer = 0;
-            r.behavior = config.behavior;
-            r.currentBehavior = config.behavior;
-            r.targetPlayerId = null;
-            r.chaseTimer = 0;
-            r.facingAngle = Math.random() * Math.PI * 2;
-            r.targetAngle = Math.random() * Math.PI * 2;
-            r.turnSpeed = config.turnSpeed;
-            r.moveSpeed = config.speed;
-            r.moveTimer = Math.random() * 3 + 2;
-            r.isTurning = true;
-            r.damageCooldown = 0;
-            r.threatTable = {};
-            r.pauseTimer = 0;
-          }
-        }
-      }
-    }
-
-    // Step 2: Adjust total mob instances to match maxCount
-    const totalInstances = mobList.length;
-    if (totalInstances < maxCount) {
-      const toSpawn = maxCount - totalInstances;
-      for (let i = 0; i < toSpawn; i++) {
-        let newX, newY;
-        let attempts = 0;
-        const maxAttempts = 10;
-        do {
-          const col = Math.floor(Math.random() * GRID_COLS);
-          const row = Math.floor(Math.random() * GRID_ROWS);
-          ({ x: newX, y: newY } = getRandomPositionInCell(col, row, config.size));
-          attempts++;
-          if (attempts > maxAttempts) {
-            console.warn(`Failed to spawn new ${type} after ${maxAttempts} attempts.`);
-            break;
-          }
-        } while (
-          isOverlappingAny(allResources, newX, newY, config.size) ||
-          isOverlappingAny(mobs, newX, newY, config.size) ||
-          isOverlappingAny(players, newX, newY, config.size)
-        );
-        if (attempts <= maxAttempts) {
-          const id = crypto.randomUUID();
-          mobList.push({
-            id,
-            type,
-            x: newX,
-            y: newY,
-            size: config.size,
-            health: config.health,
-            maxHealth: config.health,
-            behavior: config.behavior,
-            currentBehavior: config.behavior,
-            targetPlayerId: null,
-            chaseTimer: 0,
-            facingAngle: Math.random() * Math.PI * 2,
-            targetAngle: Math.random() * Math.PI * 2,
-            turnSpeed: config.turnSpeed,
-            moveSpeed: config.speed,
-            moveTimer: Math.random() * 3 + 2,
-            isTurning: true,
-            respawnTimer: 0,
-            respawnTime: config.spawntimer,
-            damageCooldown: 0,
-            threatTable: {},
-            pauseTimer: 0,
-          });
-        }
-      }
-    }
-  }
 }
 
 module.exports = {
@@ -486,5 +686,5 @@ module.exports = {
   spawnAllMob,
   updateMobs,
   updateMobRespawns,
+  difficulty,
 };
-

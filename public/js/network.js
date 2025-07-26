@@ -1,7 +1,7 @@
 // Socket connection
 let socket = io("https://survival-io-md0m.onrender.com"); // For complete game testing
-//let socket = io("http://192.168.56.1:3000"); // For local testing
-const devTest = false;
+//let socket = io("http://localhost:3000"); // For local testing
+const devTest = true;
 
 let latestSquare = null;
 let ping = 0;
@@ -15,7 +15,7 @@ setInterval(() => {
   socket.emit("pingCheck", () => {
     ping = performance.now() - startTime;
   });
-}, 1000);
+}, 2000);
 
 // Socket event handlers
 socket.on("resourceType", (data) => {  
@@ -226,7 +226,7 @@ function submitName() {
 
 let gameTime = 0;
 const CYCLE_LENGTH = 180;
-const DAY_LENGTH = 120;
+const DAY_LENGTH = 180; //120
 
 socket.on('gameTime', (serverTime) => {
   gameTime = serverTime;

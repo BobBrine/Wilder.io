@@ -250,5 +250,5 @@ function drawLightSources() {
 function drawWorldBorder() {
   ctx.strokeStyle = "red";
   ctx.lineWidth = 5;
-  ctx.strokeRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+  ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
 }

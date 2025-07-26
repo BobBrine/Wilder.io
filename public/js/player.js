@@ -4,7 +4,7 @@ let maxStamina = 0;
 let stamina = 0;
 let staminaRegenSpeed = 0;
 const CONE_LENGTH = 50;
-
+const hitDelay = 0.25;
 function updatePlayerPosition(deltaTime) {
   if (isDead) return;
   let moveX = 0, moveY = 0;
@@ -29,8 +29,8 @@ function updatePlayerPosition(deltaTime) {
   if (!isCollidingWithResources(newX, player.y)) player.x = newX;
   if (!isCollidingWithResources(player.x, newY)) player.y = newY;
   sendPlayerPosition(player.x, player.y);
-  player.x = Math.max(0, Math.min(WORLD_WIDTH - player.size, player.x));
-  player.y = Math.max(0, Math.min(WORLD_HEIGHT - player.size, player.y));
+  player.x = Math.max(0, Math.min(WORLD_SIZE - player.size, player.x));
+  player.y = Math.max(0, Math.min(WORLD_SIZE - player.size, player.y));
   if (player) {
     const playerCenterX = player.x + player.size / 2;
     const playerCenterY = player.y + player.size / 2;
@@ -102,18 +102,6 @@ function updatePlayerFacing(mouseX, mouseY) {
   player.facingAngle = Math.atan2(dy, dx);
 }
 
-function pointInCone(px, py, ox, oy, dir, angle, length) {
-  const dx = px - ox;
-  const dy = py - oy;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist > length) return false;
-  const normX = dx / dist;
-  const normY = dy / dist;
-  const coneX = Math.cos(dir);
-  const coneY = Math.sin(dir);
-  const dot = normX * coneX + normY * coneY;
-  return dot > Math.cos(angle / 2);
-}
 
 //load player image
 const playerImage = new Image();
@@ -123,53 +111,101 @@ playerImage.onload = () => {
   playerImageLoaded = true;
 };
 
+// New variables for attack animation
+let isAttacking = false;
+let attackStartTime = 0;
+const ATTACK_ANGLE = Math.PI / 2; // 90 degrees
+
+// Modified drawPlayer function with animated 90-degree attack cone
 function drawPlayer() {
   if (!player || isDead) return;
   const centerX = player.x + player.size / 2;
   const centerY = player.y + player.size / 2;
   const coneLength = CONE_LENGTH;
-  const coneAngle = Math.PI / 4;
-  
-  // ctx.fillStyle = "rgba(0, 0, 0, 0)"
-  // ctx.fillRect(player.x, player.y, player.size, player.size);
 
-  
+  // Draw attack cone if attacking
+  if (isAttacking) {
+    const now = performance.now();
+    const attackProgress = Math.min((now - attackStartTime) / (hitDelay * 1000), 1);
+    const startAngle = player.facingAngle - ATTACK_ANGLE / 2;
+    const currentAngle = startAngle + attackProgress * ATTACK_ANGLE; // Scale swing by hitDelay
 
-  
-  
-  ctx.beginPath();
-  ctx.moveTo(centerX, centerY);
-  ctx.lineTo(centerX + Math.cos(player.facingAngle) * coneLength, centerY + Math.sin(player.facingAngle) * coneLength);
-  ctx.strokeStyle = "red";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(centerX, centerY);
-  ctx.lineTo(centerX + Math.cos(player.facingAngle - coneAngle / 2) * coneLength, centerY + Math.sin(player.facingAngle - coneAngle / 2) * coneLength);
-  ctx.arc(centerX, centerY, coneLength, player.facingAngle - coneAngle / 2, player.facingAngle + coneAngle / 2);
-  ctx.closePath();
-  ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
-  ctx.fill();
-  
+
+    
+    // Draw the animated cone
+    
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(
+      centerX + Math.cos(currentAngle) * coneLength,
+      centerY + Math.sin(currentAngle) * coneLength
+    );
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Fill the cone area
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(
+      centerX + Math.cos(startAngle) * coneLength,
+      centerY + Math.sin(startAngle) * coneLength
+    );
+    ctx.arc(centerX, centerY, coneLength, startAngle, currentAngle);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
+    ctx.fill();
+
+    // Stop animation when complete
+    if (attackProgress >= 1) {
+      isAttacking = false;
+    }
+  } else {
+    // Draw static 90-degree cone when not attacking
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(
+      centerX + Math.cos(player.facingAngle) * coneLength,
+      centerY + Math.sin(player.facingAngle) * coneLength
+    );
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(
+      centerX + Math.cos(player.facingAngle - ATTACK_ANGLE / 2) * coneLength,
+      centerY + Math.sin(player.facingAngle - ATTACK_ANGLE / 2) * coneLength
+    );
+    ctx.arc(centerX, centerY, coneLength, player.facingAngle - ATTACK_ANGLE / 2, player.facingAngle + ATTACK_ANGLE / 2);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
+    ctx.fill();
+  }
+
   drawTool();
   ctx.save();
-
-  // Translate to player position and rotate based on facing angle
   ctx.translate(centerX, centerY);
-  ctx.rotate(player.facingAngle + Math.PI/2)
+  ctx.rotate(player.facingAngle + Math.PI / 2);
   ctx.drawImage(
-      playerImage,
-      -player.size / 2 - 10, // Center image horizontally
-      -player.size / 2 - 10, // Center image vertically
-      50,
-      45
-    );
+    playerImage,
+    -player.size / 2,
+    -player.size / 2,
+    player.size,
+    player.size
+  );
   ctx.restore();
   ctx.fillStyle = "white";
   ctx.font = "14px Arial";
   ctx.textAlign = "center";
   ctx.fillText(player.name || "You", centerX, player.y - 10);
+
+  ctx.fillStyle = player.color;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, player.size / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.closePath();
 }
+
 
 function drawTool() {
   const selected = hotbar.slots[hotbar.selectedIndex];
@@ -208,7 +244,7 @@ function drawOtherPlayers() {
     if (!p) continue;
     const screenX = p.x;
     const screenY = p.y;
-    ctx.fillStyle = p.color || 'gray';
+    ctx.fillStyle = 'green';
     ctx.fillRect(screenX, screenY, p.size || 20, p.size || 20);
     ctx.fillStyle = 'white';
     const centerX = screenX + (p.size || 20) / 2;
@@ -255,16 +291,14 @@ function tryAttack() {
   let selectedTool = selected?.type || "hand";
   const toolInfo = ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1 };
   const swordTypes = ["hand", "sword"];
-  const coneLength = CONE_LENGTH + 20;
-  const coneAngle = Math.PI / 4;
-  const centerX = player.x + player.size / 2;
-  const centerY = player.y + player.size / 2;
+  const coneLength = CONE_LENGTH;
+  const coneAngle = ATTACK_ANGLE;
   for (const id in otherPlayers) {
     const p = otherPlayers[id];
     if (p.isDead) continue;
-    const px = p.x + p.size / 2;
-    const py = p.y + p.size / 2;
-    if (p.size > 0 && pointInCone(px, py, centerX, centerY, player.facingAngle, coneAngle, coneLength)) {
+    const px = p.x;
+    const py = p.y;
+    if (p.size > 0 && isObjectInAttackCone(player, p, coneLength, coneAngle)) {
       if (!swordTypes.includes(toolInfo.category)) {
         showMessage("This tool is not effective.");
         return;
@@ -281,7 +315,53 @@ function tryAttack() {
       socket.emit("playerhit", { targetId: id, newHealth: Math.max(0, p.health) });
       showDamageText(px, py, -damage);
       otherPlayers[id].lastHitTime = performance.now();
-      return;
+      
     }
   }
+}
+
+
+function normalizeAngle(angle) {
+    angle = angle % (2 * Math.PI);
+    return angle > Math.PI ? angle - 2 * Math.PI : 
+           angle < -Math.PI ? angle + 2 * Math.PI : angle;
+}
+
+
+function isObjectInAttackCone(player, object, coneLength, ATTACK_ANGLE) {
+  // Calculate center coordinates
+  const playerCenterX = player.x + player.size / 2;
+  const playerCenterY = player.y + player.size / 2;
+  const objectCenterX = object.sizeX !== undefined ? object.x + object.sizeX / 2 : object.x + object.size / 2;
+  const objectCenterY = object.sizeY !== undefined ? object.y + object.sizeY / 2 : object.y + object.size / 2;
+  
+  // Calculate differences using centers
+  const dx = objectCenterX - playerCenterX;
+  const dy = objectCenterY - playerCenterY;
+  
+  // Calculate distance between centers
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  
+  // Define the object’s hitbox radius
+  const objectRadius = object.sizeX !== undefined ? Math.min(object.sizeX, object.sizeY) / 2 : object.size / 2;
+  
+  // Check if the object is within range
+  if (distance > coneLength + objectRadius) {
+    return false;
+  }
+  
+  // Calculate the angle to the object
+  const angleToObject = Math.atan2(dy, dx);
+  
+  // Calculate angular difference
+  let angleDiff = normalizeAngle(angleToObject - player.facingAngle);
+  
+  // Calculate angular allowance based on radius
+  let angularAllowance = 0;
+  if (distance > 0) {
+    angularAllowance = Math.asin(objectRadius / distance);
+  }
+  
+  // Check if the object is within the attack cone
+  return Math.abs(angleDiff) <= ATTACK_ANGLE / 2 + angularAllowance;
 }

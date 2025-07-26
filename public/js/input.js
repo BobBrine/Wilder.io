@@ -3,7 +3,7 @@ const keys = {};
 let isMouseDown = false;
 let lastHitTime = 0;
 let holdInterval = null;
-const hitDelay = 0.25;
+
 
 const startHitting = () => {
   if (!holdInterval) holdInterval = setInterval(() => isMouseDown && tryHitResource(), 50);

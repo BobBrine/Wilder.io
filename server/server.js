@@ -40,6 +40,7 @@ let droppedItems = [];
 let nextItemId = 0;
 let lastUpdate = Date.now();
 let lastStaticUpdate = Date.now();
+const WORLD_SIZE = 5000;
 const ItemTypes = {
   // Resources
   wood: { name: "Wood", color: "green" },
@@ -160,14 +161,14 @@ setInterval(() => {
 
   updateResourceRespawns(deltaTime);
   updateMobRespawns(deltaTime, allResources, players, gameTime);
-  io.emit("resources", allResources);
+  //io.emit("resources", allResources);
 
 
 }, 10000);
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
-  console.log(`✅ Server running on http://192.168.56.1:${PORT} (LAN accessible)`);
+  console.log(`✅ Server running on http://192.168.4.48:${PORT} (LAN accessible)`);
 });
 
 function createNewPlayer(id, name) {
@@ -176,11 +177,11 @@ function createNewPlayer(id, name) {
   let attempts = 0;
 
   while (true) {
-    x = Math.random() * (2000 - size);
-    y = Math.random() * (2000 - size);
+    x = Math.random() * (WORLD_SIZE / 5 - size);
+    y = Math.random() * (WORLD_SIZE / 5 - size);
     attempts++;
-    const overlapsResource = isOverlappingAny(allResources, x, y, size);
-    const overlapsMob = isOverlappingAny(mobs, x, y, size);
+    const overlapsResource = isOverlappingAny(allResources, x, y, size, size);
+    const overlapsMob = isOverlappingAny(mobs, x, y, size, size);
     if (!overlapsResource && !overlapsMob) break;
     if (attempts % 1000 === 0) {
       console.warn(`⚠️ Still trying to place player ${id}, attempts: ${attempts}`);
@@ -192,7 +193,7 @@ function createNewPlayer(id, name) {
     x,
     y,
     size,
-    color: "lime",
+    color: "rgba(0, 0, 0, 0)",
     speed: 200,
     facingAngle: 0,
     level: 1,
@@ -222,6 +223,8 @@ function emitMobsWithPlayerNames() {
         id: mob.id,
         x: mob.x,
         y: mob.y,
+        profile: mob.profile,
+        color: mob.color,
         health: mob.health,
         maxHealth: mob.maxHealth,
         size: mob.size,
@@ -252,8 +255,14 @@ function handleHit(socket, collection, type, id, newHealth, configTypes, isMob =
   if (entity.health <= 0) {
     entity.size = 0;
     entity.respawnTimer = entity.respawnTime;
-    const dropAmount = config.getDropAmount(entity.maxHealth);
-    if (isMob) socket.emit("itemDrop", { item: config.drop, amount: dropAmount});
+    const drops = config.getDropAmount();
+    if (Array.isArray(drops)) {
+      drops.forEach(drop => {
+        socket.emit("itemDrop", { item: drop.type, amount: drop.amount });
+      });
+    } else {
+      socket.emit("itemDrop", { item: config.drop, amount: drops });
+    }
     socket.emit("gainXP", 3);
   }
 }

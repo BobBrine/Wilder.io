@@ -77,3 +77,8 @@ Things I need to build this game:
 - fix bug where passive mob still exist after killed
 - food source
 - add hamster
+
++ version 5
+- skins
+- create local host server
+- UI adjustment

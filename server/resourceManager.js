@@ -1,17 +1,14 @@
-// server/resourceManager.js
-const WORLD_WIDTH = 10000;
-const WORLD_HEIGHT = 10000;
+const WORLD_SIZE = 5000;
 
 const GRID_CELL_SIZE = 100;
-const GRID_COLS = Math.floor(WORLD_WIDTH / GRID_CELL_SIZE);
-const GRID_ROWS = Math.floor(WORLD_HEIGHT / GRID_CELL_SIZE);
+const GRID_COLS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE);
+const GRID_ROWS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE);
 
-
-function getRandomPositionInCell(col, row, size) {
+function getRandomPositionInCell(col, row, sizeX, sizeY) {
   const minX = col * GRID_CELL_SIZE;
   const minY = row * GRID_CELL_SIZE;
-  const maxX = minX + GRID_CELL_SIZE - size;
-  const maxY = minY + GRID_CELL_SIZE - size;
+  const maxX = minX + GRID_CELL_SIZE - sizeX;
+  const maxY = minY + GRID_CELL_SIZE - sizeY;
   const x = Math.random() * (maxX - minX) + minX;
   const y = Math.random() * (maxY - minY) + minY;
   return { x, y };
@@ -20,24 +17,18 @@ function getRandomPositionInCell(col, row, size) {
 const crypto = require("crypto");
 
 const {
-
   mobs,
-
-
 } = require('./mobdata');
 
 const {
-
   players,
-
-
 } = require('./playerdata');
-
 
 const resourceTypes = {
   food: {
-    maxCount: 500,
-    size: 32,
+    maxCount: 50,
+    sizeX: 32,
+    sizeY: 32,
     get health() { return Math.floor(Math.random() * (30 - 15 + 1)) + 15; },
     color: "red",
     drop: "food",
@@ -46,8 +37,20 @@ const resourceTypes = {
     getDropAmount(health) { return health <= 22.5 ? Math.floor(Math.random() * 3) + 3 : Math.floor(Math.random() * 4) + 5; }
   },
   wood: {
-    maxCount: 1000,
-    size: 32,
+    maxCount: 100,
+    // sizeX: 64,
+    // sizeY:64,
+    get sizeX() {
+      const min = 64;
+      const maxArea = 8192;
+      const x = Math.floor(Math.random() * ((maxArea / min) - min + 1)) + min;
+      return x;
+    },
+    get sizeY() {
+      const maxArea = 8192;
+      const x = this.sizeX;
+      return Math.floor(maxArea / x);
+    },
     get health() { return Math.floor(Math.random() * (40 - 20 + 1)) + 20; },
     color: "green",
     drop: "wood",
@@ -56,8 +59,9 @@ const resourceTypes = {
     getDropAmount(health) { return health <= 30 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
   },
   stone: {
-    maxCount: 500,
-    size: 32,
+    maxCount: 50,
+    sizeX: 64,
+    sizeY: 64,
     get health() { return Math.floor(Math.random() * (60 - 30 + 1)) + 30; },
     color: "darkgray",
     drop: "stone",
@@ -66,8 +70,9 @@ const resourceTypes = {
     getDropAmount(health) { return health <= 45 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
   },
   iron: {
-    maxCount: 300,
-    size: 32,
+    maxCount: 25,
+    sizeX: 64,
+    sizeY: 64,
     get health() { return Math.floor(Math.random() * (80 - 40 + 1)) + 40; },
     color: "white",
     drop: "iron",
@@ -76,8 +81,9 @@ const resourceTypes = {
     getDropAmount(health) { return health <= 60 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
   },
   gold: {
-    maxCount: 100,
-    size: 32,
+    maxCount: 10,
+    sizeX: 32,
+    sizeY: 32,
     get health() { return Math.floor(Math.random() * (100 - 50 + 1)) + 50; },
     color: "gold",
     drop: "gold",
@@ -95,35 +101,36 @@ const allResources = {
   gold: []
 };
 
-
-function checkOverlap(x1, y1, size1, x2, y2, size2) {
-  return x1 < x2 + size2 && x1 + size1 > x2 && y1 < y2 + size2 && y1 + size1 > y2;
+function checkOverlap(x1, y1, sizeX1, sizeY1, x2, y2, sizeX2, sizeY2) {
+  return x1 < x2 + sizeX2 && x1 + sizeX1 > x2 && y1 < y2 + sizeY2 && y1 + sizeY1 > y2;
 }
 
-function isOverlappingAny(source, x, y, size) {
+function isOverlappingAny(source, x, y, sizeX, sizeY) {
   if (!source) return false;
   const list = Array.isArray(source)
     ? source
     : Object.values(source || {}).flat();
 
-  return list.some(r => r.size > 0 && checkOverlap(x, y, size, r.x, r.y, r.size));
+  return list.some(r => {
+    // Check if resource (uses sizeX/sizeY) or player/mob (uses size)
+    const rSizeX = r.sizeX !== undefined ? r.sizeX : r.size;
+    const rSizeY = r.sizeY !== undefined ? r.sizeY : r.size;
+    return rSizeX > 0 && rSizeY > 0 && checkOverlap(x, y, sizeX, sizeY, r.x, r.y, rSizeX, rSizeY);
+  });
 }
-
-
-
 
 function createResourceSpawner(type, targetArray, isOverlapping) {
   const config = resourceTypes[type];
   if (!config) return;
 
-  let activeCount = targetArray.filter(r => r.size > 0).length;
-  let deadCount = targetArray.filter(r => r.size === 0).length;
+  let activeCount = targetArray.filter(r => r.sizeX > 0 && r.sizeY > 0).length;
+  let deadCount = targetArray.filter(r => r.sizeX === 0 || r.sizeY === 0).length;
 
   while (activeCount + deadCount < config.maxCount) {
     const col = Math.floor(Math.random() * GRID_COLS);
     const row = Math.floor(Math.random() * GRID_ROWS);
-    const { x, y } = getRandomPositionInCell(col, row, config.size);
-    if (!isOverlapping(x, y, config.size)) {
+    const { x, y } = getRandomPositionInCell(col, row, config.sizeX, config.sizeY);
+    if (!isOverlapping(x, y, config.sizeX, config.sizeY)) {
       const id = crypto.randomUUID();
       const initialHealth = config.health;
       targetArray.push({
@@ -131,7 +138,8 @@ function createResourceSpawner(type, targetArray, isOverlapping) {
         type,
         x,
         y,
-        size: config.size,
+        sizeX: config.sizeX,
+        sizeY: config.sizeY,
         health: initialHealth,
         maxHealth: initialHealth,
         respawnTimer: 0,
@@ -144,46 +152,41 @@ function createResourceSpawner(type, targetArray, isOverlapping) {
 
 function spawnAllResources() {
   for (const type in allResources) {
-    allResources[type] = allResources[type].filter(r => r.size > 0);
-    createResourceSpawner(type, allResources[type], (x, y, size) => isOverlappingAny(allResources, x, y, size) ||
-    isOverlappingAny(mobs, x, y, size) || isOverlappingAny(players, x, y, size)
-    
-  );
-
-    
+    allResources[type] = allResources[type].filter(r => r.sizeX > 0 && r.sizeY > 0);
+    createResourceSpawner(type, allResources[type], (x, y, sizeX, sizeY) => 
+      isOverlappingAny(allResources, x, y, sizeX, sizeY) ||
+      isOverlappingAny(mobs, x, y, sizeX, sizeY) || 
+      isOverlappingAny(players, x, y, sizeX, sizeY)
+    );
   }
 }
-
 
 function updateResourceRespawns(deltaTime) {
   for (const resources of Object.values(allResources)) {
     for (const r of resources) {
-      if (r.size === 0 && r.respawnTimer > 0) {
+      if ((r.sizeX === 0 || r.sizeY === 0) && r.respawnTimer > 0) {
         r.respawnTimer -= deltaTime;
-        //console.log(r.respawnTimer);
         if (r.respawnTimer <= 0) {
           const config = resourceTypes[r.type];
           let newX, newY;
           do {
             const col = Math.floor(Math.random() * GRID_COLS);
             const row = Math.floor(Math.random() * GRID_ROWS);
-            ({ newX, newY } = getRandomPositionInCell(col, row, config.size));
+            ({ x: newX, y: newY } = getRandomPositionInCell(col, row, config.sizeX, config.sizeY));
           } while (
-            isOverlappingAny(allResources, newX, newY, config.size) ||
-            isOverlappingAny(mobs, newX, newY, config.size) ||
-            isOverlappingAny(players, newX, newY, config.size)
+            isOverlappingAny(allResources, newX, newY, config.sizeX, config.sizeY) ||
+            isOverlappingAny(mobs, newX, newY, config.sizeX, config.sizeY) ||
+            isOverlappingAny(players, newX, newY, config.sizeX, config.sizeY)
           );
           const newHealth = config.health;
           r.id = crypto.randomUUID();
           r.x = newX;
           r.y = newY;
-          r.size = config.size;
+          r.sizeX = config.sizeX;
+          r.sizeY = config.sizeY;
           r.health = newHealth;
           r.maxHealth = newHealth;
           r.respawnTimer = 0;
-          
-       
-
         }
       }
     }
