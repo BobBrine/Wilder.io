@@ -271,6 +271,15 @@ function joinMainServer() {
         console.error("Socket.io connection timeout: Could not connect to main server at " + url);
       }
     }, 5000); // 5 seconds timeout
+    // Listen for socket connect event to show name entry
+    if (socket) {
+      socket.on('connect', () => {
+        console.log('Socket connected, showing name entry UI');
+        document.getElementById("serverJoin").style.display = "none";
+        document.getElementById("nameEntry").style.display = "block";
+        document.getElementById("playerNameInput").focus();
+      });
+    }
   } catch (error) {
     showServerError("Connection failed: " + error.message);
     console.error("Socket.io connection error:", error);
