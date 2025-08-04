@@ -21,6 +21,13 @@ if (typeof showMessage !== "function") {
 // ========================
 function initializeSocket(url) {
   try {
+    // If client is loaded over HTTPS, force WSS/HTTPS for socket.io
+    if (window.location.protocol === 'https:' && url.startsWith('http://')) {
+      url = url.replace('http://', 'https://');
+    }
+    if (window.location.protocol === 'https:' && url.startsWith('ws://')) {
+      url = url.replace('ws://', 'wss://');
+    }
     socket = io(url, { transports: ['websocket'], reconnection: false });
     setupSocketListeners();
     return socket;
