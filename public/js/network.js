@@ -253,6 +253,7 @@ function joinMainServer() {
   if (existingRetry) existingRetry.remove();
   
   try {
+    // Always use Render URL for main server
     initializeSocket("https://survival-io-md0m.onrender.com");
   } catch (error) {
     showServerError("Connection failed: " + error.message);
@@ -344,6 +345,7 @@ function submitHostIP() {
     showMessage("Invalid IP address. Please enter a valid IP (e.g., 192.168.1.100).", 5);
     return;
   }
+  // Host LAN: connect to local server
   const url = `http://${ip}:3000`;
   initializeSocket(url);
   document.getElementById("hostPrompt").style.display = "none";
@@ -356,6 +358,7 @@ function submitJoinIP() {
     showMessage("Invalid IP address. Please enter a valid IP (e.g., 192.168.1.100).", 5);
     return;
   }
+  // Join LAN: connect to host's local server
   const url = `http://${ip}:3000`;
   initializeSocket(url);
   document.getElementById("joinLocalPrompt").style.display = "none";
