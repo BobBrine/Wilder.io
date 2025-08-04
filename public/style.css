@@ -3,41 +3,81 @@ body {
   background-color: #1e1e1e;
   display: flex;
   justify-content: center;
-  overflow: hidden; 
+  overflow: hidden;
   align-items: center;
   height: 100vh;
 }
+
 canvas {
   border: 2px solid #fff;
-  background-color: #333;
+  background-color: #189a21;
   display: block;
 }
-#nameEntry, #deathScreen, #dropAmountPrompt {
+
+.menu {
   position: absolute;
-  top: 30%;
+  top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   background-color: rgba(0, 0, 0, 0.8);
-  padding: 20px;
+  padding: 30px;
   border: 2px solid #fff;
+  border-radius: 10px;
   color: #fff;
   text-align: center;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 15px;
+  min-width: 300px;
+  z-index: 1000;
 }
-#nameEntry input, #dropAmountPrompt input {
-  padding: 5px;
-  font-size: 16px;
-}
-#nameEntry button, #deathScreen button, #dropAmountPrompt button {
+
+.menu input {
   padding: 10px;
+  font-size: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.menu button {
+  padding: 12px 20px;
   font-size: 16px;
   background-color: #333;
   color: #fff;
-  border: 1px solid #fff;
+  border: 1px solid #666;
+  border-radius: 5px;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
-#nameEntry button:hover, #deathScreen button:hover, #dropAmountPrompt button:hover {
-  background-color: #555;
+
+.menu button:hover {
+  background-color: #444;
+  transform: scale(1.05);
+}
+
+#serverStatus {
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  min-height: 20px;
+}
+
+#serverStatus.error {
+  color: #ff5555;
+  font-weight: bold;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255,255,255,.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
+  margin-right: 10px;
 }

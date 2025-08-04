@@ -87,18 +87,20 @@ function tryHitResource() {
   }
 }
 
-socket.on("updateResourceHealth", ({ id, type, health }) => {
-  const list = getResourceArrayByType(type);
-  const resource = list.find(r => r.id === id);
-  if (resource) {
-    resource.health = health;
-    if (health <= 0) {
-      resource.sizeX = 0;
-      resource.sizeY = 0;
-      resource.respawnTimer = resource.respawnTime;
+if (typeof socket !== "undefined" && socket) {
+  socket.on("updateResourceHealth", ({ id, type, health }) => {
+    const list = getResourceArrayByType(type);
+    const resource = list.find(r => r.id === id);
+    if (resource) {
+      resource.health = health;
+      if (health <= 0) {
+        resource.sizeX = 0;
+        resource.sizeY = 0;
+        resource.respawnTimer = resource.respawnTime;
+      }
     }
-  }
-});
+  });
+}
 
 function drawResources() {
   const now = performance.now();
@@ -107,9 +109,21 @@ function drawResources() {
     {x: 0.5, y: 0.75},    // Center
     {x: 0.75, y: 0.25}   // Bottom-right quarter
   ];
+  const lightspot = [
+    {x:0.8, y:0.25}
+  ]
   for (const resources of Object.values(allResources)) {
     for (const r of resources) {
       if (r.sizeX > 0 && r.sizeY > 0) {
+        ctx.save();  // Save current state
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        ctx.shadowBlur = 5;
+        ctx.shadowOffsetX = 3;
+        ctx.shadowOffsetY = 3;
+
+        
+
+        
         if (r.type == 'food'){
           // Draw main food resource rectangle
           ctx.fillStyle = resourceTypes[r.type].color;
@@ -124,9 +138,32 @@ function drawResources() {
             ctx.fillRect(dotX, dotY, dotSize, dotSize);
           });
         } else {
+          // Draw resource rectangle
           ctx.fillStyle = resourceTypes[r.type].color;
           ctx.fillRect(r.x, r.y, r.sizeX, r.sizeY);
         }
+        
+        ctx.restore(); 
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(r.x, r.y + 2);  // Top edge
+        ctx.lineTo(r.x + r.sizeX, r.y + 2);
+        ctx.moveTo(r.x + 2, r.y);  // Left edge
+        ctx.lineTo(r.x + 2, r.y + r.sizeY);
+        ctx.stroke();
+
+        // Draw bottom and right shadow (depth)
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.beginPath();
+        ctx.moveTo(r.x, r.y + r.sizeY - 2);  // Bottom edge
+        ctx.lineTo(r.x + r.sizeX, r.y + r.sizeY - 2);
+        ctx.moveTo(r.x + r.sizeX - 2, r.y);  // Right edge
+        ctx.lineTo(r.x + r.sizeX - 2, r.y + r.sizeY);
+        ctx.stroke();
+        
+        
         if (r.lastHitTime && now - r.lastHitTime < 1000) drawHealthBarR(r);
       }
     }

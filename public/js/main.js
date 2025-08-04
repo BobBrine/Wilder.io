@@ -6,30 +6,31 @@ function clearCanvas() {
 
 
 function update() {
+  
   const now = performance.now();
   const deltaTime = (now - lastUpdate) / 1000;
-  if (!player || !resourcesLoaded) {
+  if (!player || !resourcesLoaded || !window.socket) {
     requestAnimationFrame(update);
     return;
   }
 
   updateFPSCounter();
-
+  
   clearCanvas();
-
+  
   updatePlayerPosition(deltaTime);
   staminaRegen(deltaTime);
   updateCamera();
   updatePlayerFacing(mouseX, mouseY);
-
   
-
+  
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, -camera.x, -camera.y);
   // Environment (world space)
-  draw(); // Includes drawDroppedItems() from ui.js
+  drawBackground();
   drawPlayer();
   drawOtherPlayers();
+  draw(); // Includes drawDroppedItems() from ui.js
   ctx.restore();
 
   // UI (screen space)
@@ -38,6 +39,8 @@ function update() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     drawLightSources();
   }
+  
+
   drawTimeIndicator();
   drawFPSCounter();
   drawCreatorTag();
@@ -47,7 +50,7 @@ function update() {
   drawHotbar();
   drawCraftingUI();
   drawMessage();
-
+  drawButtons();
   requestAnimationFrame(update);
   lastUpdate = now;
 }

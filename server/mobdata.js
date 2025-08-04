@@ -30,8 +30,8 @@ const crypto = require("crypto");
 const CYCLE_LENGTH = 180; // 20 minutes in seconds
 
 // Constants
-const passiveColors = ["green", "yellow", "lightblue", "pink", "orange"];
-const aggressiveColors = ["red", "darkred", "purple", "black", "darkgray"];
+const passiveColors = ["green", "lightblue", "pink"];
+const aggressiveColors = [ "#560202ff", "#000000", "#505050ff" ];
 const DAY_LENGTH = 120; // 15 minutes of day, 5 minutes of night
 
 // Helper function to generate random numbers within a range
@@ -63,7 +63,7 @@ function generatePassiveMobType(id, difficulty) {
   const dropAmount = baseDropAmount * difficulty;
 
   return {
-    maxCount: 25,
+    maxCount: 20,
     size,
     health,
     speed,
@@ -79,7 +79,7 @@ function generatePassiveMobType(id, difficulty) {
 }
 
 // Function to generate an aggressive mob type with profiles
-function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 50) {
+function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 20) {
   const baseTurnSpeed = Math.PI * 2;
   const turnSpeed = baseTurnSpeed * (1 + 0.1 * (difficulty - 1));
   const baseAggroRadius = 100;
@@ -89,7 +89,7 @@ function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 50)
   const baseDropAmount = 1 * difficulty;
 
   return {
-    maxCount: (gameTime) => (gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4),
+    maxCount: (gameTime) => (gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1), // *1.4
     profiles: {
       tank: {
         count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.2),

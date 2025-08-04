@@ -51,6 +51,28 @@ let draggedItem = null;
 canvas.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
   const uiElement = getUIElementAtMouse(e);
+  const rect = canvas.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+
+  // Check for button clicks
+  let buttonClicked = false;
+  uiButtons.forEach(button => {
+    if (clickX >= button.x && clickX <= button.x + button.width &&
+        clickY >= button.y && clickY <= button.y + button.height) {
+      button.callback();
+      buttonClicked = true;
+    }
+  });
+
+  // If a button was clicked, skip other interactions
+  if (buttonClicked) {
+    isMouseDown = false;
+    stopHitting();
+    return;
+  }
+
+  // Existing UI element handling
   if (uiElement) {
     if (uiElement.type === "hotbar") {
       hotbar.selectedIndex = uiElement.index;
@@ -65,6 +87,8 @@ canvas.addEventListener("mousedown", (e) => {
     stopHitting();
     return;
   }
+
+  // Existing food and hitting logic
   const selected = hotbar.slots[hotbar.selectedIndex];
   if (selected?.type === "food") {
     consumeFood();

@@ -1,8 +1,10 @@
 const scoreboardWidth = 200;
 
 function drawHUD() {
+  ctx.save(); // Save the current context state
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
+  ctx.textAlign = "left"; // Explicitly set textAlign for HUD
   ctx.fillText(`HP: ${Math.floor(player.health)} / ${player.maxHealth}, Stamina: ${Math.floor(stamina)}, Hunger: ${Math.floor(hunger)}`, 10, 20);
   ctx.fillText(`Level: ${player.level}`, 10, 40);
   ctx.fillText(`XP: ${player.xp} / ${player.xpToNextLevel}`, 10, 60);
@@ -31,7 +33,8 @@ function drawHUD() {
     ctx.fillText(`${index + 1}. ${p.name}: Lv ${p.level}`, scoreboardX + 10, yOffset);
     yOffset += 20;
   });
-  ctx.textAlign = "left";
+  ctx.restore(); // Restore the context state to prevent textAlign from affecting other drawings
+
 }
 
 const slotSize = 40;
@@ -182,10 +185,7 @@ function drawCreatorTag() {
 }
 
 function draw() {
-  if (latestSquare) {
-    ctx.fillStyle = "blue";
-    ctx.fillRect(latestSquare.x, latestSquare.y, latestSquare.size, latestSquare.size);
-  }
+  
   drawResources();
   drawMob();
   drawDroppedItems();
@@ -251,4 +251,22 @@ function drawWorldBorder() {
   ctx.strokeStyle = "red";
   ctx.lineWidth = 5;
   ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+}
+
+function drawButtons() {
+  ctx.save(); // Save the current context state
+  uiButtons.forEach(button => {
+    if (button.image) {
+      ctx.drawImage(button.image, button.x, button.y, button.width, button.height);
+    } else {
+      ctx.fillStyle = '#555';
+      ctx.fillRect(button.x, button.y, button.width, button.height);
+    }
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '16px Arial';
+    ctx.fillText(button.text, button.x + button.width / 2, button.y + button.height / 2);
+  });
+  ctx.restore(); // Restore the context state
 }

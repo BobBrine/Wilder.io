@@ -1,25 +1,27 @@
 let mobtype = {};
 let mobs = {};
 let mobloaded = false;
+let showMobData = false;
 
 function getMobArrayByType(type) {
   return mobs[type] || [];
 }
 
-socket.on("updateMobHealth", ({ id, type, health }) => {
-  const list = getMobArrayByType(type);
-  const mob = list.find(r => r.id === id);
-  if (mob) {
-    mob.health = health;
-    console.log(mob.maxHealth);
-    if (health <= 0) {
-      mob.size = 0;
-      mob.respawnTimer = mob.respawnTime;
+if (typeof socket !== "undefined" && socket) {
+  socket.on("updateMobHealth", ({ id, type, health }) => {
+    const list = getMobArrayByType(type);
+    const mob = list.find(r => r.id === id);
+    if (mob) {
+      mob.health = health;
+      console.log(mob.maxHealth);
+      if (health <= 0) {
+        mob.size = 0;
+        mob.respawnTimer = mob.respawnTime;
+      }
     }
-  }
-});
+  });
+}
 
-let showMobData = false;
 function drawPolygon(ctx, x, y, size, sides, rotation = 0) {
   const angleStep = (Math.PI * 2) / sides;
   ctx.beginPath();
@@ -36,8 +38,10 @@ function drawPolygon(ctx, x, y, size, sides, rotation = 0) {
 }
 
 function drawStar(ctx, x, y, size, points = 5, innerRadiusRatio = 0.4) {
+  ctx.save();
   const outerRadius = size / 2;
   const innerRadius = outerRadius * innerRadiusRatio;
+  ctx.strokeStyle = "yellow";
   ctx.beginPath();
   for (let i = 0; i < points * 2; i++) {
     const angle = (i / (points * 2)) * Math.PI * 2;
@@ -50,23 +54,40 @@ function drawStar(ctx, x, y, size, points = 5, innerRadiusRatio = 0.4) {
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
+  ctx.restore();
 }
 function drawMob() {
   const now = performance.now();
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
       if (mob.health > 0) {
-        const coneLength = 40;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        ctx.shadowBlur = 5;
+        ctx.shadowOffsetX = 3;
+        ctx.shadowOffsetY = 3;
+        
         const centerX = mob.x + mob.size / 2;
         const centerY = mob.y + mob.size / 2;
+        const fixedDistance = 15; // Fixed additional distance from mob's edge
+        const coneLength = mob.size / 2 + fixedDistance; // Distance from center to triangle
+
+        const triangleSize = 10; // Size of the triangle
         const coneX = centerX + Math.cos(mob.facingAngle) * coneLength;
         const coneY = centerY + Math.sin(mob.facingAngle) * coneLength;
+        ctx.save();
+        ctx.translate(coneX, coneY);
+        ctx.rotate(mob.facingAngle);
         ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(coneX, coneY);
-        ctx.strokeStyle = "black";
+        ctx.moveTo(triangleSize / 1.5, 0); // Shorter tip for less pointy shape
+        ctx.lineTo(-triangleSize / 1.5, triangleSize / 1.2); // Wider base, less steep
+        ctx.lineTo(-triangleSize / 1.5, -triangleSize / 1.2); // Wider base, less steep
+        ctx.closePath();
+        ctx.fillStyle = "white"; // White fill for triangle
+        ctx.fill();
+        ctx.strokeStyle = "black"; // Black outline for triangle
         ctx.lineWidth = 1;
         ctx.stroke();
+        ctx.restore();
         
         ctx.save();
         ctx.translate(centerX, centerY);
@@ -76,7 +97,8 @@ function drawMob() {
         ctx.fillStyle = mobColor;
         
         
-
+        ctx.lineWidth = 3;
+        
         if (mob.type === "passive_mob") {
           ctx.strokeStyle = "white";
           // Circle doesn't need rotation (symmetric)
@@ -103,14 +125,16 @@ function drawMob() {
             drawPolygon(ctx, 0, 0, mob.size * Math.SQRT2, 4, Math.PI/4); // Diamond
           }
         } else if (mob.type === "special_mob") {
-          // Star with gradient
-          const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, mob.size / 2);
-          gradient.addColorStop(0, "white");
-          gradient.addColorStop(1, "rgba(255, 255, 255, 0.5)");
-          ctx.fillStyle = gradient;
-          drawStar(ctx, 0, 0, mob.size);
-        }
-        ctx.lineWidth = 2;
+            ctx.save();
+            ctx.translate(0, 0);
+            const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, mob.size / 2);
+            gradient.addColorStop(0, "white");
+            gradient.addColorStop(1, "rgba(255, 255, 255, 0.5)");
+            ctx.fillStyle = gradient;
+            ctx.strokeStyle = "yellow"; // Explicitly set stroke style
+            drawStar(ctx, 0, 0, mob.size);
+            ctx.restore();
+          }
         // Restore context to pre-rotation state
         ctx.restore();
         if (showMobData) {
@@ -147,6 +171,7 @@ function drawMob() {
               y -= fontSize + 2;
             }
           }
+          //hitbox
           const hitRadius = mob.size / 2;
           ctx.beginPath();
           ctx.arc(centerX, centerY, hitRadius, 0, Math.PI * 2);
@@ -154,7 +179,7 @@ function drawMob() {
           ctx.lineWidth = 1;
           ctx.stroke();
         }
-
+        
 
         
         if (mob.lastHitTime && now - mob.lastHitTime < 1000) drawHealthBarM(mob);
@@ -206,7 +231,7 @@ function tryHitMob() {
           stamina -= cost;
           lastStaminaUseTime = 0;
           mob.health -= damage; // Optimistic update
-          socket.emit("mobhit", { type, id: mob.id, newHealth: mob.health });
+          window.socket.emit("mobhit", { type, id: mob.id, newHealth: mob.health });
           showDamageText(mob.x + mob.size / 2, mob.y + mob.size / 2, -damage);
           mob.lastHitTime = performance.now();
           player.isAttacking = true;
@@ -217,3 +242,5 @@ function tryHitMob() {
     }
   }
 }
+
+window.tryHitMob = tryHitMob;

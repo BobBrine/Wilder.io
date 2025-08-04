@@ -5,53 +5,135 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Survival IO Game</title>
   <link rel="stylesheet" href="style.css" />
-
+  <style>
+    body, html {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    #homePage.menu {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1;
+      text-align: center;
+      min-width: 300px;
+      background: rgba(0,0,0,0.15);
+      border-radius: 16px;
+      padding: 32px 24px 24px 24px;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    #homePage.menu h2 {
+      margin-bottom: 24px;
+      width: 100%;
+    }
+    #homePage.menu button {
+      display: block;
+      margin: 12px auto;
+      font-size: 1.2em;
+      padding: 10px 32px;
+      border-radius: 8px;
+      border: none;
+      background: #6bbf4e;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      transition: background 0.2s;
+      width: 80%;
+      max-width: 260px;
+    }
+    #homePage.menu button:hover {
+      background: #4e8f36;
+    }
+  </style>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9737086182343099"
-     crossorigin="anonymous"></script>
 </head>
 <body>
-
-  <div id="nameEntry" style="position: absolute; z-index: 10; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #222; padding: 20px; border-radius: 8px; color: white;">
-  <h2>Enter Your Name</h2>
-  <input type="text" id="playerNameInput" placeholder="Your name" />
-  <button onclick="submitName()" disabled>Join</button>
+  <!-- Idle Animated Background Canvas for Main Page -->
+  <canvas id="menuBgCanvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:0;"></canvas>
+  <!-- Home Page -->
+  <div id="homePage" class="menu">
+    <h2>Welcome to Survival Game</h2>
+    <button onclick="joinMainServer()">Join Main Server</button>
+    <button onclick="showLocalLAN()">Local LAN</button>
   </div>
 
-  <div id="deathScreen" style="display: none; position: absolute; z-index: 10; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #300; padding: 20px; border-radius: 8px; color: white;">
-  <h2>You Died!</h2>
-  <button onclick="backToMain()">Back to Main</button>
+  <!-- Server Join Page -->
+  <div id="serverJoin" class="menu" style="display: none;">
+    <h2>Join Main Server</h2>
+    <p id="serverStatus">Connecting to main server...</p>
+    <button onclick="backToHome()">Back</button>
   </div>
 
-  <div id="dropAmountPrompt" style="display: none">
-    <h1>Drop Item</h1>
+  <!-- Local LAN Page -->
+  <div id="localLAN" class="menu" style="display: none;">
+    <h2>Local LAN Play</h2>
+    <button onclick="showHostPrompt()">Host</button>
+    <button onclick="showJoinLocalPrompt()">Join Local</button>
+    <button onclick="backToHome()">Back</button>
+  </div>
+
+  <!-- Host Prompt -->
+  <div id="hostPrompt" class="menu" style="display: none;">
+    <h2>Host Game</h2>
+    <input id="hostIPInput" type="text" placeholder="Enter your IP (e.g., 192.168.1.100)">
+    <button onclick="submitHostIP()">Host Game</button>
+    <button onclick="backToLocalLAN()">Back</button>
+  </div>
+
+  <!-- Join Local Prompt -->
+  <div id="joinLocalPrompt" class="menu" style="display: none;">
+    <h2>Join Local Game</h2>
+    <input id="joinIPInput" type="text" placeholder="Enter host IP (e.g., 192.168.1.100)">
+    <button onclick="submitJoinIP()">Join Game</button>
+    <button onclick="backToLocalLAN()">Back</button>
+  </div>
+
+  <!-- Name Entry -->
+  <div id="nameEntry" class="menu" style="display: none;">
+    <h2>Enter Your Name</h2>
+    <input id="playerNameInput" type="text" placeholder="Your name" />
+    <button onclick="submitName()">Join</button>
+  </div>
+
+  <!-- Death Screen -->
+  <div id="deathScreen" class="menu" style="display: none;">
+    <h2>You Died!</h2>
+    <button onclick="backToMain()">Back to Main</button>
+  </div>
+
+  <!-- Drop Amount Prompt -->
+  <div id="dropAmountPrompt" class="menu" style="display: none;">
+    <h2>Drop Item</h2>
     <input id="dropAmountInput" type="number" min="1" placeholder="Amount to drop" />
     <button onclick="submitDropAmount()">Drop</button>
     <button onclick="dropAll()">Drop All</button>
   </div>
-  
+
+  <!-- Game Canvas -->
   <canvas id="gameCanvas"></canvas>
-  <script src="js/canvas.js"></script> 
+
+  <!-- Scripts -->
+  <script src="js/menuBackground.js"></script>
   <script src="js/network.js"></script>
-  
+  <script src="js/canvas.js"></script>
   <script src="js/player.js"></script>
-  <script src="js/resourceTypes.js"></script> 
-  
-  <script src="js/camera.js"></script> 
+  <script src="js/resourceTypes.js"></script>
+  <script src="js/camera.js"></script>
   <script src="js/mobs.js"></script>
   <script src="js/input.js"></script>
-
-  <script src="js/hotbar.js"></script> 
-
+  <script src="js/hotbar.js"></script>
   <script src="js/inventory.js"></script>
   <script src="js/crafting&tool.js"></script>
-
-
   <script src="js/ui.js"></script>
-
-
-
   <script src="js/main.js"></script>
-
 </body>
 </html>

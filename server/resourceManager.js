@@ -26,7 +26,7 @@ const {
 
 const resourceTypes = {
   food: {
-    maxCount: 50,
+    maxCount: 5, //50
     sizeX: 32,
     sizeY: 32,
     get health() { return Math.floor(Math.random() * (30 - 15 + 1)) + 15; },
@@ -37,7 +37,7 @@ const resourceTypes = {
     getDropAmount(health) { return health <= 22.5 ? Math.floor(Math.random() * 3) + 3 : Math.floor(Math.random() * 4) + 5; }
   },
   wood: {
-    maxCount: 100,
+    maxCount: 5, //100,
     // sizeX: 64,
     // sizeY:64,
     get sizeX() {
@@ -59,7 +59,7 @@ const resourceTypes = {
     getDropAmount(health) { return health <= 30 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
   },
   stone: {
-    maxCount: 50,
+    maxCount: 5,//50,
     sizeX: 64,
     sizeY: 64,
     get health() { return Math.floor(Math.random() * (60 - 30 + 1)) + 30; },
@@ -70,7 +70,7 @@ const resourceTypes = {
     getDropAmount(health) { return health <= 45 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
   },
   iron: {
-    maxCount: 25,
+    maxCount: 5,//25,
     sizeX: 64,
     sizeY: 64,
     get health() { return Math.floor(Math.random() * (80 - 40 + 1)) + 40; },
@@ -81,7 +81,7 @@ const resourceTypes = {
     getDropAmount(health) { return health <= 60 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
   },
   gold: {
-    maxCount: 10,
+    maxCount: 5,//10,
     sizeX: 32,
     sizeY: 32,
     get health() { return Math.floor(Math.random() * (100 - 50 + 1)) + 50; },

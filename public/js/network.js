@@ -1,6 +1,5 @@
 // Socket connection
-let socket = io("https://survival-io-md0m.onrender.com"); // For complete game testing
-//let socket = io("http://localhost:3000"); // For local testing
+let socket = null;
 const devTest = false;
 
 let latestSquare = null;
@@ -9,28 +8,46 @@ let droppedItems = [];
 let currentDropType = null;
 let currentMaxCount = 0;
 
-// Ping check
-setInterval(() => {
-  const startTime = performance.now();
-  socket.emit("pingCheck", () => {
-    ping = performance.now() - startTime;
+// Fallback for showMessage if not defined
+if (typeof showMessage !== "function") {
+  window.showMessage = function(msg, timeout = 3) {
+    // Simple fallback: log to console
+    console.log("[Message]", msg);
+  };
+}
+
+// ========================
+// Socket Initialization
+// ========================
+function initializeSocket(url) {
+  try {
+    socket = io(url, { transports: ['websocket'], reconnection: false });
+    setupSocketListeners();
+    return socket;
+  } catch (error) {
+    console.error("Socket initialization failed:", error);
+    showServerError("Connection failed: " + error.message);
+    return null;
+  }
+}
+function setupSocketListeners() {
+  if (!socket) return;
+  // Socket event handlers
+  socket.on("resourceType", (data) => {  
+    resourceTypes = data;
   });
-}, 2000);
 
-// Socket event handlers
-socket.on("resourceType", (data) => {  
-  resourceTypes = data;
-});
+  socket.on("mobType", (data) => {  
+    mobtype = data;
+  });
 
-socket.on("mobType", (data) => {  
-  mobtype = data;
-});
+  socket.on("itemTypes", (data) => ItemTypes = data);
 
-socket.on("itemTypes", (data) => ItemTypes = data);
-
-
-socket.on('connect', () => {
-  console.log('Connected as', socket.id);
+  socket.on('connect', () => {
+    console.log('Connected as', socket.id);
+    document.querySelector("#playerNameInput").disabled = false;
+    document.querySelector("#nameEntry button").disabled = false;
+  });
 
   socket.on("resources", (data) => {
     if (!allResources) {
@@ -68,174 +85,336 @@ socket.on('connect', () => {
     mobloaded = true;
   });
 
-  document.querySelector("#playerNameInput").disabled = false;
-  document.querySelector("button").disabled = false;
+  socket.on('currentPlayers', (players) => {
+    otherPlayers = players;
+    delete otherPlayers[socket.id];
+  });
 
-  window.submitName = () => {
-    const input = document.getElementById("playerNameInput");
-    const name = input.value.trim() || "Unknown";
-    document.getElementById("nameEntry").style.display = "none";
-    socket.emit("setName", name);
-  };
+  socket.on('playerSelf', (playerData) => {
+    player = playerData;
+    maxStamina = playerData.maxStamina;
+    stamina = maxStamina;
+    staminaRegenSpeed = playerData.staminaRegenSpeed;
+    maxHunger = playerData.maxHunger;
+    hunger = playerData.hunger;
+    isDead = playerData.isDead;
+  });
 
-  if (devTest) {
-    document.getElementById("nameEntry").style.display = "none";
-    socket.emit("setName", "Tester");
-    showMobData = true;
-    inventory.addItem("gold_sword", 1);
-    inventory.addItem("wood", 100);
-    inventory.addItem("torch", 1);
-    inventory.addItem("wooden_axe", 1);
-    inventory.addItem("food", 10);
- 
-  }
-});
+  socket.on('playerRenamed', ({ id, name }) => {
+    if (otherPlayers[id]) {
+      otherPlayers[id].name = name;
+    }
+  });
 
-socket.on('currentPlayers', (players) => {
-  otherPlayers = players;
-  delete otherPlayers[socket.id];
-});
+  socket.on('newPlayer', (playerData) => {
+    console.log('New player joined:', playerData);
+    otherPlayers[playerData.id] = playerData;
+  });
 
-socket.on('playerSelf', (playerData) => {
-  player = playerData;
-  maxStamina = playerData.maxStamina;
-  stamina = maxStamina;
-  staminaRegenSpeed = playerData.staminaRegenSpeed;
-  maxHunger = playerData.maxHunger;
-  hunger = playerData.hunger;
-  isDead = playerData.isDead;
-});
+  socket.on("state", (data) => {
+    latestSquare = data.pond;
+    const serverPlayers = data.players;
+    maxStamina = data.self.maxStamina;
+    staminaRegenSpeed = data.self.staminaRegenSpeed;
+    maxHunger = data.self.maxHunger;
+    hunger = data.self.hunger;
+    droppedItems = data.droppedItems || [];
 
-socket.on('playerRenamed', ({ id, name }) => {
-  if (otherPlayers[id]) {
-    otherPlayers[id].name = name;
-  }
-});
-
-socket.on('newPlayer', (playerData) => {
-  console.log('New player joined:', playerData);
-  otherPlayers[playerData.id] = playerData;
-});
-
-socket.on("state", (data) => {
-  latestSquare = data.pond;
-  const serverPlayers = data.players;
-  maxStamina = data.self.maxStamina;
-  staminaRegenSpeed = data.self.staminaRegenSpeed;
-  maxHunger = data.self.maxHunger;
-  hunger = data.self.hunger;
-  droppedItems = data.droppedItems || [];
-
-  for (const id in serverPlayers) {
-    if (id !== socket.id) {
-      if (!otherPlayers[id]) {
-        otherPlayers[id] = { ...serverPlayers[id], lastHitTime: undefined };
-      } else {
-        const existing = otherPlayers[id];
-        otherPlayers[id] = {
-          ...serverPlayers[id],
-          lastHitTime: existing.lastHitTime,
-        };
+    for (const id in serverPlayers) {
+      if (id !== socket.id) {
+        if (!otherPlayers[id]) {
+          otherPlayers[id] = { ...serverPlayers[id], lastHitTime: undefined };
+        } else {
+          const existing = otherPlayers[id];
+          otherPlayers[id] = {
+            ...serverPlayers[id],
+            lastHitTime: existing.lastHitTime,
+          };
+        }
       }
     }
-  }
 
-  if (data.self && player) {
-    player.health = data.self.health;
-    player.color = data.self.color || player.color;
-    player.hunger = data.self.hunger;
-    player.maxHunger = data.self.maxHunger;
-  }
-});
+    if (data.self && player) {
+      player.health = data.self.health;
+      player.color = data.self.color || player.color;
+      player.hunger = data.self.hunger;
+      player.maxHunger = data.self.maxHunger;
+    }
+  });
 
-socket.on('playerMoved', (playerData) => {
-  if (playerData.id !== socket.id && otherPlayers[playerData.id]) {
-    otherPlayers[playerData.id].x = playerData.x;
-    otherPlayers[playerData.id].y = playerData.y;
-  }
-});
+  socket.on('playerMoved', (playerData) => {
+    if (playerData.id !== socket.id && otherPlayers[playerData.id]) {
+      otherPlayers[playerData.id].x = playerData.x;
+      otherPlayers[playerData.id].y = playerData.y;
+    }
+  });
 
-socket.on('playerDisconnected', (id) => {
-  delete otherPlayers[id];
-});
+  socket.on('playerDisconnected', (id) => {
+    delete otherPlayers[id];
+  });
 
-socket.on("itemDrop", ({ item, amount }) => {
-  if (inventory.addItem(item, amount)) {
-    showMessage(`+${amount} ${item}`);
-  }
-});
+  socket.on("itemDrop", ({ item, amount }) => {
+    if (inventory.addItem(item, amount)) {
+      showMessage(`+${amount} ${item}`);
+    }
+  });
 
-socket.on("gainXP", (amount) => {
-  gainXP(amount);
-});
+  socket.on("gainXP", (amount) => {
+    gainXP(amount);
+  });
 
-//new
-socket.on("playerLevelUpdated", ({ id, level }) => {
-  if (otherPlayers[id]) {
-    otherPlayers[id].level = level;
-  }
-});
+  socket.on("playerLevelUpdated", ({ id, level }) => {
+    if (otherPlayers[id]) {
+      otherPlayers[id].level = level;
+    }
+  });
 
+  socket.on("addItem", ({ type, amount }) => {
+    if (inventory.addItem(type, amount)) {
+      showMessage(`Picked up ${amount} ${type}`);
+    }
+  });
 
-socket.on("addItem", ({ type, amount }) => {
-  if (inventory.addItem(type, amount)) {
-    showMessage(`Picked up ${amount} ${type}`);
-  }
-});
+  socket.on("removeDroppedItem", (itemId) => {
+    droppedItems = droppedItems.filter(item => item.id !== itemId);
+  });
 
-socket.on("removeDroppedItem", (itemId) => {
-  droppedItems = droppedItems.filter(item => item.id !== itemId);
-});
+  socket.on('playerDied', () => {
+    isDead = true;
+    player = null;
+    otherPlayers = {};
+    resourcesLoaded = false;
+    mobloaded = false;
+    if (inventory && typeof inventory.clear === "function") {
+      inventory.clear();
+    }
+    const deathScreen = document.getElementById("deathScreen");
+    deathScreen.style.display = "block";
+    // Add Respawn button if not already present
+    let respawnBtn = document.getElementById("respawnBtn");
+    if (!respawnBtn) {
+      respawnBtn = document.createElement("button");
+      respawnBtn.id = "respawnBtn";
+      respawnBtn.textContent = "Respawn";
+      respawnBtn.style.marginTop = "20px";
+      respawnBtn.onclick = function() {
+        // Use previous name from input
+        const input = document.getElementById("playerNameInput");
+        const name = input.value.trim() || "Unknown";
+        if (!socket || socket.disconnected) {
+          showMessage("Not connected to server. Please try again.", 5);
+          backToHome();
+          return;
+        }
+        deathScreen.style.display = "none";
+        isDead = false;
+        socket.emit("setName", name);
+      };
+      deathScreen.appendChild(respawnBtn);
+    } else {
+      respawnBtn.style.display = "inline-block";
+    }
+  });
 
-// Functions
-function sendPlayerPosition(x, y) {
-  socket.emit('move', { x, y });
+  socket.on('connect_error', (err) => {
+    console.error('Connection error:', err);
+    showServerError("Server is unavailable. Please try again later.");
+    if (socket) {
+      socket.disconnect();
+      socket = null;
+    }
+  });
+
+  // Ping check
+  setInterval(() => {
+    if (socket && socket.connected) {
+      const startTime = performance.now();
+      socket.emit("pingCheck", () => {
+        ping = performance.now() - startTime;
+      });
+    }
+  }, 2000);
+  window.socket = socket;
 }
 
-let isDead = null;
-socket.on('playerDied', () => {
-  isDead = true;
-  player = null;
-  otherPlayers = {};
-  resourcesLoaded = false;
-  mobloaded = false;
-  if (inventory && typeof inventory.clear === "function") {
-    inventory.clear();
+// ========================
+// UI Navigation Functions
+// ========================
+function joinMainServer() {
+  document.getElementById("homePage").style.display = "none";
+  document.getElementById("serverJoin").style.display = "block";
+  
+  const statusElement = document.getElementById("serverStatus");
+  statusElement.textContent = "Connecting to main server...";
+  statusElement.style.color = "white";
+  
+  // Clear any existing retry button
+  const existingRetry = document.querySelector('#serverJoin button.retry');
+  if (existingRetry) existingRetry.remove();
+  
+  try {
+    initializeSocket("https://survival-io-md0m.onrender.com");
+  } catch (error) {
+    showServerError("Connection failed: " + error.message);
   }
-  document.getElementById("deathScreen").style.display = "block";
-});
+}
+
+function showLocalLAN() {
+  document.getElementById("homePage").style.display = "none";
+  document.getElementById("localLAN").style.display = "block";
+}
+
+function showHostPrompt() {
+  document.getElementById("localLAN").style.display = "none";
+  document.getElementById("hostPrompt").style.display = "block";
+  
+  // Try to auto-detect local IP
+  try {
+    const hostIPInput = document.getElementById("hostIPInput");
+    window.RTCPeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
+    const pc = new RTCPeerConnection({iceServers:[]});
+    pc.createDataChannel("");
+    pc.createOffer().then(pc.setLocalDescription.bind(pc));
+    pc.onicecandidate = ice => {
+      if (!ice || !ice.candidate || !ice.candidate.candidate) return;
+      const ipRegex = /([0-9]{1,3}(\.[0-9]{1,3}){3}|[a-f0-9]{1,4}(:[a-f0-9]{1,4}){7})/;
+      const match = ipRegex.exec(ice.candidate.candidate);
+      if (match) {
+        hostIPInput.value = match[1];
+        pc.onicecandidate = () => {};
+      }
+    };
+  } catch (e) {
+    console.log("Couldn't detect local IP");
+  }
+}
+
+function showJoinLocalPrompt() {
+  document.getElementById("localLAN").style.display = "none";
+  document.getElementById("joinLocalPrompt").style.display = "block";
+  document.getElementById("joinIPInput").focus();
+}
+
+function backToHome() {
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
+  document.getElementById("serverJoin").style.display = "none";
+  document.getElementById("localLAN").style.display = "none";
+  document.getElementById("hostPrompt").style.display = "none";
+  document.getElementById("joinLocalPrompt").style.display = "none";
+  document.getElementById("nameEntry").style.display = "none";
+  document.getElementById("deathScreen").style.display = "none";
+  document.getElementById("homePage").style.display = "block";
+}
+
+function backToLocalLAN() {
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
+  document.getElementById("hostPrompt").style.display = "none";
+  document.getElementById("joinLocalPrompt").style.display = "none";
+  document.getElementById("localLAN").style.display = "block";
+}
+
+function showServerError(message) {
+  const statusElement = document.getElementById("serverStatus");
+  if (statusElement) {
+    statusElement.textContent = message;
+    statusElement.style.color = "#ff5555";
+    statusElement.classList.add("error");
+    
+    // Add retry button
+    const existingRetry = document.querySelector('#serverJoin button.retry');
+    if (!existingRetry) {
+      const retryButton = document.createElement("button");
+      retryButton.textContent = "Retry Connection";
+      retryButton.className = "retry";
+      retryButton.onclick = joinMainServer;
+      document.getElementById("serverJoin").appendChild(retryButton);
+    }
+  }
+}
+
+function submitHostIP() {
+  const ip = document.getElementById("hostIPInput").value.trim();
+  if (!isValidIP(ip)) {
+    showMessage("Invalid IP address. Please enter a valid IP (e.g., 192.168.1.100).", 5);
+    return;
+  }
+  const url = `http://${ip}:3000`;
+  initializeSocket(url);
+  document.getElementById("hostPrompt").style.display = "none";
+  document.getElementById("nameEntry").style.display = "block";
+}
+
+function submitJoinIP() {
+  const ip = document.getElementById("joinIPInput").value.trim();
+  if (!isValidIP(ip)) {
+    showMessage("Invalid IP address. Please enter a valid IP (e.g., 192.168.1.100).", 5);
+    return;
+  }
+  const url = `http://${ip}:3000`;
+  initializeSocket(url);
+  document.getElementById("joinLocalPrompt").style.display = "none";
+  document.getElementById("nameEntry").style.display = "block";
+}
+
+function isValidIP(ip) {
+  const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+  return ipRegex.test(ip);
+}
 
 function backToMain() {
-  const deathScreen = document.getElementById("deathScreen");
-  const nameEntry = document.getElementById("nameEntry");
-  deathScreen.style.display = "none";
-  nameEntry.style.display = "block";
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
+  document.getElementById("deathScreen").style.display = "none";
+  // Hide respawn button if present
+  const respawnBtn = document.getElementById("respawnBtn");
+  if (respawnBtn) respawnBtn.style.display = "none";
+  document.getElementById("homePage").style.display = "block";
   document.getElementById("playerNameInput").value = "";
-  document.querySelector("button").disabled = false;
 }
 
 function submitName() {
   isDead = false;
   const input = document.getElementById("playerNameInput");
   const name = input.value.trim() || "Unknown";
-  if (!socket || socket.disconnected) return;
+  if (!socket || socket.disconnected) {
+    showMessage("Not connected to server. Please try again.", 5);
+    backToHome();
+    return;
+  }
   document.getElementById("nameEntry").style.display = "none";
   document.getElementById("deathScreen").style.display = "none";
+  // Hide respawn button if present
+  const respawnBtn = document.getElementById("respawnBtn");
+  if (respawnBtn) respawnBtn.style.display = "none";
   socket.emit("setName", name);
 }
 
+// ========================
+// Game Functions
+// ========================
 let gameTime = 0;
 const CYCLE_LENGTH = 180;
-const DAY_LENGTH = 180; //120
+const DAY_LENGTH = 180;
 
-socket.on('gameTime', (serverTime) => {
-  gameTime = serverTime;
-});
+if (socket) {
+  socket.on('gameTime', (serverTime) => {
+    gameTime = serverTime;
+  });
+}
+
+
 
 function dropItem(type, amount) {
   if (inventory.removeItem(type, amount)) {
     socket.emit("dropItem", { type, amount, x: player.x + player.size / 2, y: player.y + player.size / 2 });
-    // No need for updateHotbarFromInventory() here; handled by removeItem
     showMessage(`You dropped ${amount} ${type}`);
   } else {
     showMessage("Failed to drop item");
@@ -268,7 +447,38 @@ function promptDropAmount(type, maxCount) {
   const input = document.getElementById("dropAmountInput");
   input.placeholder = `Amount to drop (1-${maxCount})`;
   input.max = maxCount;
-  input.value = "1"; // Set default value to 1
+  input.value = "1";
   dropPrompt.style.display = "block";
   input.focus();
+}
+
+// Dev testing
+if (devTest) {
+  window.addEventListener("DOMContentLoaded", () => {
+    // Hide all menus and show game instantly
+    document.getElementById("homePage").style.display = "none";
+    document.getElementById("serverJoin").style.display = "none";
+    document.getElementById("localLAN").style.display = "none";
+    document.getElementById("hostPrompt").style.display = "none";
+    document.getElementById("joinLocalPrompt").style.display = "none";
+    document.getElementById("nameEntry").style.display = "none";
+    document.getElementById("deathScreen").style.display = "none";
+    // Connect to localhost and login instantly
+    initializeSocket("http://localhost:3000");
+    // Wait for socket connection before submitting name
+    const tryLogin = () => {
+      if (socket && socket.connected) {
+        socket.emit("setName", "DevUser");
+        showMobData = true;
+        inventory.addItem("wooden_sword", 1);
+        inventory.addItem("wood", 100);
+        inventory.addItem("torch", 1);
+        inventory.addItem("wooden_axe", 1);
+        inventory.addItem("food", 10);
+      } else {
+        setTimeout(tryLogin, 100);
+      }
+    };
+    tryLogin();
+  });
 }

@@ -5,10 +5,17 @@ let stamina = 0;
 let staminaRegenSpeed = 0;
 const CONE_LENGTH = 50;
 const hitDelay = 0.25;
+
+function sendPlayerPosition(x, y) {
+  if (window.socket && window.socket.connected) {
+    window.socket.emit('move', { x, y });
+  }
+}
 function updatePlayerPosition(deltaTime) {
-  if (isDead) return;
+  if (isDead || !player) return;
+  if (typeof keys === 'undefined') return;
   let moveX = 0, moveY = 0;
-  let speed = player.speed;
+  let speed = player.speed || 0;
   if (keys["a"]) moveX -= 1;
   if (keys["d"]) moveX += 1;
   if (keys["w"]) moveY -= 1;
@@ -26,20 +33,22 @@ function updatePlayerPosition(deltaTime) {
   }
   const newX = player.x + moveX * speed * deltaTime;
   const newY = player.y + moveY * speed * deltaTime;
-  if (!isCollidingWithResources(newX, player.y)) player.x = newX;
-  if (!isCollidingWithResources(player.x, newY)) player.y = newY;
+  if (typeof isCollidingWithResources === 'function') {
+    if (!isCollidingWithResources(newX, player.y)) player.x = newX;
+    if (!isCollidingWithResources(player.x, newY)) player.y = newY;
+  }
   sendPlayerPosition(player.x, player.y);
   player.x = Math.max(0, Math.min(WORLD_SIZE - player.size, player.x));
   player.y = Math.max(0, Math.min(WORLD_SIZE - player.size, player.y));
-  if (player) {
+  if (player && typeof droppedItems !== 'undefined' && typeof inventory !== 'undefined') {
     const playerCenterX = player.x + player.size / 2;
     const playerCenterY = player.y + player.size / 2;
     droppedItems.forEach(item => {
       const dx = playerCenterX - item.x;
       const dy = playerCenterY - item.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance < 26 && item.pickupDelay <= 0 && inventory.canAddItem(item.type)) {
-        socket.emit("pickupItem", item.id);
+      if (distance < 26 && item.pickupDelay <= 0 && inventory.canAddItem && inventory.canAddItem(item.type)) {
+        if (window.socket && window.socket.connected) window.socket.emit("pickupItem", item.id);
       }
     });
   }
@@ -57,16 +66,16 @@ let maxHunger = 100;
 let hunger = 100;
 
 function consumeFood() {
-  if (!player || isDead) return;
+  if (!player || isDead || typeof hotbar === 'undefined' || typeof inventory === 'undefined') return;
   const selected = hotbar.slots[hotbar.selectedIndex];
-  if (selected?.type === "food" && inventory.hasItem("food", 1) && player.hunger < player.maxHunger) {
+  if (selected?.type === "food" && inventory.hasItem && inventory.hasItem("food", 1) && player.hunger < player.maxHunger) {
     inventory.removeItem("food", 1);
-    socket.emit("consumeFood", { amount: 1 });
-    showMessage("Ate food, hunger restored!");
+    if (window.socket && window.socket.connected) window.socket.emit("consumeFood", { amount: 1 });
+    if (typeof showMessage === 'function') showMessage("Ate food, hunger restored!");
   } else if (selected?.type === "food" && player.hunger >= player.maxHunger) {
-    showMessage("You are not hungry!");
+    if (typeof showMessage === 'function') showMessage("You are not hungry!");
   } else {
-    showMessage("No food selected!");
+    if (typeof showMessage === 'function') showMessage("No food selected!");
   }
 }
 
@@ -118,22 +127,24 @@ const ATTACK_ANGLE = Math.PI / 2; // 90 degrees
 
 // Modified drawPlayer function with animated 90-degree attack cone
 function drawPlayer() {
-  if (!player || isDead) return;
+  if (!player || isDead || typeof ctx === 'undefined') return;
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+  ctx.shadowBlur = 5;
+  ctx.shadowOffsetX = 3;
+  ctx.shadowOffsetY = 3;
+
   const centerX = player.x + player.size / 2;
   const centerY = player.y + player.size / 2;
   const coneLength = CONE_LENGTH;
 
   // Draw attack cone if attacking
   if (isAttacking) {
+    ctx.save();
     const now = performance.now();
     const attackProgress = Math.min((now - attackStartTime) / (hitDelay * 1000), 1);
     const startAngle = player.facingAngle - ATTACK_ANGLE / 2;
     const currentAngle = startAngle + attackProgress * ATTACK_ANGLE; // Scale swing by hitDelay
-
-
-    
     // Draw the animated cone
-    
     ctx.moveTo(centerX, centerY);
     ctx.lineTo(
       centerX + Math.cos(currentAngle) * coneLength,
@@ -154,13 +165,14 @@ function drawPlayer() {
     ctx.closePath();
     ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
     ctx.fill();
-
+    ctx.restore();
     // Stop animation when complete
     if (attackProgress >= 1) {
       isAttacking = false;
     }
   } else {
     // Draw static 90-degree cone when not attacking
+    ctx.save();
     ctx.beginPath();
     ctx.moveTo(centerX, centerY);
     ctx.lineTo(
@@ -180,61 +192,94 @@ function drawPlayer() {
     ctx.closePath();
     ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
     ctx.fill();
+    ctx.restore();
   }
 
   drawTool();
   ctx.save();
   ctx.translate(centerX, centerY);
   ctx.rotate(player.facingAngle + Math.PI / 2);
-  ctx.drawImage(
-    playerImage,
-    -player.size / 2,
-    -player.size / 2,
-    player.size,
-    player.size
-  );
+  if (playerImageLoaded) {
+    ctx.drawImage(
+      playerImage,
+      -player.size / 2,
+      -player.size / 2,
+      player.size,
+      player.size
+    );
+  } else {
+    // fallback: draw a circle if image not loaded
+    ctx.beginPath();
+    ctx.arc(0, 0, player.size / 2, 0, Math.PI * 2);
+    ctx.fillStyle = player.color || 'blue';
+    ctx.fill();
+    ctx.closePath();
+  }
   ctx.restore();
   ctx.fillStyle = "white";
   ctx.font = "14px Arial";
   ctx.textAlign = "center";
   ctx.fillText(player.name || "You", centerX, player.y - 10);
-
-  ctx.fillStyle = player.color;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, player.size / 2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.closePath();
 }
+
+const swordImage = new Image();
+swordImage.src = 'wooden_sword.png'; // change path as needed
 
 
 function drawTool() {
+  if (typeof hotbar === 'undefined' || typeof ItemTypes === 'undefined' || typeof ctx === 'undefined' || !player) return;
   const selected = hotbar.slots[hotbar.selectedIndex];
-  if (!selected || !ItemTypes[selected.type]?.isTool) return;
+  if (!selected || !ItemTypes[selected.type] || !ItemTypes[selected.type].isTool) return;
+
   const centerX = player.x + player.size / 2;
   const centerY = player.y + player.size / 2;
   const toolLength = 20;
-  const offsetX = centerX + Math.cos(player.facingAngle) * (player.size / 2 + toolLength / 2);
-  const offsetY = centerY + Math.sin(player.facingAngle) * (player.size / 2 + toolLength / 2);
+
+  let toolAngle = player.facingAngle;
+
+  if (isAttacking) {
+    const now = performance.now();
+    const attackProgress = Math.min((now - attackStartTime) / (hitDelay * 1000), 1);
+    const startAngle = player.facingAngle - ATTACK_ANGLE / 2;
+    toolAngle = startAngle + attackProgress * ATTACK_ANGLE;
+  }
+
+  const offsetX = centerX + Math.cos(toolAngle) * (player.size / 2 + toolLength / 2);
+  const offsetY = centerY + Math.sin(toolAngle) * (player.size / 2 + toolLength / 2);
+
   ctx.save();
   ctx.translate(offsetX, offsetY);
-  ctx.rotate(player.facingAngle);
-  ctx.fillStyle = ItemTypes[selected.type].color;
-  ctx.fillRect(-2, -toolLength / 2, 4, toolLength);
+  ctx.rotate(toolAngle + Math.PI / 4); // Your tested correction
+
+  if (selected.type === 'wooden_sword' && swordImage.complete) {
+    const scale = 1;
+    const imgWidth = swordImage.width * scale;
+    const imgHeight = swordImage.height * scale;
+    ctx.drawImage(swordImage, (-imgWidth / 2) + 4, (-imgHeight / 2) - 4, imgWidth, imgHeight);
+  } else if (ItemTypes[selected.type]) {
+    ctx.fillStyle = ItemTypes[selected.type].color || 'gray';
+    ctx.fillRect(-2, -toolLength / 2, 4, toolLength);
+  }
+
   ctx.restore();
 }
 
+
+
 function gainXP(amount) {
+  if (!player) return;
   player.xp += amount;
   while (player.xp >= player.xpToNextLevel) {
     player.xp -= player.xpToNextLevel;
     player.level++;
     player.xpToNextLevel = Math.floor(player.xpToNextLevel * 2);
-    socket.emit("playerLeveledUp", { id: socket.id, level: player.level });
-    showMessage(`Level Up! You are now level ${player.level}`);
+    if (window.socket && window.socket.connected) window.socket.emit("playerLeveledUp", { id: window.socket.id, level: player.level });
+    if (typeof showMessage === 'function') showMessage(`Level Up! You are now level ${player.level}`);
   }
 }
 
 function drawOtherPlayers() {
+  if (typeof ctx === 'undefined' || typeof otherPlayers === 'undefined') return;
   const now = performance.now();
   ctx.font = '14px Arial';
   ctx.textAlign = 'center';
@@ -254,6 +299,7 @@ function drawOtherPlayers() {
 }
 
 function drawHealthBarP(p) {
+  if (typeof ctx === 'undefined' || !p) return;
   ctx.save();
   const maxHealth = p.maxHealth || 100;
   const hpPercent = Math.max(p.health / maxHealth, 0);
@@ -270,6 +316,7 @@ function drawHealthBarP(p) {
 }
 
 function drawStaminaBar() {
+  if (typeof canvas === 'undefined' || typeof ctx === 'undefined') return;
   const barWidth = canvas.width;
   const barHeight = 10;
   const barX = 0;
@@ -281,12 +328,14 @@ function drawStaminaBar() {
   ctx.fillRect(barX, barY, barWidth * staminaRatio, barHeight);
 }
 
-socket.on("updatePlayerHealth", ({ id, health }) => {
-  if (otherPlayers[id]) otherPlayers[id].health = health;
-});
+if (typeof socket !== "undefined" && socket) {
+  socket.on("updatePlayerHealth", ({ id, health }) => {
+    if (otherPlayers[id]) otherPlayers[id].health = health;
+  });
+}
 
 function tryAttack() {
-  if (!player) return;
+  if (!player || typeof hotbar === 'undefined' || typeof ItemTypes === 'undefined' || typeof otherPlayers === 'undefined') return;
   const selected = hotbar.slots[hotbar.selectedIndex];
   let selectedTool = selected?.type || "hand";
   const toolInfo = ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1 };
@@ -295,27 +344,26 @@ function tryAttack() {
   const coneAngle = ATTACK_ANGLE;
   for (const id in otherPlayers) {
     const p = otherPlayers[id];
-    if (p.isDead) continue;
+    if (!p || p.isDead) continue;
     const px = p.x;
     const py = p.y;
     if (p.size > 0 && isObjectInAttackCone(player, p, coneLength, coneAngle)) {
       if (!swordTypes.includes(toolInfo.category)) {
-        showMessage("This tool is not effective.");
+        if (typeof showMessage === 'function') showMessage("This tool is not effective.");
         return;
       }
       const damage = toolInfo.damage;
       const cost = 10;
       if (stamina < cost) {
-        showMessage("Low Stamina");
+        if (typeof showMessage === 'function') showMessage("Low Stamina");
         return;
       }
       stamina -= cost;
       lastStaminaUseTime = 0;
       p.health -= damage;
-      socket.emit("playerhit", { targetId: id, newHealth: Math.max(0, p.health) });
-      showDamageText(px, py, -damage);
+      if (window.socket && window.socket.connected) window.socket.emit("playerhit", { targetId: id, newHealth: Math.max(0, p.health) });
+      if (typeof showDamageText === 'function') showDamageText(px, py, -damage);
       otherPlayers[id].lastHitTime = performance.now();
-      
     }
   }
 }
@@ -365,3 +413,8 @@ function isObjectInAttackCone(player, object, coneLength, ATTACK_ANGLE) {
   // Check if the object is within the attack cone
   return Math.abs(angleDiff) <= ATTACK_ANGLE / 2 + angularAllowance;
 }
+
+// Add this at the bottom
+window.sendPlayerPosition = sendPlayerPosition;
+window.consumeFood = consumeFood;
+window.tryAttack = tryAttack;

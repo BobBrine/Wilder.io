@@ -82,3 +82,7 @@ Things I need to build this game:
 - skins
 - create local host server
 - UI adjustment
+- bug when player rejoin
+- tree respawn with 1 hp
+- mob stuck to tree when tree already already destroy
+- when player hit mob all stamina cost combine together

@@ -161,7 +161,7 @@ setInterval(() => {
 
   updateResourceRespawns(deltaTime);
   updateMobRespawns(deltaTime, allResources, players, gameTime);
-  //io.emit("resources", allResources);
+  io.emit("resources", allResources);
 
 
 }, 10000);
@@ -253,7 +253,9 @@ function handleHit(socket, collection, type, id, newHealth, configTypes, isMob =
   io.emit(isMob ? "updateMobHealth" : "updateResourceHealth", { id, type, health: newHealth });
   if (!isMob) socket.emit("itemDrop", { item: config.drop, amount: damage });
   if (entity.health <= 0) {
-    entity.size = 0;
+    entity.sizeX = 0;
+    entity.sizeY = 0;
+    
     entity.respawnTimer = entity.respawnTime;
     const drops = config.getDropAmount();
     if (Array.isArray(drops)) {
