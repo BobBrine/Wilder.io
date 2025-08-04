@@ -261,9 +261,19 @@ function joinMainServer() {
   
   try {
     // Always use Render URL for main server
-    initializeSocket("https://survival-io-md0m.onrender.com");
+    const url = "https://survival-io-md0m.onrender.com";
+    initializeSocket(url);
+    // Add connection timeout for better feedback
+    window._mainServerTimeout && clearTimeout(window._mainServerTimeout);
+    window._mainServerTimeout = setTimeout(() => {
+      if (!socket || !socket.connected) {
+        showServerError("Failed to connect to main server. Please check your internet connection or try again later.");
+        console.error("Socket.io connection timeout: Could not connect to main server at " + url);
+      }
+    }, 5000); // 5 seconds timeout
   } catch (error) {
     showServerError("Connection failed: " + error.message);
+    console.error("Socket.io connection error:", error);
   }
 }
 
@@ -333,7 +343,6 @@ function showServerError(message) {
     statusElement.textContent = message;
     statusElement.style.color = "#ff5555";
     statusElement.classList.add("error");
-    
     // Add retry button
     const existingRetry = document.querySelector('#serverJoin button.retry');
     if (!existingRetry) {
@@ -343,6 +352,8 @@ function showServerError(message) {
       retryButton.onclick = joinMainServer;
       document.getElementById("serverJoin").appendChild(retryButton);
     }
+    // Log error for diagnostics
+    console.error("Server connection error:", message);
   }
 }
 
