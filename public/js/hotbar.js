@@ -1,6 +1,6 @@
 const hotbar = {
   slots: new Array(12).fill(null),
-  selectedIndex: 0,
+  selectedIndex: null, // null means hand mode (no hotbar selected)
 };
 
 function updateHotbarFromInventory(items) {
@@ -19,5 +19,10 @@ function updateHotbarFromInventory(items) {
         hotbar.slots[emptyIndex] = { type, count };
       }
     }
+  }
+
+  // If selectedIndex is not null and slot is now empty, go to hand mode
+  if (hotbar.selectedIndex !== null && !hotbar.slots[hotbar.selectedIndex]) {
+    hotbar.selectedIndex = null;
   }
 }

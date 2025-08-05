@@ -48,7 +48,18 @@ function setupSocketListeners() {
     mobtype = data;
   });
 
-  socket.on("itemTypes", (data) => ItemTypes = data);
+  socket.on("itemTypes", (data) => {
+    // Merge server ItemTypes into local ItemTypes, preserving local tool properties
+    if (typeof ItemTypes !== 'object' || !ItemTypes) ItemTypes = {};
+    for (const key in data) {
+      if (ItemTypes[key] && ItemTypes[key].isTool) {
+        // Keep local tool definition (attackRange, isTool, etc.)
+        ItemTypes[key] = { ...data[key], ...ItemTypes[key] };
+      } else {
+        ItemTypes[key] = data[key];
+      }
+    }
+  });
 
   socket.on('connect', () => {
     console.log('Connected as', socket.id);

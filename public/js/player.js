@@ -3,8 +3,22 @@ let player = null;
 let maxStamina = 0;
 let stamina = 0;
 let staminaRegenSpeed = 0;
-const CONE_LENGTH = 50;
-const hitDelay = 0.25;
+const DEFAULT_ATTACK_RANGE = 50;
+const ATTACK_ANGLE = Math.PI / 2; // 90 degrees
+let punchHand = 'right'; // 'left' or 'right'
+
+// Use per-tool or per-hand attack speed
+function getAttackSpeed() {
+  const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
+  if (selected && ItemTypes[selected.type] && ItemTypes[selected.type].attackSpeed) {
+    return ItemTypes[selected.type].attackSpeed;
+  }
+  // Hand attack speed fallback
+  if (ItemTypes.hand && ItemTypes.hand.attackSpeed) {
+    return ItemTypes.hand.attackSpeed;
+  }
+  return 0.35; // fallback default
+}
 
 function sendPlayerPosition(x, y) {
   if (window.socket && window.socket.connected) {
@@ -120,10 +134,17 @@ playerImage.onload = () => {
   playerImageLoaded = true;
 };
 
+// Load hand image
+const handImage = new Image();
+handImage.src = "/hand.png";
+let handImageLoaded = false;
+handImage.onload = () => {
+  handImageLoaded = true;
+};
+
 // New variables for attack animation
 let isAttacking = false;
 let attackStartTime = 0;
-const ATTACK_ANGLE = Math.PI / 2; // 90 degrees
 
 // Modified drawPlayer function with animated 90-degree attack cone
 function drawPlayer() {
@@ -135,33 +156,38 @@ function drawPlayer() {
 
   const centerX = player.x + player.size / 2;
   const centerY = player.y + player.size / 2;
-  const coneLength = CONE_LENGTH;
+  // Determine attack range from selected tool or default
+  let attackRange = DEFAULT_ATTACK_RANGE;
+  const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
+  // Debug: log hotbar and selected slot
+  if (window._debugHotbarSlots !== JSON.stringify(hotbar.slots) || window._debugSelectedIndex !== hotbar.selectedIndex) {
+    window._debugHotbarSlots = JSON.stringify(hotbar.slots);
+    window._debugSelectedIndex = hotbar.selectedIndex;
+  }
+  if (selected && ItemTypes[selected.type] && ItemTypes[selected.type].isTool && ItemTypes[selected.type].attackRange) {
+    attackRange = ItemTypes[selected.type].attackRange;
+  }
+  // Debug: log attackRange to verify cone length changes
+  if (window._debugAttackRange !== attackRange) {
+    window._debugAttackRange = attackRange;
+  }
 
   // Draw attack cone if attacking
   if (isAttacking) {
     ctx.save();
     const now = performance.now();
-    const attackProgress = Math.min((now - attackStartTime) / (hitDelay * 1000), 1);
+    const attackSpeed = getAttackSpeed();
+    const attackProgress = Math.min((now - attackStartTime) / (attackSpeed * 1000), 1);
     const startAngle = player.facingAngle - ATTACK_ANGLE / 2;
-    const currentAngle = startAngle + attackProgress * ATTACK_ANGLE; // Scale swing by hitDelay
-    // Draw the animated cone
-    ctx.moveTo(centerX, centerY);
-    ctx.lineTo(
-      centerX + Math.cos(currentAngle) * coneLength,
-      centerY + Math.sin(currentAngle) * coneLength
-    );
-    ctx.strokeStyle = "red";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Fill the cone area
+    const currentAngle = startAngle + attackProgress * ATTACK_ANGLE; // Scale swing by attackSpeed
+    // Fill the cone area only, no stroke
     ctx.beginPath();
     ctx.moveTo(centerX, centerY);
     ctx.lineTo(
-      centerX + Math.cos(startAngle) * coneLength,
-      centerY + Math.sin(startAngle) * coneLength
+      centerX + Math.cos(startAngle) * attackRange,
+      centerY + Math.sin(startAngle) * attackRange
     );
-    ctx.arc(centerX, centerY, coneLength, startAngle, currentAngle);
+    ctx.arc(centerX, centerY, attackRange, startAngle, currentAngle);
     ctx.closePath();
     ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
     ctx.fill();
@@ -176,26 +202,203 @@ function drawPlayer() {
     ctx.beginPath();
     ctx.moveTo(centerX, centerY);
     ctx.lineTo(
-      centerX + Math.cos(player.facingAngle) * coneLength,
-      centerY + Math.sin(player.facingAngle) * coneLength
+      centerX + Math.cos(player.facingAngle - ATTACK_ANGLE / 2) * attackRange,
+      centerY + Math.sin(player.facingAngle - ATTACK_ANGLE / 2) * attackRange
     );
-    ctx.strokeStyle = "red";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(centerX, centerY);
-    ctx.lineTo(
-      centerX + Math.cos(player.facingAngle - ATTACK_ANGLE / 2) * coneLength,
-      centerY + Math.sin(player.facingAngle - ATTACK_ANGLE / 2) * coneLength
-    );
-    ctx.arc(centerX, centerY, coneLength, player.facingAngle - ATTACK_ANGLE / 2, player.facingAngle + ATTACK_ANGLE / 2);
+    ctx.arc(centerX, centerY, attackRange, player.facingAngle - ATTACK_ANGLE / 2, player.facingAngle + ATTACK_ANGLE / 2);
     ctx.closePath();
     ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
     ctx.fill();
     ctx.restore();
   }
 
-  drawTool();
+  // Draw left hand: if holding a tool/item, only move left hand back for realism (never forward punch)
+  if (handImageLoaded) {
+    const handScale = player.size / 32;
+    let handXOffset = player.size * 0.75;
+    let handYOffset = -player.size * 0.55;
+    let handAngle = -Math.PI / 8;
+    const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(player.facingAngle + Math.PI / 2);
+    ctx.rotate(handAngle);
+    let localX = -handXOffset;
+    let localY = handYOffset;
+    let moveBack = false;
+    if (selected && ItemTypes[selected.type] && isAttacking) {
+      // If holding any item/tool, only move left hand back for realism (never forward punch)
+      moveBack = true;
+    } else if ((!selected || !ItemTypes[selected.type]) && isAttacking) {
+      // If hand mode (no item/tool), animate punch as before
+      if (punchHand === 'left') {
+        // ...existing code for left hand punch animation...
+        const now = performance.now();
+        const attackSpeed = getAttackSpeed();
+        const attackDuration = attackSpeed * 1000;
+        let attackProgress = (now - attackStartTime) / attackDuration;
+        function bezier(t, p0, p1, p2) {
+          return (1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
+        }
+        const startX = -handXOffset;
+        const startY = handYOffset;
+        const punchLength = attackRange - 10;
+        const angleOffset = Math.PI / 18;
+        const cosA = Math.cos(angleOffset);
+        const sinA = Math.sin(angleOffset);
+        let rawEndX = -player.size * 0.03;
+        let rawEndY = -punchLength;
+        let rawControlX = -handXOffset * 0.07;
+        let rawControlY = -punchLength * 0.99;
+        const endX = rawEndX * cosA - rawEndY * sinA;
+        const endY = rawEndX * sinA + rawEndY * cosA;
+        const controlX = rawControlX * cosA - rawControlY * sinA;
+        const controlY = rawControlX * sinA + rawControlY * cosA;
+        if (attackProgress <= 0.5) {
+          const t = attackProgress / 0.5;
+          localX = bezier(t, startX, controlX, endX);
+          localY = bezier(t, startY, controlY, endY);
+        } else {
+          const t = (attackProgress - 0.5) / 0.5;
+          localX = bezier(1 - t, startX, controlX, endX);
+          localY = bezier(1 - t, startY, controlY, endY);
+        }
+      } else if (punchHand === 'right') {
+        moveBack = true;
+      }
+    }
+    if (moveBack) {
+      // Move left hand back a bit (for tool/item or when right hand punches)
+      const now = performance.now();
+      const attackSpeed = getAttackSpeed();
+      const attackDuration = attackSpeed * 1000;
+      const attackProgress = Math.min((now - attackStartTime) / attackDuration, 1);
+      const backAmount = player.size * 0.25 * Math.sin(Math.PI * attackProgress);
+      localX = -handXOffset - backAmount;
+      localY = handYOffset + backAmount * 0.5;
+    }
+    ctx.translate(localX, localY);
+    ctx.drawImage(
+      handImage,
+      -handImage.width / 2 * handScale,
+      -handImage.height / 2 * handScale,
+      handImage.width * handScale,
+      handImage.height * handScale
+    );
+    ctx.restore();
+  }
+  // Draw item/tool in right hand, with attack animation for all items
+  if (handImageLoaded) {
+    const handScale = player.size / 32;
+    let handXOffset = player.size * 0.8;
+    let handYOffset = -player.size * 0.55;
+    let handAngle = Math.PI / 8;
+    const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(player.facingAngle + Math.PI / 2);
+    ctx.rotate(handAngle);
+    let localX = handXOffset;
+    let localY = handYOffset;
+    let animate = false;
+    let counterMove = false;
+    if (selected && isAttacking) {
+      animate = true;
+    } else if (!selected && isAttacking) {
+      if (punchHand === 'right') animate = true;
+      if (punchHand === 'left') counterMove = true;
+    }
+    if (animate) {
+      // Animate right hand punch for any item
+      const now = performance.now();
+      const attackSpeed = getAttackSpeed();
+      const attackDuration = attackSpeed * 1000;
+      let attackProgress = (now - attackStartTime) / attackDuration;
+      function bezier(t, p0, p1, p2) {
+        return (1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
+      }
+      const startX = handXOffset;
+      const startY = handYOffset;
+      const punchLength = attackRange - 10;
+      const angleOffset = -Math.PI / 18;
+      const cosA = Math.cos(angleOffset);
+      const sinA = Math.sin(angleOffset);
+      let rawEndX = player.size * 0.03;
+      let rawEndY = -punchLength;
+      let rawControlX = handXOffset * 0.07;
+      let rawControlY = -punchLength * 0.99;
+      const endX = rawEndX * cosA - rawEndY * sinA;
+      const endY = rawEndX * sinA + rawEndY * cosA;
+      const controlX = rawControlX * cosA - rawControlY * sinA;
+      const controlY = rawControlX * sinA + rawControlY * cosA;
+      if (attackProgress <= 0.5) {
+        const t = attackProgress / 0.5;
+        localX = bezier(t, startX, controlX, endX);
+        localY = bezier(t, startY, controlY, endY);
+      } else {
+        const t = (attackProgress - 0.5) / 0.5;
+        localX = bezier(1 - t, startX, controlX, endX);
+        localY = bezier(1 - t, startY, controlY, endY);
+      }
+    } else if (counterMove) {
+      // Move right hand back a bit when left hand punches
+      const now = performance.now();
+      const attackSpeed = getAttackSpeed();
+      const attackDuration = attackSpeed * 1000;
+      const attackProgress = Math.min((now - attackStartTime) / attackDuration, 1);
+      const backAmount = player.size * 0.25 * Math.sin(Math.PI * attackProgress);
+      localX = handXOffset + backAmount;
+      localY = handYOffset + backAmount * 0.5;
+    }
+    ctx.translate(localX, localY);
+    // Draw item/tool if selected
+    if (selected && ItemTypes[selected.type]) {
+      if (ItemTypes[selected.type].isTool && selected.type === 'wooden_sword' && swordImage.complete) {
+        const scale = 1.25;
+        const imgWidth = swordImage.width * scale;
+        const imgHeight = swordImage.height * scale;
+        ctx.save();
+        let swordAngle = Math.PI * 1.5 + Math.PI / 8;
+        if (isAttacking) {
+          const now = performance.now();
+          const attackSpeed = getAttackSpeed();
+          const attackDuration = attackSpeed * 1000;
+          let attackProgress = (now - attackStartTime) / attackDuration;
+          if (attackProgress > 1) attackProgress = 1;
+          swordAngle -= (Math.PI / 2) * (1 - attackProgress);
+        }
+        ctx.rotate(swordAngle);
+        const swordOffsetX = 10;
+        const swordOffsetY = 6;
+        ctx.translate(swordOffsetX, swordOffsetY);
+        ctx.drawImage(
+          swordImage,
+          -imgWidth / 2,
+          -imgHeight,
+          imgWidth,
+          imgHeight
+        );
+        ctx.restore();
+      } else {
+        // Draw colored rectangle for any other item/tool
+        ctx.save();
+        ctx.rotate(Math.PI / 2); // make it vertical
+        ctx.fillStyle = ItemTypes[selected.type].color || 'gray';
+        ctx.fillRect(-6, -24, 12, 48);
+        ctx.restore();
+      }
+    }
+    // Draw right hand on top of item/tool
+    ctx.drawImage(
+      handImage,
+      -handImage.width / 2 * handScale,
+      -handImage.height / 2 * handScale,
+      handImage.width * handScale,
+      handImage.height * handScale
+    );
+    ctx.restore();
+  }
+  // Draw player body (above hands)
   ctx.save();
   ctx.translate(centerX, centerY);
   ctx.rotate(player.facingAngle + Math.PI / 2);
@@ -208,7 +411,6 @@ function drawPlayer() {
       player.size
     );
   } else {
-    // fallback: draw a circle if image not loaded
     ctx.beginPath();
     ctx.arc(0, 0, player.size / 2, 0, Math.PI * 2);
     ctx.fillStyle = player.color || 'blue';
@@ -239,28 +441,47 @@ function drawTool() {
 
   if (isAttacking) {
     const now = performance.now();
-    const attackProgress = Math.min((now - attackStartTime) / (hitDelay * 1000), 1);
+    const attackSpeed = getAttackSpeed();
+    const attackProgress = Math.min((now - attackStartTime) / (attackSpeed * 1000), 1);
     const startAngle = player.facingAngle - ATTACK_ANGLE / 2;
     toolAngle = startAngle + attackProgress * ATTACK_ANGLE;
   }
 
-  const offsetX = centerX + Math.cos(toolAngle) * (player.size / 2 + toolLength / 2);
-  const offsetY = centerY + Math.sin(toolAngle) * (player.size / 2 + toolLength / 2);
-
+  // Move sword/tool to right hand position (hand on handle, natural idle)
+  const handScale = player.size / 32;
+  // Move sword further right by increasing handXOffset
+  const handXOffset = player.size * 0.95;
+  const handYOffset = -player.size * 0.55;
+  // Hand local position (center of hand image at hand)
+  const handLocalX = -handImage.width / 2 * handScale + handXOffset;
+  const handLocalY = -handImage.height / 2 * handScale + handYOffset;
   ctx.save();
-  ctx.translate(offsetX, offsetY);
-  ctx.rotate(toolAngle + Math.PI / 4); // Your tested correction
-
+  ctx.translate(centerX, centerY);
+  ctx.rotate(player.facingAngle + Math.PI / 2);
+  ctx.rotate(Math.PI / 8); // right hand angle
+  ctx.translate(handLocalX, handLocalY);
+  ctx.rotate(toolAngle - player.facingAngle);
   if (selected.type === 'wooden_sword' && swordImage.complete) {
-    const scale = 1;
+    // Make sword bigger and align handle to hand
+    const scale = 1.25;
     const imgWidth = swordImage.width * scale;
     const imgHeight = swordImage.height * scale;
-    ctx.drawImage(swordImage, (-imgWidth / 2) + 4, (-imgHeight / 2) - 4, imgWidth, imgHeight);
+    ctx.save();
+    // Rotate so the handle is at the hand, and blade points forward (adjusted for natural grip)
+    ctx.rotate(Math.PI * 1.5 + Math.PI / 8); // 270deg + 22.5deg, so blade points forward, handle in hand
+    // Move sword so the handle is at the hand (handle is at bottom of image)
+    ctx.drawImage(
+      swordImage,
+      -imgWidth / 2,
+      -imgHeight * 0.82, // 0.82 puts the handle at the hand, adjust as needed
+      imgWidth,
+      imgHeight
+    );
+    ctx.restore();
   } else if (ItemTypes[selected.type]) {
     ctx.fillStyle = ItemTypes[selected.type].color || 'gray';
     ctx.fillRect(-2, -toolLength / 2, 4, toolLength);
   }
-
   ctx.restore();
 }
 
@@ -336,11 +557,13 @@ if (typeof socket !== "undefined" && socket) {
 
 function tryAttack() {
   if (!player || typeof hotbar === 'undefined' || typeof ItemTypes === 'undefined' || typeof otherPlayers === 'undefined') return;
+  // Alternate punch hand for each attack
+  punchHand = (punchHand === 'right') ? 'left' : 'right';
   const selected = hotbar.slots[hotbar.selectedIndex];
   let selectedTool = selected?.type || "hand";
-  const toolInfo = ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1 };
+  const toolInfo = ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1, attackRange: DEFAULT_ATTACK_RANGE };
   const swordTypes = ["hand", "sword"];
-  const coneLength = CONE_LENGTH;
+  const coneLength = toolInfo.attackRange || DEFAULT_ATTACK_RANGE;
   const coneAngle = ATTACK_ANGLE;
   for (const id in otherPlayers) {
     const p = otherPlayers[id];

@@ -14,14 +14,23 @@ const stopHitting = () => {
   holdInterval = null;
 };
 
+
+// Only track movement keys in keys object, not hotbar keys
 window.addEventListener("keydown", (e) => {
   if (!e.key || typeof e.key !== "string") return;
-  keys[e.key.toLowerCase()] = true;
+  const key = e.key.toLowerCase();
+  // Don't track hotbar keys in keys object to avoid sticky selection
+  if (!'1234567890-='.includes(e.key)) {
+    keys[key] = true;
+  }
 });
 
 window.addEventListener("keyup", (e) => {
   if (!e.key || typeof e.key !== "string") return;
-  keys[e.key.toLowerCase()] = false;
+  const key = e.key.toLowerCase();
+  if (!'1234567890-='.includes(e.key)) {
+    keys[key] = false;
+  }
 });
 
 canvas.addEventListener("mousemove", (e) => {
@@ -30,14 +39,21 @@ canvas.addEventListener("mousemove", (e) => {
   mouseY = e.clientY - rect.top;
 });
 
+// Hotbar selection: toggle slot or hand mode (1-9,0,-,=) -- only one handler
 document.addEventListener("keydown", (e) => {
   if (!e.key || typeof e.key !== "string") return;
-  const key = e.key.toLowerCase();
-  keys[key] = true;
-  const num = parseInt(e.key, 10);
-  if (!isNaN(num)) {
-    if (num === 0) hotbar.selectedIndex = 9;
-    else if (num >= 1 && num <= 9) hotbar.selectedIndex = num - 1;
+  const key = e.key;
+  const keyMap = {
+    '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7, '9': 8, '0': 9, '-': 10, '=': 11
+  };
+  if (keyMap.hasOwnProperty(key)) {
+    const idx = keyMap[key];
+    if (hotbar.selectedIndex === idx) {
+      hotbar.selectedIndex = null; // hand mode
+    } else {
+      hotbar.selectedIndex = idx;
+    }
+    e.preventDefault();
   }
 });
 
@@ -75,7 +91,12 @@ canvas.addEventListener("mousedown", (e) => {
   // Existing UI element handling
   if (uiElement) {
     if (uiElement.type === "hotbar") {
-      hotbar.selectedIndex = uiElement.index;
+      // Toggle hotbar selection on click (same as keyboard)
+      if (hotbar.selectedIndex === uiElement.index) {
+        hotbar.selectedIndex = null;
+      } else {
+        hotbar.selectedIndex = uiElement.index;
+      }
       if (hotbar.slots[uiElement.index]) {
         draggingSlotIndex = uiElement.index;
         draggedItem = { ...hotbar.slots[uiElement.index] };

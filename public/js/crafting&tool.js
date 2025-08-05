@@ -1,4 +1,18 @@
-let ItemTypes = {};
+let ItemTypes = {
+  hand: { isTool: true, attackRange: 50, attackSpeed: 0.35, damage: 1, category: 'hand', tier: 0 },
+  wooden_axe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 3, category: 'axe', tier: 1 },
+  wooden_pickaxe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 3, category: 'pickaxe', tier: 1 },
+  wooden_sword: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 5, category: 'sword', tier: 1 },
+  stone_axe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 5, category: 'axe', tier: 2 },
+  stone_pickaxe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 5, category: 'pickaxe', tier: 2 },
+  stone_sword: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 7, category: 'sword', tier: 2 },
+  iron_axe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 7, category: 'axe', tier: 3 },
+  iron_pickaxe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 7, category: 'pickaxe', tier: 3 },
+  iron_sword: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 10, category: 'sword', tier: 3 },
+  gold_axe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 10, category: 'axe', tier: 4 },
+  gold_pickaxe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 10, category: 'pickaxe', tier: 4 },
+  gold_sword: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 15, category: 'sword', tier: 4 },
+};
 
 const recipes = [
   { name: "Torch", cost: { wood: 5 }, output: { type: "torch", count: 1 } },

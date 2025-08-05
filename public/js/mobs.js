@@ -206,18 +206,18 @@ function drawHealthBarM(mob) {
 
 function tryHitMob() {
   if (!player) return;
-  const coneLength = CONE_LENGTH; // 70
-  const coneAngle = ATTACK_ANGLE; // 90 degrees
-
+  let attackRange = 50;
+  const coneAngle = ATTACK_ANGLE;
   const selected = hotbar.slots[hotbar.selectedIndex];
   let selectedTool = selected?.type || "hand";
-  const toolInfo = ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1 };
+  const toolInfo = ItemTypes && ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1, attackRange: 50 };
+  if (toolInfo.attackRange) attackRange = toolInfo.attackRange;
 
   for (const [type, config] of Object.entries(mobtype)) {
     const list = getMobArrayByType(type);
     for (const mob of list) {
       if (mob.size > 0) {
-        if (isObjectInAttackCone(player, mob, coneLength, coneAngle)) {
+        if (isObjectInAttackCone(player, mob, attackRange, coneAngle)) {
           if (!config.requiredTool.categories.includes(toolInfo.category) || toolInfo.tier < config.requiredTool.minTier) {
             showMessage("This tool is not effective.");
             return;

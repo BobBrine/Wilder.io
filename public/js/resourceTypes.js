@@ -18,11 +18,12 @@ function isCollidingWithResources(newX, newY, sizeX = player.size, sizeY = playe
 
 function hitResourceInCone() {
   if (!player) return false;
-  const coneLength = CONE_LENGTH;
+  let attackRange = 50;
   const coneAngle = ATTACK_ANGLE;
   const selected = hotbar.slots[hotbar.selectedIndex];
   let selectedTool = selected?.type || "hand";
-  const toolInfo = ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1 };
+  const toolInfo = ItemTypes && ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1, attackRange: 50 };
+  if (toolInfo.attackRange) attackRange = toolInfo.attackRange;
   for (const [type, config] of Object.entries(resourceTypes)) {
     const list = getResourceArrayByType(type);
     for (const resource of list) {
@@ -32,7 +33,7 @@ function hitResourceInCone() {
       ctx.fillStyle = 'rgba(0, 255, 255, 0.92)';
       ctx.arc(rx, ry, 5, 0, Math.PI * 2);
       ctx.fill();
-      if (resource.sizeX > 0 && resource.sizeY > 0 && isObjectInAttackCone(player, resource, coneLength, coneAngle)) {
+      if (resource.sizeX > 0 && resource.sizeY > 0 && isObjectInAttackCone(player, resource, attackRange, coneAngle)) {
         if (!config.requiredTool.categories.includes(toolInfo.category) || toolInfo.tier < config.requiredTool.minTier) {
           showMessage("This tool is not effective.");
           return;
@@ -75,9 +76,22 @@ function drawHealthBarR(resource) {
   ctx.fillRect(x, y, barWidth * hpPercent, barHeight);
 }
 
+function getAttackSpeed() {
+  const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
+  if (selected && ItemTypes[selected.type] && ItemTypes[selected.type].attackSpeed) {
+    return ItemTypes[selected.type].attackSpeed;
+  }
+  // Hand attack speed fallback
+  if (ItemTypes.hand && ItemTypes.hand.attackSpeed) {
+    return ItemTypes.hand.attackSpeed;
+  }
+  return 0.35; // fallback default
+}
+
 function tryHitResource() {
   const now = performance.now();
-  if ((now - lastHitTime) / 1000 >= hitDelay && stamina > 0) {
+  const attackSpeed = getAttackSpeed();
+  if ((now - lastHitTime) / 1000 >= attackSpeed && stamina > 0) {
     lastHitTime = now;
     tryHitMob();
     hitResourceInCone();

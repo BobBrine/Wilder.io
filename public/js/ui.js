@@ -1,39 +1,43 @@
 const scoreboardWidth = 200;
 
 function drawHUD() {
-  ctx.save(); // Save the current context state
+  ctx.save();
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
-  ctx.textAlign = "left"; // Explicitly set textAlign for HUD
-  ctx.fillText(`HP: ${Math.floor(player.health)} / ${player.maxHealth}, Stamina: ${Math.floor(stamina)}, Hunger: ${Math.floor(hunger)}`, 10, 20);
-  ctx.fillText(`Level: ${player.level}`, 10, 40);
-  ctx.fillText(`XP: ${player.xp} / ${player.xpToNextLevel}`, 10, 60);
-  if (devTest) {
+  ctx.textAlign = "left";
+  // Null checks for player, inventory
+  if (player) {
+    ctx.fillText(`HP: ${Math.floor(player.health)} / ${player.maxHealth}, Stamina: ${Math.floor(stamina)}, Hunger: ${Math.floor(hunger)}`, 10, 20);
+    ctx.fillText(`Level: ${player.level}`, 10, 40);
+    ctx.fillText(`XP: ${player.xp} / ${player.xpToNextLevel}`, 10, 60);
+  }
+  if (devTest && inventory && inventory.items) {
     let yOffset = 80;
     for (const [item, count] of Object.entries(inventory.items)) {
       ctx.fillText(`${item[0].toUpperCase() + item.slice(1)}: ${count}`, 10, yOffset);
       yOffset += 20;
     }
   }
+  // Scoreboard improvements
   const scoreboardX = canvas.width - scoreboardWidth - 10;
   const scoreboardY = 40;
-  const maxPlayers = 5;
+  const allPlayers = [
+    ...(player ? [{ id: socket.id, name: player.name, level: player.level }] : []),
+    ...Object.entries(otherPlayers).map(([id, p]) => ({ id, name: p.name, level: p.level }))
+  ].sort((a, b) => b.level - a.level);
+  const shownPlayers = allPlayers.slice(0, 5);
   ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-  ctx.fillRect(scoreboardX, scoreboardY, scoreboardWidth, 20 + 20 * (maxPlayers + 1));
+  ctx.fillRect(scoreboardX, scoreboardY, scoreboardWidth, 20 + 20 * (5 + 1)); // Always height for 5 players
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
   ctx.textAlign = "left";
   ctx.fillText("Scoreboard", scoreboardX + 10, scoreboardY + 15);
-  const allPlayers = [
-    ...(player ? [{ id: socket.id, name: player.name, level: player.level }] : []),
-    ...Object.entries(otherPlayers).map(([id, p]) => ({ id, name: p.name, level: p.level }))
-  ].sort((a, b) => b.level - a.level).slice(0, maxPlayers);
   let yOffset = scoreboardY + 40;
-  allPlayers.forEach((p, index) => {
+  shownPlayers.forEach((p, index) => {
     ctx.fillText(`${index + 1}. ${p.name}: Lv ${p.level}`, scoreboardX + 10, yOffset);
     yOffset += 20;
   });
-  ctx.restore(); // Restore the context state to prevent textAlign from affecting other drawings
+  ctx.restore();
 
 }
 
@@ -42,6 +46,7 @@ const padding = 4;
 const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
 
 function drawHotbar() {
+  if (!hotbar || !hotbar.slots) return;
   const startX = (canvas.width - totalWidth) / 2;
   const y = canvas.height - slotSize - 20;
   drawHealthbar(startX, y);
@@ -59,14 +64,27 @@ function drawHotbar() {
     }
     const slot = hotbar.slots[i];
     if (slot) {
-      const itemColor = ItemTypes[slot.type]?.color || "black";
-      ctx.fillStyle = itemColor;
-      ctx.fillRect(x + 8, y + 4, 24, 24);
+      if (slot.type === 'wooden_sword' && typeof swordImage !== 'undefined' && swordImage.complete) {
+        // Draw the sword image centered in the slot
+        const imgSize = 28;
+        ctx.drawImage(
+          swordImage,
+          x + (slotSize - imgSize) / 2,
+          y + (slotSize - imgSize) / 2,
+          imgSize,
+          imgSize
+        );
+      } else {
+        const itemColor = ItemTypes[slot.type]?.color || "black";
+        ctx.fillStyle = itemColor;
+        ctx.fillRect(x + 8, y + 4, 24, 24);
+      }
       ctx.fillStyle = "white";
-      ctx.font = "10px Arial";
-      ctx.fillText(slot.type, x + 2, y + slotSize - 16);
-      ctx.font = "12px Arial";
-      ctx.fillText(slot.count, x + 2, y + slotSize - 4);
+      ctx.font = "11px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(slot.type, x + slotSize / 2, y + slotSize - 16);
+      ctx.font = "13px Arial";
+      ctx.fillText(slot.count, x + slotSize / 2, y + slotSize - 4);
     }
   }
   if (draggedItem) {
@@ -76,8 +94,9 @@ function drawHotbar() {
     ctx.fillRect(mouseX, mouseY, iconSize, iconSize);
     ctx.fillStyle = "white";
     ctx.font = "12px Arial";
-    ctx.fillText(draggedItem.type, mouseX + 2, mouseY + 12);
-    ctx.fillText(draggedItem.count, mouseX + 2, mouseY + 0);
+    ctx.textAlign = "center";
+    ctx.fillText(draggedItem.type, mouseX + iconSize / 2, mouseY + 18);
+    ctx.fillText(draggedItem.count, mouseX + iconSize / 2, mouseY + 30);
   }
 }
 
@@ -94,7 +113,9 @@ function drawCraftingUI() {
     ctx.strokeRect(craftX, craftY, width, height);
     ctx.fillStyle = "white";
     ctx.font = "14px Arial";
-    ctx.fillText(`${recipe.name}`, craftX + 5, craftY + 20);
+    ctx.textAlign = "center";
+    ctx.fillText(`${recipe.name}`, craftX + width / 2, craftY + 20);
+    ctx.textAlign = "left";
     craftY += height + 10;
   }
 }
@@ -213,10 +234,12 @@ function drawDroppedItems() {
 
 function drawTimeIndicator() {
   const isDay = gameTime < DAY_LENGTH;
-  ctx.fillStyle = isDay ? 'yellow' : 'gray';
+  ctx.save();
   ctx.beginPath();
   ctx.arc(canvas.width / 2, 30, 20, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillStyle = isDay ? 'yellow' : 'gray';
+  ctx.fill(); // Only fill, never stroke
+  ctx.restore();
 }
 
 function drawLightSources() {
