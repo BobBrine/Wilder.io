@@ -347,7 +347,7 @@ function backToHome() {
   document.getElementById("homePage").style.display = "block";
 }
 
-function backToLocalLAN() {
+window.backToLocalLAN = function() {
   if (socket) {
     socket.disconnect();
     socket = null;
@@ -355,7 +355,7 @@ function backToLocalLAN() {
   document.getElementById("hostPrompt").style.display = "none";
   document.getElementById("joinLocalPrompt").style.display = "none";
   document.getElementById("localLAN").style.display = "block";
-}
+};
 
 function showServerError(message) {
   const statusElement = document.getElementById("serverStatus");

@@ -61,40 +61,6 @@
 </head>
 <body>
 
-  <!-- Content Section for AdSense Compliance -->
-  <div id="siteContent" style="max-width: 900px; margin: 32px auto 16px auto; background: #fff8; border-radius: 12px; box-shadow: 0 2px 12px #0002; padding: 24px;">
-    <h1 style="margin-top:0;">Survival IO Game</h1>
-    <p><b>Survival IO</b> is a multiplayer browser game where you gather resources, craft tools, and battle mobs and other players to survive as long as possible. Explore the world, level up, and become the top survivor!</p>
-    <h3>How to Play</h3>
-    <ul>
-      <li>Use your mouse and keyboard to move, gather, and fight.</li>
-      <li>Collect resources like wood, stone, and food.</li>
-      <li>Craft tools and weapons to improve your chances.</li>
-      <li>Watch your health and hunger bars!</li>
-      <li>Compete with other players for survival and XP.</li>
-    </ul>
-    <h3>Contact & Info</h3>
-    <ul>
-      <li>Email: <a href="mailto:bobgamingprolol@gmail.com">bobgamingprolol@gmail.com</a></li>
-      <li><a href="#privacy">Privacy Policy</a></li>
-    </ul>
-
-    <!-- AdSense Ad Placeholder: Replace with your real AdSense code after approval -->
-    <div style="margin: 24px 0; text-align:center;">
-      <!-- Example AdSense code (replace 'ca-pub-XXXX' and 'data-ad-slot') -->
-      <ins class="adsbygoogle"
-           style="display:block"
-           data-ad-client="ca-pub-9737086182343099"
-           data-ad-slot="5375862364"
-           data-ad-format="auto"
-           data-full-width-responsive="true"></ins>
-      <script>
-        (adsbygoogle = window.adsbygoogle || []).push({});
-      </script>
-      <!-- End AdSense Placeholder -->
-    </div>
-  </div>
-
   <!-- Idle Animated Background Canvas for Main Page -->
   <canvas id="menuBgCanvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:0;"></canvas>
   <!-- Home Page -->
@@ -102,7 +68,36 @@
     <h2>Welcome to Survival Game Beta</h2>
     <button onclick="joinMainServer()">Join Main Server</button>
     <button onclick="showLocalLAN()">Local LAN</button>
+    <button onclick="showHowToModal()">How to Play</button>
+    <button onclick="showPrivacyModal()">Privacy Policy</button>
   </div>
+
+
+  <!-- How to Play Modal -->
+  <div id="howToModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:12px; max-width:500px; margin:40px auto; padding:32px; box-shadow:0 4px 32px #0004; position:relative;">
+      <h2>How to Play</h2>
+      <ul>
+        <li>Use your mouse and keyboard to move, gather, and fight.</li>
+        <li>Collect resources like wood, stone, and food.</li>
+        <li>Craft tools and weapons to improve your chances.</li>
+        <li>Watch your health and hunger bars!</li>
+        <li>Compete with other players for survival and XP.</li>
+      </ul>
+      <button onclick="closeHowToModal()" style="margin-top:16px;">Close</button>
+    </div>
+  </div>
+
+  <!-- Privacy Policy Modal -->
+  <div id="privacyModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:12px; max-width:500px; margin:40px auto; padding:32px; box-shadow:0 4px 32px #0004; position:relative;">
+      <h2>Privacy Policy</h2>
+      <p>This game does not collect personal information except as required for gameplay and analytics. Third-party services (such as Google AdSense) may use cookies to serve ads based on your prior visits to this or other websites. You can opt out of personalized advertising by visiting <a href='https://www.google.com/settings/ads' target='_blank'>Google Ads Settings</a>.</p>
+      <p>For questions, contact: <a href="mailto:bobgamingprolol@gmail.com">bobgamingprolol@gmail.com</a></p>
+      <button onclick="closePrivacyModal()" style="margin-top:16px;">Close</button>
+    </div>
+  </div>
+
 
   <!-- Server Join Page -->
   <div id="serverJoin" class="menu" style="display: none;">
@@ -122,7 +117,8 @@
   <!-- Host Prompt -->
   <div id="hostPrompt" class="menu" style="display: none;">
     <h2>Host Game</h2>
-    <input id="hostIPInput" type="text" placeholder="Enter your IP (e.g., 192.168.1.100)">
+    <input id="hostIPInput" type="text" autocomplete="off" placeholder="Enter your IP (e.g., 192.168.1.100)">
+    <!-- If you cannot type numbers, try switching your keyboard/IME or use a different browser. -->
     <button onclick="submitHostIP()">Host Game</button>
     <button onclick="backToLocalLAN()">Back</button>
   </div>
@@ -130,7 +126,7 @@
   <!-- Join Local Prompt -->
   <div id="joinLocalPrompt" class="menu" style="display: none;">
     <h2>Join Local Game</h2>
-    <input id="joinIPInput" type="text" placeholder="Enter host IP (e.g., 192.168.1.100)">
+    <input id="joinIPInput" type="text" autocomplete="off" placeholder="Enter host IP (e.g., 192.168.1.100)">
     <button onclick="submitJoinIP()">Join Game</button>
     <button onclick="backToLocalLAN()">Back</button>
   </div>
@@ -159,12 +155,7 @@
   <!-- Game Canvas -->
   <canvas id="gameCanvas"></canvas>
 
-  <!-- Privacy Policy Section -->
-  <div id="privacy" style="max-width:900px; margin:32px auto 32px auto; background:#fff8; border-radius:12px; box-shadow:0 2px 12px #0002; padding:24px;">
-    <h2>Privacy Policy</h2>
-    <p>This game does not collect personal information except as required for gameplay and analytics. Third-party services (such as Google AdSense) may use cookies to serve ads based on your prior visits to this or other websites. You can opt out of personalized advertising by visiting <a href="https://www.google.com/settings/ads">Google Ads Settings</a>.</p>
-    <p>For questions, contact: <a href="mailto:your@email.com">your@email.com</a></p>
-  </div>
+  <!-- Privacy Policy Section removed: now only accessible via modal -->
 
   <!-- Scripts -->
   <script src="js/menuBackground.js"></script>
@@ -180,5 +171,44 @@
   <script src="js/crafting&tool.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/main.js"></script>
+
+  <script>
+    // Show siteContent only on home page
+    function showSiteContent(show) {
+      // No longer show siteContent or privacy by default
+    }
+    // Modal logic
+    function showHowToModal() {
+      document.getElementById('howToModal').style.display = 'flex';
+    }
+    function closeHowToModal() {
+      document.getElementById('howToModal').style.display = 'none';
+    }
+    function showPrivacyModal() {
+      document.getElementById('privacyModal').style.display = 'flex';
+    }
+    function closePrivacyModal() {
+      document.getElementById('privacyModal').style.display = 'none';
+    }
+    // Patch joinMainServer and showLocalLAN to hide siteContent
+    const origJoinMainServer = window.joinMainServer;
+    window.joinMainServer = function() {
+      showSiteContent(false);
+      if (origJoinMainServer) origJoinMainServer();
+    };
+    const origShowLocalLAN = window.showLocalLAN;
+    window.showLocalLAN = function() {
+      showSiteContent(false);
+      if (origShowLocalLAN) origShowLocalLAN();
+    };
+    // Patch backToHome to always show siteContent
+    const origBackToHome = window.backToHome;
+    window.backToHome = function() {
+      showSiteContent(true);
+      if (origBackToHome) origBackToHome();
+    };
+    // On page load, show siteContent
+    showSiteContent(true);
+  </script>
 </body>
 </html>

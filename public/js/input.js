@@ -42,6 +42,9 @@ canvas.addEventListener("mousemove", (e) => {
 // Hotbar selection: toggle slot or hand mode (1-9,0,-,=) -- only one handler
 document.addEventListener("keydown", (e) => {
   if (!e.key || typeof e.key !== "string") return;
+  // Only block hotbar keys if not typing in an input or textarea
+  const active = document.activeElement;
+  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
   const key = e.key;
   const keyMap = {
     '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7, '9': 8, '0': 9, '-': 10, '=': 11
