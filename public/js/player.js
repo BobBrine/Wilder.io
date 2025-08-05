@@ -560,7 +560,8 @@ function tryAttack() {
   // Alternate punch hand for each attack
   punchHand = (punchHand === 'right') ? 'left' : 'right';
   const selected = hotbar.slots[hotbar.selectedIndex];
-  let selectedTool = selected?.type || "hand";
+  // If selected slot is empty, stay in hand mode, but do NOT deselect hotbar
+  let selectedTool = (selected && selected.type) ? selected.type : "hand";
   const toolInfo = ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1, attackRange: DEFAULT_ATTACK_RANGE };
   const swordTypes = ["hand", "sword"];
   const coneLength = toolInfo.attackRange || DEFAULT_ATTACK_RANGE;

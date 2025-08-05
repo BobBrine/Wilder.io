@@ -21,8 +21,6 @@ function updateHotbarFromInventory(items) {
     }
   }
 
-  // If selectedIndex is not null and slot is now empty, go to hand mode
-  if (hotbar.selectedIndex !== null && !hotbar.slots[hotbar.selectedIndex]) {
-    hotbar.selectedIndex = null;
-  }
+  // Do NOT auto-deselect hotbar when attacking or if slot is empty; stay in hand mode as long as user is on an empty slot.
+  // Only set selectedIndex to null if the user removes an item from a slot they are currently on (handled elsewhere if needed).
 }
