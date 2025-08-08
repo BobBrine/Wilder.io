@@ -1,4 +1,4 @@
-const WORLD_SIZE = 5000;
+const WORLD_SIZE = 1000;
 
 const GRID_CELL_SIZE = 100;
 const GRID_COLS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE);

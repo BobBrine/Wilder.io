@@ -1,4 +1,4 @@
-const WORLD_SIZE = 5000;
+const WORLD_SIZE = 1000;
 
 const GRID_CELL_SIZE = 100;
 const GRID_COLS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE); // 50
@@ -582,37 +582,94 @@ function updateMobs(allResources, players, deltaTime) {
         const maxX = WORLD_SIZE - mobSize;
         const maxY = WORLD_SIZE - mobSize;
 
-        const collideX = isCollidingWithResources(
+      
+
+        // Allow mobs to overlap resources and other mobs by a margin
+        const overlapMargin = mobSize * 0.4; // 40% overlap allowed
+        // Helper to get center coordinates
+        function getCenter(x, y, size) {
+          return { cx: x + size / 2, cy: y + size / 2 };
+        }
+        // Centered collision check for resources
+        function isCollidingWithResourcesCentered(newX, newY, size, allResources) {
+          const { cx, cy } = getCenter(newX, newY, size);
+          const all = Object.values(allResources).flat();
+          return all.some(resource => {
+            if (resource.sizeX > 0 && resource.sizeY > 0) {
+              const rcx = resource.x + resource.sizeX / 2;
+              const rcy = resource.y + resource.sizeY / 2;
+              const minDistX = (size + resource.sizeX) / 2 - overlapMargin;
+              const minDistY = (size + resource.sizeY) / 2 - overlapMargin;
+              return Math.abs(cx - rcx) < minDistX && Math.abs(cy - rcy) < minDistY;
+            }
+            return false;
+          });
+        }
+        function isCollidingWithMobsCentered(newX, newY, size, selfMob) {
+          const { cx, cy } = getCenter(newX, newY, size); // Center of moving mob's full size
+          const allMobs = Object.values(mobs).flat();
+          return allMobs.some(otherMob => {
+            if (otherMob !== selfMob && otherMob.size > 0) {
+              const mobColliderSize = otherMob.size * 0.4; // Use 60% of otherMob.size as collider size
+              const offset = (otherMob.size - mobColliderSize) / 2; // Offset to center the collider
+              const ocx = otherMob.x + offset + mobColliderSize / 2; // Center X of other mob's collider
+              const ocy = otherMob.y + offset + mobColliderSize / 2; // Center Y of other mob's collider
+              const minDistX = (size + mobColliderSize) / 2 - overlapMargin;
+              const minDistY = (size + mobColliderSize) / 2 - overlapMargin;
+              return Math.abs(cx - ocx) < minDistX && Math.abs(cy - ocy) < minDistY;
+            }
+            return false;
+          });
+        }
+        // Centered collision check for players
+        function isCollidingWithPlayersCentered(newX, newY, size, players) {
+          const { cx, cy } = getCenter(newX, newY, size);
+          return Object.values(players).some(player => {
+            if (player.size > 0) {
+              const playerColliderSize = player.size * 0.6;
+              const offset = (player.size - playerColliderSize) / 2; // Center the smaller collider
+              const playerCenterX = player.x + offset + playerColliderSize / 2;
+              const playerCenterY = player.y + offset + playerColliderSize / 2;
+              const minDistX = (size + playerColliderSize) / 2 - overlapMargin;
+              const minDistY = (size + playerColliderSize) / 2 - overlapMargin;
+              return Math.abs(cx - playerCenterX) < minDistX && Math.abs(cy - playerCenterY) < minDistY;
+            }
+            return false;
+          });
+        }
+
+        const collideX = isCollidingWithResourcesCentered(
           Math.max(minX, Math.min(maxX, newX)),
           Math.max(minY, Math.min(maxY, mob.y)),
-          mobSize,
           mobSize,
           allResources
-        ) || checkOverlap(
+        ) || isCollidingWithMobsCentered(
           Math.max(minX, Math.min(maxX, newX)),
           Math.max(minY, Math.min(maxY, mob.y)),
           mobSize,
+          mob
+        ) || isCollidingWithPlayersCentered(
+          Math.max(minX, Math.min(maxX, newX)),
+          Math.max(minY, Math.min(maxY, mob.y)),
           mobSize,
-          pond.x,
-          pond.y,
-          pond.size,
-          pond.size
+          players
         );
-        const collideY = isCollidingWithResources(
+
+        const collideY = isCollidingWithResourcesCentered(
           Math.max(minX, Math.min(maxX, mob.x)),
           Math.max(minY, Math.min(maxY, newY)),
-          mobSize,
           mobSize,
           allResources
-        ) || checkOverlap(
+        ) || isCollidingWithMobsCentered(
           Math.max(minX, Math.min(maxX, mob.x)),
           Math.max(minY, Math.min(maxY, newY)),
           mobSize,
+          mob
+        ) || isCollidingWithPlayersCentered(
+          Math.max(minX, Math.min(maxX, mob.x)),
+          Math.max(minY, Math.min(maxY, newY)),
           mobSize,
-          pond.x,
-          pond.y,
-          pond.size,
-          pond.size
+          players
         );
 
         if (!collideX) mob.x = Math.max(minX, Math.min(maxX, newX));
@@ -636,13 +693,14 @@ function updateMobs(allResources, players, deltaTime) {
             }, 100);
 
             if (targetPlayer.health < 0) targetPlayer.health = 0;
-            mob.damageCooldown = 1;
+            mob.damageCooldown = 1; 
           }
         }
       }
     }
   }
 }
+
 
 function normalizeAngle(angle) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
@@ -669,13 +727,7 @@ function isOverlappingAny(source, x, y, sizeX, sizeY) {
   });
 }
 
-function isCollidingWithResources(newX, newY, sizeX, sizeY, allResources) {
-  const all = Object.values(allResources).flat();
-  return all.some(resource =>
-    resource.sizeX > 0 && resource.sizeY > 0 &&
-    checkOverlap(newX, newY, sizeX, sizeY, resource.x, resource.y, resource.sizeX, resource.sizeY)
-  );
-}
+
 
 module.exports = {
   pond,

@@ -45,7 +45,7 @@
   }
 
   function animate() {
-    // Show background if any menu is visible (not gameplay)
+    // Show background if any menu is visible (not gameplay), but NOT for dropAmountPrompt
     const menuIds = [
       'homePage',
       'serverJoin',
@@ -53,8 +53,7 @@
       'hostPrompt',
       'joinLocalPrompt',
       'nameEntry',
-      'deathScreen',
-      'dropAmountPrompt'
+      'deathScreen'
     ];
     let anyMenuVisible = false;
     for (const id of menuIds) {
@@ -63,6 +62,11 @@
         anyMenuVisible = true;
         break;
       }
+    }
+    // Hide menu background if dropAmountPrompt is visible
+    const dropPrompt = document.getElementById('dropAmountPrompt');
+    if (dropPrompt && dropPrompt.style.display !== 'none') {
+      anyMenuVisible = false;
     }
     canvas.style.display = anyMenuVisible ? 'block' : 'none';
     if (canvas.style.display === 'block') {

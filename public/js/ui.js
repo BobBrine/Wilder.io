@@ -17,6 +17,13 @@ function drawHUD() {
       ctx.fillText(`${item[0].toUpperCase() + item.slice(1)}: ${count}`, 10, yOffset);
       yOffset += 20;
     }
+    uiButtons = [];
+    if (uiButtons.length === 0) {
+      createButton(10, canvas.height - 50, "DEBUG", () => {
+        // toggle showing mob data
+        showData = !showData;
+      });
+    }
   }
   // Scoreboard improvements
   const scoreboardX = canvas.width - scoreboardWidth - 10;
@@ -38,7 +45,7 @@ function drawHUD() {
     yOffset += 20;
   });
   ctx.restore();
-
+ 
 }
 
 const slotSize = 40;
@@ -65,10 +72,27 @@ function drawHotbar() {
     const slot = hotbar.slots[i];
     if (slot) {
       if (slot.type === 'wooden_sword' && typeof swordImage !== 'undefined' && swordImage.complete) {
-        // Draw the sword image centered in the slot
         const imgSize = 28;
         ctx.drawImage(
           swordImage,
+          x + (slotSize - imgSize) / 2,
+          y + (slotSize - imgSize) / 2,
+          imgSize,
+          imgSize
+        );
+      } else if (slot.type === 'wooden_pickaxe' && typeof wooden_pickaxe_Image !== 'undefined' && pickaxeImageLoaded) {
+        const imgSize = 28;
+        ctx.drawImage(
+          wooden_pickaxe_Image,
+          x + (slotSize - imgSize) / 2,
+          y + (slotSize - imgSize) / 2,
+          imgSize,
+          imgSize
+        );
+      } else if (slot.type === 'wooden_axe' && typeof wooden_axe_Image !== 'undefined' && axeImageLoaded) {
+        const imgSize = 28;
+        ctx.drawImage(
+          wooden_axe_Image,
           x + (slotSize - imgSize) / 2,
           y + (slotSize - imgSize) / 2,
           imgSize,
@@ -207,8 +231,8 @@ function drawCreatorTag() {
 
 function draw() {
   
-  drawResources();
   drawMob();
+  drawResources();
   drawDroppedItems();
   drawWorldBorder();
 }

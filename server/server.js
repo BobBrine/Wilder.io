@@ -254,8 +254,12 @@ function handleHit(socket, collection, type, id, newHealth, configTypes, isMob =
   io.emit(isMob ? "updateMobHealth" : "updateResourceHealth", { id, type, health: newHealth });
   if (!isMob) socket.emit("itemDrop", { item: config.drop, amount: damage });
   if (entity.health <= 0) {
-    entity.sizeX = 0;
-    entity.sizeY = 0;
+    if (isMob) {
+      entity.size = 0; // Set size to 0 for mobs
+    } else {
+      entity.sizeX = 0; // For resources or other entities
+      entity.sizeY = 0;
+    }
     
     entity.respawnTimer = entity.respawnTime;
     const drops = config.getDropAmount();

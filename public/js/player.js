@@ -1,3 +1,4 @@
+// Existing variables
 let otherPlayers = {};
 let player = null;
 let maxStamina = 0;
@@ -6,6 +7,46 @@ let staminaRegenSpeed = 0;
 const DEFAULT_ATTACK_RANGE = 50;
 const ATTACK_ANGLE = Math.PI / 2; // 90 degrees
 let punchHand = 'right'; // 'left' or 'right'
+
+// Load player image
+const playerImage = new Image();
+playerImage.src = "/Player1.png"; // Adjust the path if needed
+let playerImageLoaded = false;
+playerImage.onload = () => {
+  playerImageLoaded = true;
+};
+
+// Load hand image
+const handImage = new Image();
+handImage.src = "/hand.png";
+let handImageLoaded = false;
+handImage.onload = () => {
+  handImageLoaded = true;
+};
+
+// Load sword image
+const swordImage = new Image();
+swordImage.src = 'wooden_sword.png'; // Adjust path as needed
+
+// Load pickaxe image
+const wooden_pickaxe_Image = new Image();
+wooden_pickaxe_Image.src = 'wooden_pickaxe.png'; // Adjust path as needed
+let pickaxeImageLoaded = false;
+wooden_pickaxe_Image.onload = () => {
+  pickaxeImageLoaded = true;
+};
+
+// Load axe image
+const wooden_axe_Image = new Image();
+wooden_axe_Image.src = 'wooden_axe.png'; // Adjust path as needed
+let axeImageLoaded = false;
+wooden_axe_Image.onload = () => {
+  axeImageLoaded = true;
+};
+
+// New variables for attack animation
+let isAttacking = false;
+let attackStartTime = 0;
 
 // Use per-tool or per-hand attack speed
 function getAttackSpeed() {
@@ -25,35 +66,119 @@ function sendPlayerPosition(x, y) {
     window.socket.emit('move', { x, y });
   }
 }
+
 function updatePlayerPosition(deltaTime) {
   if (isDead || !player) return;
   if (typeof keys === 'undefined') return;
+  
   let moveX = 0, moveY = 0;
   let speed = player.speed || 0;
+  
   if (keys["a"]) moveX -= 1;
   if (keys["d"]) moveX += 1;
   if (keys["w"]) moveY -= 1;
   if (keys["s"]) moveY += 1;
+  
   const wantsToSprint = keys[" "];
   if (moveX !== 0 && moveY !== 0) {
     const norm = Math.sqrt(2) / 2;
     moveX *= norm;
     moveY *= norm;
   }
+  
   if (wantsToSprint && stamina > 0) {
     speed *= 1.5;
     stamina -= 20 * deltaTime;
     lastStaminaUseTime = 0;
   }
-  const newX = player.x + moveX * speed * deltaTime;
-  const newY = player.y + moveY * speed * deltaTime;
-  if (typeof isCollidingWithResources === 'function') {
-    if (!isCollidingWithResources(newX, player.y)) player.x = newX;
-    if (!isCollidingWithResources(player.x, newY)) player.y = newY;
+  
+  const dx = moveX * speed * deltaTime;
+  const dy = moveY * speed * deltaTime;
+  
+  // New multi-axis collision resolution with sliding
+  let newX = player.x;
+  let newY = player.y;
+  
+  // Helper function for collision detection
+  function isCollidingAt(x, y) {
+    return (typeof isCollidingWithResources === 'function' && 
+            isCollidingWithResources(x, y, player.size, player.size, allResources)) ||
+           (typeof isCollidingWithMobs === 'function' && 
+            isCollidingWithMobs(x, y, player.size, player.size, mobs));
   }
-  sendPlayerPosition(player.x, player.y);
+  
+  // Try full movement first
+  if (!isCollidingAt(player.x + dx, player.y + dy)) {
+    newX += dx;
+    newY += dy;
+  } 
+  else {
+    // Calculate separate axis movements
+    const canMoveX = !isCollidingAt(player.x + dx, player.y);
+    const canMoveY = !isCollidingAt(player.x, player.y + dy);
+    
+    // Handle both axes separately with sliding
+    if (canMoveX) {
+      newX += dx;
+      // Try sliding along Y-axis if X-movement causes collision
+      if (isCollidingAt(newX, newY) && !canMoveY) {
+        for (let fraction = 0.9; fraction > 0.1; fraction -= 0.2) {
+          const slideY = dy * fraction;
+          if (!isCollidingAt(newX, player.y + slideY)) {
+            newY = player.y + slideY;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (canMoveY) {
+      newY += dy;
+      // Try sliding along X-axis if Y-movement causes collision
+      if (isCollidingAt(newX, newY) && !canMoveX) {
+        for (let fraction = 0.9; fraction > 0.1; fraction -= 0.2) {
+          const slideX = dx * fraction;
+          if (!isCollidingAt(player.x + slideX, newY)) {
+            newX = player.x + slideX;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Handle case where both axes are blocked
+    if (!canMoveX && !canMoveY) {
+      // Try reduced movement in primary direction
+      const primaryAxis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      for (let fraction = 0.9; fraction > 0.1; fraction -= 0.2) {
+        if (primaryAxis === "x") {
+          if (!isCollidingAt(player.x + dx * fraction, player.y)) {
+            newX = player.x + dx * fraction;
+            break;
+          }
+        } else {
+          if (!isCollidingAt(player.x, player.y + dy * fraction)) {
+            newY = player.y + dy * fraction;
+            break;
+          }
+        }
+      }
+    }
+  }
+  
+  // Apply movement if valid
+  if (!isCollidingAt(newX, newY)) {
+    player.x = newX;
+    player.y = newY;
+  }
+  
+  // World boundaries
   player.x = Math.max(0, Math.min(WORLD_SIZE - player.size, player.x));
   player.y = Math.max(0, Math.min(WORLD_SIZE - player.size, player.y));
+  
+  sendPlayerPosition(player.x, player.y);
+  
+  // Item pickup logic (unchanged)
   if (player && typeof droppedItems !== 'undefined' && typeof inventory !== 'undefined') {
     const playerCenterX = player.x + player.size / 2;
     const playerCenterY = player.y + player.size / 2;
@@ -66,6 +191,7 @@ function updatePlayerPosition(deltaTime) {
       }
     });
   }
+
 }
 
 let lastStaminaUseTime = 0;
@@ -125,30 +251,11 @@ function updatePlayerFacing(mouseX, mouseY) {
   player.facingAngle = Math.atan2(dy, dx);
 }
 
-
-//load player image
-const playerImage = new Image();
-playerImage.src = "/Player1.png"; // Adjust the path if needed
-let playerImageLoaded = false;
-playerImage.onload = () => {
-  playerImageLoaded = true;
-};
-
-// Load hand image
-const handImage = new Image();
-handImage.src = "/hand.png";
-let handImageLoaded = false;
-handImage.onload = () => {
-  handImageLoaded = true;
-};
-
-// New variables for attack animation
-let isAttacking = false;
-let attackStartTime = 0;
-
-// Modified drawPlayer function with animated 90-degree attack cone
 function drawPlayer() {
   if (!player || isDead || typeof ctx === 'undefined') return;
+  // Enable high-quality image smoothing for cleaner rotations
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
   ctx.shadowBlur = 5;
   ctx.shadowOffsetX = 3;
@@ -179,8 +286,7 @@ function drawPlayer() {
     const attackSpeed = getAttackSpeed();
     const attackProgress = Math.min((now - attackStartTime) / (attackSpeed * 1000), 1);
     const startAngle = player.facingAngle - ATTACK_ANGLE / 2;
-    const currentAngle = startAngle + attackProgress * ATTACK_ANGLE; // Scale swing by attackSpeed
-    // Fill the cone area only, no stroke
+    const currentAngle = startAngle + attackProgress * ATTACK_ANGLE;
     ctx.beginPath();
     ctx.moveTo(centerX, centerY);
     ctx.lineTo(
@@ -192,12 +298,10 @@ function drawPlayer() {
     ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
     ctx.fill();
     ctx.restore();
-    // Stop animation when complete
     if (attackProgress >= 1) {
       isAttacking = false;
     }
   } else {
-    // Draw static 90-degree cone when not attacking
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(centerX, centerY);
@@ -212,7 +316,7 @@ function drawPlayer() {
     ctx.restore();
   }
 
-  // Draw left hand: if holding a tool/item, only move left hand back for realism (never forward punch)
+  // Draw left hand
   if (handImageLoaded) {
     const handScale = player.size / 32;
     let handXOffset = player.size * 0.75;
@@ -227,12 +331,9 @@ function drawPlayer() {
     let localY = handYOffset;
     let moveBack = false;
     if (selected && ItemTypes[selected.type] && isAttacking) {
-      // If holding any item/tool, only move left hand back for realism (never forward punch)
       moveBack = true;
-    } else if ((!selected || !ItemTypes[selected.type]) && isAttacking) {
-      // If hand mode (no item/tool), animate punch as before
+    } else if (!selected && isAttacking) {
       if (punchHand === 'left') {
-        // ...existing code for left hand punch animation...
         const now = performance.now();
         const attackSpeed = getAttackSpeed();
         const attackDuration = attackSpeed * 1000;
@@ -268,7 +369,6 @@ function drawPlayer() {
       }
     }
     if (moveBack) {
-      // Move left hand back a bit (for tool/item or when right hand punches)
       const now = performance.now();
       const attackSpeed = getAttackSpeed();
       const attackDuration = attackSpeed * 1000;
@@ -287,7 +387,8 @@ function drawPlayer() {
     );
     ctx.restore();
   }
-  // Draw item/tool in right hand, with attack animation for all items
+
+  // Draw right hand with item/tool
   if (handImageLoaded) {
     const handScale = player.size / 32;
     let handXOffset = player.size * 0.8;
@@ -309,7 +410,6 @@ function drawPlayer() {
       if (punchHand === 'left') counterMove = true;
     }
     if (animate) {
-      // Animate right hand punch for any item
       const now = performance.now();
       const attackSpeed = getAttackSpeed();
       const attackDuration = attackSpeed * 1000;
@@ -341,7 +441,6 @@ function drawPlayer() {
         localY = bezier(1 - t, startY, controlY, endY);
       }
     } else if (counterMove) {
-      // Move right hand back a bit when left hand punches
       const now = performance.now();
       const attackSpeed = getAttackSpeed();
       const attackDuration = attackSpeed * 1000;
@@ -351,7 +450,6 @@ function drawPlayer() {
       localY = handYOffset + backAmount * 0.5;
     }
     ctx.translate(localX, localY);
-    // Draw item/tool if selected
     if (selected && ItemTypes[selected.type]) {
       if (ItemTypes[selected.type].isTool && selected.type === 'wooden_sword' && swordImage.complete) {
         const scale = 1.25;
@@ -379,16 +477,66 @@ function drawPlayer() {
           imgHeight
         );
         ctx.restore();
-      } else {
-        // Draw colored rectangle for any other item/tool
+      } else if (ItemTypes[selected.type].isTool && selected.type === 'wooden_pickaxe' && pickaxeImageLoaded) {
+        const scale = 1.25;
+        const imgWidth = wooden_pickaxe_Image.width * scale;
+        const imgHeight = wooden_pickaxe_Image.height * scale;
         ctx.save();
-        ctx.rotate(Math.PI / 2); // make it vertical
+        let pickaxeAngle = Math.PI * 1.5 + Math.PI / 8;
+        if (isAttacking) {
+          const now = performance.now();
+          const attackSpeed = getAttackSpeed();
+          const attackDuration = attackSpeed * 1000;
+          let attackProgress = (now - attackStartTime) / attackDuration;
+          if (attackProgress > 1) attackProgress = 1;
+          pickaxeAngle -= (Math.PI / 2) * (1 - attackProgress);
+        }
+        ctx.rotate(pickaxeAngle);
+        const pickaxeOffsetX = 10;
+        const pickaxeOffsetY = 6;
+        ctx.translate(pickaxeOffsetX, pickaxeOffsetY);
+        ctx.drawImage(
+          wooden_pickaxe_Image,
+          -imgWidth / 2,
+          -imgHeight,
+          imgWidth,
+          imgHeight
+        );
+        ctx.restore();
+        } else if (ItemTypes[selected.type].isTool && selected.type === 'wooden_axe' && axeImageLoaded) {
+          const scale = 1.25;
+          const imgWidth = wooden_axe_Image.width * scale;
+          const imgHeight = wooden_axe_Image.height * scale;
+          ctx.save();
+          let axeAngle = Math.PI * 1.5 + Math.PI / 8;
+          if (isAttacking) {
+            const now = performance.now();
+            const attackSpeed = getAttackSpeed();
+            const attackDuration = attackSpeed * 1000;
+            let attackProgress = (now - attackStartTime) / attackDuration;
+            if (attackProgress > 1) attackProgress = 1;
+            axeAngle -= (Math.PI / 2) * (1 - attackProgress);
+          }
+          ctx.rotate(axeAngle);
+          const axeOffsetX = 10;
+          const axeOffsetY = 6;
+          ctx.translate(axeOffsetX, axeOffsetY);
+          ctx.drawImage(
+            wooden_axe_Image,
+            -imgWidth / 2,
+            -imgHeight,
+            imgWidth,
+            imgHeight
+          );
+          ctx.restore();
+      } else {
+        ctx.save();
+        ctx.rotate(Math.PI / 2);
         ctx.fillStyle = ItemTypes[selected.type].color || 'gray';
         ctx.fillRect(-6, -24, 12, 48);
         ctx.restore();
       }
     }
-    // Draw right hand on top of item/tool
     ctx.drawImage(
       handImage,
       -handImage.width / 2 * handScale,
@@ -398,7 +546,8 @@ function drawPlayer() {
     );
     ctx.restore();
   }
-  // Draw player body (above hands)
+
+  // Draw player body
   ctx.save();
   ctx.translate(centerX, centerY);
   ctx.rotate(player.facingAngle + Math.PI / 2);
@@ -417,16 +566,19 @@ function drawPlayer() {
     ctx.fill();
     ctx.closePath();
   }
+  // Draw hit overlay if not fully transparent
+  if (player.color && !player.color.endsWith(", 0)")) {
+    ctx.fillStyle = player.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, player.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
   ctx.fillStyle = "white";
   ctx.font = "14px Arial";
   ctx.textAlign = "center";
   ctx.fillText(player.name || "You", centerX, player.y - 10);
 }
-
-const swordImage = new Image();
-swordImage.src = 'wooden_sword.png'; // change path as needed
-
 
 function drawTool() {
   if (typeof hotbar === 'undefined' || typeof ItemTypes === 'undefined' || typeof ctx === 'undefined' || !player) return;
@@ -447,45 +599,51 @@ function drawTool() {
     toolAngle = startAngle + attackProgress * ATTACK_ANGLE;
   }
 
-  // Move sword/tool to right hand position (hand on handle, natural idle)
   const handScale = player.size / 32;
-  // Move sword further right by increasing handXOffset
   const handXOffset = player.size * 0.95;
   const handYOffset = -player.size * 0.55;
-  // Hand local position (center of hand image at hand)
   const handLocalX = -handImage.width / 2 * handScale + handXOffset;
   const handLocalY = -handImage.height / 2 * handScale + handYOffset;
   ctx.save();
   ctx.translate(centerX, centerY);
   ctx.rotate(player.facingAngle + Math.PI / 2);
-  ctx.rotate(Math.PI / 8); // right hand angle
+  ctx.rotate(Math.PI / 8);
   ctx.translate(handLocalX, handLocalY);
   ctx.rotate(toolAngle - player.facingAngle);
   if (selected.type === 'wooden_sword' && swordImage.complete) {
-    // Make sword bigger and align handle to hand
     const scale = 1.25;
     const imgWidth = swordImage.width * scale;
     const imgHeight = swordImage.height * scale;
     ctx.save();
-    // Rotate so the handle is at the hand, and blade points forward (adjusted for natural grip)
-    ctx.rotate(Math.PI * 1.5 + Math.PI / 8); // 270deg + 22.5deg, so blade points forward, handle in hand
-    // Move sword so the handle is at the hand (handle is at bottom of image)
+    ctx.rotate(Math.PI * 1.5 + Math.PI / 8);
     ctx.drawImage(
       swordImage,
       -imgWidth / 2,
-      -imgHeight * 0.82, // 0.82 puts the handle at the hand, adjust as needed
+      -imgHeight * 0.82,
       imgWidth,
       imgHeight
     );
     ctx.restore();
-  } else if (ItemTypes[selected.type]) {
+  } else if (selected.type === 'wooden_pickaxe' && pickaxeImageLoaded) {
+    const scale = 1.25;
+    const imgWidth = wooden_pickaxe_Image.width * scale;
+    const imgHeight = wooden_pickaxe_Image.height * scale;
+    ctx.save();
+    ctx.rotate(Math.PI * 1.5 + Math.PI / 8);
+    ctx.drawImage(
+      wooden_pickaxe_Image,
+      -imgWidth / 2,
+      -imgHeight * 0.82,
+      imgWidth,
+      imgHeight
+    );
+    ctx.restore();
+  } else {
     ctx.fillStyle = ItemTypes[selected.type].color || 'gray';
     ctx.fillRect(-2, -toolLength / 2, 4, toolLength);
   }
   ctx.restore();
 }
-
-
 
 function gainXP(amount) {
   if (!player) return;
@@ -557,10 +715,8 @@ if (typeof socket !== "undefined" && socket) {
 
 function tryAttack() {
   if (!player || typeof hotbar === 'undefined' || typeof ItemTypes === 'undefined' || typeof otherPlayers === 'undefined') return;
-  // Alternate punch hand for each attack
   punchHand = (punchHand === 'right') ? 'left' : 'right';
   const selected = hotbar.slots[hotbar.selectedIndex];
-  // If selected slot is empty, stay in hand mode, but do NOT deselect hotbar
   let selectedTool = (selected && selected.type) ? selected.type : "hand";
   const toolInfo = ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1, attackRange: DEFAULT_ATTACK_RANGE };
   const swordTypes = ["hand", "sword"];
@@ -592,53 +748,168 @@ function tryAttack() {
   }
 }
 
-
-function normalizeAngle(angle) {
-    angle = angle % (2 * Math.PI);
-    return angle > Math.PI ? angle - 2 * Math.PI : 
-           angle < -Math.PI ? angle + 2 * Math.PI : angle;
-}
-
-
 function isObjectInAttackCone(player, object, coneLength, ATTACK_ANGLE) {
-  // Calculate center coordinates
   const playerCenterX = player.x + player.size / 2;
   const playerCenterY = player.y + player.size / 2;
-  const objectCenterX = object.sizeX !== undefined ? object.x + object.sizeX / 2 : object.x + object.size / 2;
-  const objectCenterY = object.sizeY !== undefined ? object.y + object.sizeY / 2 : object.y + object.size / 2;
+  const isRectangle = object.sizeX !== undefined && object.sizeY !== undefined;
+  const isCircle = object.radius !== undefined;
   
-  // Calculate differences using centers
-  const dx = objectCenterX - playerCenterX;
-  const dy = objectCenterY - playerCenterY;
-  
-  // Calculate distance between centers
-  const distance = Math.sqrt(dx * dx + dy * dy);
-  
-  // Define the object’s hitbox radius
-  const objectRadius = object.sizeX !== undefined ? Math.min(object.sizeX, object.sizeY) / 2 : object.size / 2;
-  
-  // Check if the object is within range
-  if (distance > coneLength + objectRadius) {
-    return false;
+  // 1. Check if player is INSIDE the object
+  if (isCircle) {
+    const dx = playerCenterX - object.x;
+    const dy = playerCenterY - object.y;
+    if (Math.sqrt(dx * dx + dy * dy) <= object.radius) {
+      return true;
+    }
+  } else if (isRectangle) {
+    if (playerCenterX >= object.x && playerCenterX <= object.x + object.sizeX &&
+        playerCenterY >= object.y && playerCenterY <= object.y + object.sizeY) {
+      return true;
+    }
+  } else { // Square (uses object.size)
+    if (playerCenterX >= object.x && playerCenterX <= object.x + object.size &&
+        playerCenterY >= object.y && playerCenterY <= object.y + object.size) {
+      return true;
+    }
   }
-  
-  // Calculate the angle to the object
-  const angleToObject = Math.atan2(dy, dx);
-  
-  // Calculate angular difference
-  let angleDiff = normalizeAngle(angleToObject - player.facingAngle);
-  
-  // Calculate angular allowance based on radius
-  let angularAllowance = 0;
-  if (distance > 0) {
-    angularAllowance = Math.asin(objectRadius / distance);
+
+  // 2. Circle or Square: Center check with angular allowance
+  if (!isRectangle) {
+    const objectCenterX = isCircle ? object.x : object.x + object.size / 2;
+    const objectCenterY = isCircle ? object.y : object.y + object.size / 2;
+    const objectRadius = isCircle ? object.radius : object.size / 2;
+
+    const dx = objectCenterX - playerCenterX;
+    const dy = objectCenterY - playerCenterY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance <= coneLength + objectRadius) {
+      const angleToObject = Math.atan2(dy, dx);
+      let angleDiff = normalizeAngle(angleToObject - player.facingAngle);
+      let angularAllowance = distance > 0 ? Math.asin(objectRadius / distance) : 0;
+      if (Math.abs(angleDiff) <= ATTACK_ANGLE / 2 + angularAllowance) {
+        return true;
+      }
+    }
   }
-  
-  // Check if the object is within the attack cone
-  return Math.abs(angleDiff) <= ATTACK_ANGLE / 2 + angularAllowance;
+
+  // 3. Rectangle: Full coverage checks
+  if (isRectangle) {
+    const objectCenterX = object.x + object.sizeX / 2;
+    const objectCenterY = object.y + object.sizeY / 2;
+    const corners = [
+      { x: object.x, y: object.y },
+      { x: object.x + object.sizeX, y: object.y },
+      { x: object.x + object.sizeX, y: object.y + object.sizeY },
+      { x: object.x, y: object.y + object.sizeY }
+    ];
+
+    // Corner checks
+    for (const corner of corners) {
+      const dx = corner.x - playerCenterX;
+      const dy = corner.y - playerCenterY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance <= coneLength) {
+        const angle = Math.atan2(dy, dx);
+        const angleDiff = normalizeAngle(angle - player.facingAngle);
+        if (Math.abs(angleDiff) <= ATTACK_ANGLE / 2) {
+          return true;
+        }
+      }
+    }
+
+    // Center point check
+    const dxCenter = objectCenterX - playerCenterX;
+    const dyCenter = objectCenterY - playerCenterY;
+    const distanceCenter = Math.sqrt(dxCenter * dxCenter + dyCenter * dyCenter);
+    if (distanceCenter <= coneLength) {
+      const angleCenter = Math.atan2(dyCenter, dxCenter);
+      const angleDiffCenter = normalizeAngle(angleCenter - player.facingAngle);
+      if (Math.abs(angleDiffCenter) <= ATTACK_ANGLE / 2) {
+        return true;
+      }
+    }
+
+    // Edge-Ray intersections
+    const rayAngles = [
+      player.facingAngle - ATTACK_ANGLE / 2,
+      player.facingAngle + ATTACK_ANGLE / 2
+    ];
+    const rayEnds = rayAngles.map(angle => ({
+      x: playerCenterX + coneLength * Math.cos(angle),
+      y: playerCenterY + coneLength * Math.sin(angle)
+    }));
+
+    for (let i = 0; i < corners.length; i++) {
+      const edgeStart = corners[i];
+      const edgeEnd = corners[(i + 1) % corners.length];
+      
+      for (const rayEnd of rayEnds) {
+        if (doSegmentsIntersect(
+          playerCenterX, playerCenterY, rayEnd.x, rayEnd.y,
+          edgeStart.x, edgeStart.y, edgeEnd.x, edgeEnd.y
+        )) {
+          return true;
+        }
+      }
+    }
+
+    // Edge-Arc overlap (simplified)
+    for (let i = 0; i < corners.length; i++) {
+      const edgeStart = corners[i];
+      const edgeEnd = corners[(i + 1) % corners.length];
+      if (isEdgeIntersectingArc(
+        edgeStart, edgeEnd, playerCenterX, playerCenterY, coneLength, 
+        player.facingAngle, ATTACK_ANGLE
+      )) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
-// Add this at the bottom
+// Helper: Normalize angle to [-π, π]
+function normalizeAngle(angle) {
+  angle = angle % (2 * Math.PI);
+  if (angle > Math.PI) angle -= 2 * Math.PI;
+  if (angle < -Math.PI) angle += 2 * Math.PI;
+  return angle;
+}
+
+// Helper: Segment-segment intersection
+function doSegmentsIntersect(x1, y1, x2, y2, x3, y3, x4, y4) {
+  const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+  if (denom === 0) return false;
+
+  const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
+  const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
+  return ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1;
+}
+
+// Helper: Edge-arc overlap (simplified)
+function isEdgeIntersectingArc(edgeStart, edgeEnd, cx, cy, radius, facingAngle, attackAngle) {
+  // Check if edge endpoints are beyond the arc
+  const startDist = Math.hypot(edgeStart.x - cx, edgeStart.y - cy);
+  const endDist = Math.hypot(edgeEnd.x - cx, edgeEnd.y - cy);
+  if (startDist > radius && endDist > radius) return false;
+
+  // Check if edge midpoint is within the cone
+  const midX = (edgeStart.x + edgeEnd.x) / 2;
+  const midY = (edgeStart.y + edgeEnd.y) / 2;
+  const dx = midX - cx;
+  const dy = midY - cy;
+  const distance = Math.hypot(dx, dy);
+  if (distance <= radius) {
+    const angle = Math.atan2(dy, dx);
+    const angleDiff = normalizeAngle(angle - facingAngle);
+    if (Math.abs(angleDiff) <= attackAngle / 2) {
+      return true;
+    }
+  }
+  return false;
+}
+
 window.sendPlayerPosition = sendPlayerPosition;
 window.consumeFood = consumeFood;
 window.tryAttack = tryAttack;

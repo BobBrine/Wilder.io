@@ -10,45 +10,85 @@ function getResourceArrayByType(type) {
   return allResources[type] || [];
 }
 
-function isCollidingWithResources(newX, newY, sizeX = player.size, sizeY = player.size) {
+function isCollidingWithResources(newX, newY, sizeX = player.size, sizeY = player.size, allResources) {
+  const overlapMargin = sizeX * 0.4; // 40% overlap allowed, consistent with mob collision
+  const { cx, cy } = getCenter(newX, newY, sizeX);
   const all = Object.values(allResources).flat();
-  return all.some(resource => resource.sizeX > 0 && resource.sizeY > 0 && 
-    checkOverlap(newX, newY, sizeX, sizeY, resource.x, resource.y, resource.sizeX, resource.sizeY));
+  return all.some(resource => {
+    if (resource.sizeX > 0 && resource.sizeY > 0) {
+      const rcx = resource.x + resource.sizeX / 2;
+      const rcy = resource.y + resource.sizeY / 2;
+      const minDistX = (sizeX + resource.sizeX) / 2 - overlapMargin;
+      const minDistY = (sizeY + resource.sizeY) / 2 - overlapMargin;
+      return Math.abs(cx - rcx) < minDistX && Math.abs(cy - rcy) < minDistY;
+    }
+    return false;
+  });
+}
+
+function getCenter(x, y, size) {
+  return { cx: x + size / 2, cy: y + size / 2 };
 }
 
 function hitResourceInCone() {
   if (!player) return false;
+
   let attackRange = 50;
   const coneAngle = ATTACK_ANGLE;
   const selected = hotbar.slots[hotbar.selectedIndex];
   let selectedTool = selected?.type || "hand";
-  const toolInfo = ItemTypes && ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1, attackRange: 50 };
+
+  const toolInfo = (ItemTypes && ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool)
+    ? ItemTypes[selectedTool]
+    : { category: "hand", tier: 0, damage: 1, attackRange: 50 };
+
   if (toolInfo.attackRange) attackRange = toolInfo.attackRange;
+
+  let staminaSpent = false; // ✅ track if stamina has been spent
+
   for (const [type, config] of Object.entries(resourceTypes)) {
     const list = getResourceArrayByType(type);
+
     for (const resource of list) {
       const rx = resource.x;
       const ry = resource.y;
+
+      // Debug visuals (optional)
       ctx.beginPath();
       ctx.fillStyle = 'rgba(0, 255, 255, 0.92)';
       ctx.arc(rx, ry, 5, 0, Math.PI * 2);
       ctx.fill();
-      if (resource.sizeX > 0 && resource.sizeY > 0 && isObjectInAttackCone(player, resource, attackRange, coneAngle)) {
-        if (!config.requiredTool.categories.includes(toolInfo.category) || toolInfo.tier < config.requiredTool.minTier) {
+
+      // ✅ Only hit if resource is in cone
+      if (resource.sizeX > 0 && resource.sizeY > 0 &&
+          isObjectInAttackCone(player, resource, attackRange, coneAngle)) {
+
+        // ✅ Tool effectiveness check
+        if (!config.requiredTool.categories.includes(toolInfo.category) ||
+            toolInfo.tier < config.requiredTool.minTier) {
           showMessage("This tool is not effective.");
           return;
         }
-        const damage = toolInfo.damage;
-        const cost = 2;
-        if (stamina < cost) {
-          showMessage("Low Stamina");
-          return;
+
+        // ✅ Spend stamina ONCE
+        if (!staminaSpent) {
+          const cost = 2;
+          if (stamina < cost) {
+            showMessage("Low Stamina");
+            return;
+          }
+          stamina -= cost;
+          lastStaminaUseTime = 0;
+          staminaSpent = true;
         }
-        stamina -= cost;
-        lastStaminaUseTime = 0;
+
+        // ✅ Apply damage to resource
+        const damage = toolInfo.damage;
         resource.health -= damage;
         socket.emit("resourceHit", { type, id: resource.id, newHealth: resource.health });
         showDamageText(rx, ry, -damage);
+        triggerResourceHitAnimation(resource, player);
+
         if (resource.health <= 0) {
           resource.sizeX = 0;
           resource.sizeY = 0;
@@ -60,6 +100,7 @@ function hitResourceInCone() {
     }
   }
 }
+
 
 function drawHealthBarR(resource) {
   const config = resourceTypes[resource.type];
@@ -119,67 +160,115 @@ if (typeof socket !== "undefined" && socket) {
 function drawResources() {
   const now = performance.now();
   const dotPositions = [
-    {x: 0.15, y: 0.25},  // Top-left quarter
-    {x: 0.5, y: 0.75},    // Center
-    {x: 0.75, y: 0.25}   // Bottom-right quarter
+    { x: 0.15, y: 0.25 }, // Top-left quarter
+    { x: 0.5,  y: 0.75 }, // Center
+    { x: 0.75, y: 0.25 }  // Bottom-right quarter
   ];
-  const lightspot = [
-    {x:0.8, y:0.25}
-  ]
+
   for (const resources of Object.values(allResources)) {
     for (const r of resources) {
       if (r.sizeX > 0 && r.sizeY > 0) {
-        ctx.save();  // Save current state
+
+        // ===== Apply hit animation offset (visual only) =====
+        let drawX = r.x;
+        let drawY = r.y;
+        if (r.hitAnim) {
+          const t = (now - r.hitAnim.startTime) / r.hitAnim.duration;
+          if (t >= 1) {
+            r.hitAnim = null; // animation done
+          } else {
+            const phase = t < 0.5
+              ? t / 0.5 // going out
+              : 1 - ((t - 0.5) / 0.5); // returning
+            drawX += r.hitAnim.offsetX * phase;
+            drawY += r.hitAnim.offsetY * phase;
+          }
+        }
+
+        ctx.save();
         ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
         ctx.shadowBlur = 5;
         ctx.shadowOffsetX = 3;
         ctx.shadowOffsetY = 3;
 
-        
-
-        
-        if (r.type == 'food'){
-          // Draw main food resource rectangle
+        if (r.type === 'food') {
+          // Main food rectangle
           ctx.fillStyle = resourceTypes[r.type].color;
-          ctx.fillRect(r.x, r.y, r.sizeX, r.sizeY);
-          
-          ctx.fillStyle = '#0f0'; // Bright green
+          ctx.fillRect(drawX, drawY, r.sizeX, r.sizeY);
+
+          // Green dots
+          ctx.fillStyle = '#0f0';
           const dotSize = 10;
           dotPositions.forEach(pos => {
-            // Calculate absolute position within the food resource
-            const dotX = r.x + pos.x * r.sizeX - dotSize/2;
-            const dotY = r.y + pos.y * r.sizeY - dotSize/2;
+            const dotX = drawX + pos.x * r.sizeX - dotSize / 2;
+            const dotY = drawY + pos.y * r.sizeY - dotSize / 2;
             ctx.fillRect(dotX, dotY, dotSize, dotSize);
           });
         } else {
-          // Draw resource rectangle
+          // Generic resource rectangle
           ctx.fillStyle = resourceTypes[r.type].color;
-          ctx.fillRect(r.x, r.y, r.sizeX, r.sizeY);
+          ctx.fillRect(drawX, drawY, r.sizeX, r.sizeY);
         }
-        
-        ctx.restore(); 
+        ctx.restore();
 
+        // ===== Top & Left highlight =====
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
         ctx.lineWidth = 5;
         ctx.beginPath();
-        ctx.moveTo(r.x, r.y + 2);  // Top edge
-        ctx.lineTo(r.x + r.sizeX, r.y + 2);
-        ctx.moveTo(r.x + 2, r.y);  // Left edge
-        ctx.lineTo(r.x + 2, r.y + r.sizeY);
+        ctx.moveTo(drawX, drawY + 2);  
+        ctx.lineTo(drawX + r.sizeX, drawY + 2);
+        ctx.moveTo(drawX + 2, drawY);  
+        ctx.lineTo(drawX + 2, drawY + r.sizeY);
         ctx.stroke();
 
-        // Draw bottom and right shadow (depth)
+        // ===== Bottom & Right shadow =====
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
         ctx.beginPath();
-        ctx.moveTo(r.x, r.y + r.sizeY - 2);  // Bottom edge
-        ctx.lineTo(r.x + r.sizeX, r.y + r.sizeY - 2);
-        ctx.moveTo(r.x + r.sizeX - 2, r.y);  // Right edge
-        ctx.lineTo(r.x + r.sizeX - 2, r.y + r.sizeY);
+        ctx.moveTo(drawX, drawY + r.sizeY - 2);  
+        ctx.lineTo(drawX + r.sizeX, drawY + r.sizeY - 2);
+        ctx.moveTo(drawX + r.sizeX - 2, drawY);  
+        ctx.lineTo(drawX + r.sizeX - 2, drawY + r.sizeY);
         ctx.stroke();
-        
-        
-        if (r.lastHitTime && now - r.lastHitTime < 1000) drawHealthBarR(r);
+
+        // ===== Debug hitboxes =====
+        if (showData) {
+          ctx.save();
+          ctx.strokeStyle = 'blue';
+          ctx.lineWidth = 1;
+          if (r.sizeX !== undefined && r.sizeY !== undefined) {
+            ctx.strokeRect(drawX, drawY, r.sizeX, r.sizeY);
+          } else if (r.radius !== undefined) {
+            ctx.beginPath();
+            ctx.arc(drawX, drawY, r.radius, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (r.size !== undefined) {
+            ctx.strokeRect(drawX, drawY, r.size, r.size);
+          }
+          ctx.restore();
+        }
+
+        // ===== Health bar when hit recently =====
+        if (r.lastHitTime && now - r.lastHitTime < 1000) {
+          drawHealthBarR({ ...r, x: drawX, y: drawY });
+        }
       }
     }
   }
+}
+
+
+// Store hit animation data in resource object
+function triggerResourceHitAnimation(resource, attacker) {
+  const dx = resource.x - attacker.x;
+  const dy = resource.y - attacker.y;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const knockbackDist = 8; // pixels
+
+  resource.hitAnim = {
+    offsetX: (dx / len) * knockbackDist,
+    offsetY: (dy / len) * knockbackDist,
+    progress: 0,   // 0 → going out, 1 → returning
+    startTime: performance.now(),
+    duration: 150 // ms total
+  };
 }

@@ -109,13 +109,16 @@ function setupSocketListeners() {
   });
 
   socket.on('playerSelf', (playerData) => {
-    player = playerData;
-    maxStamina = playerData.maxStamina;
-    stamina = maxStamina;
-    staminaRegenSpeed = playerData.staminaRegenSpeed;
-    maxHunger = playerData.maxHunger;
-    hunger = playerData.hunger;
-    isDead = playerData.isDead;
+  player = playerData;
+  maxStamina = playerData.maxStamina;
+  stamina = maxStamina;
+  staminaRegenSpeed = playerData.staminaRegenSpeed;
+  maxHunger = playerData.maxHunger;
+  hunger = playerData.hunger;
+  isDead = playerData.isDead;
+  // Close death screen immediately on respawn
+  const deathScreen = document.getElementById("deathScreen");
+  if (deathScreen) deathScreen.style.display = "none";
   });
 
   socket.on('playerRenamed', ({ id, name }) => {
@@ -510,11 +513,12 @@ if (devTest) {
     const tryLogin = () => {
       if (socket && socket.connected) {
         socket.emit("setName", "DevUser");
-        showMobData = true;
+        showData = true;
         inventory.addItem("wooden_sword", 1);
+        inventory.addItem("wooden_pickaxe", 1);
+        inventory.addItem("wooden_axe", 1);
         inventory.addItem("wood", 100);
         inventory.addItem("torch", 1);
-        inventory.addItem("wooden_axe", 1);
         inventory.addItem("food", 10);
       } else {
         setTimeout(tryLogin, 100);

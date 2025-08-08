@@ -59,7 +59,10 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
   }
 });
-
+// Allow Ctrl shortcuts on home page
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey) e.stopPropagation();
+}, true);
 document.addEventListener('keydown', (event) => {
   if (document.getElementById('dropAmountPrompt').style.display === 'block' && event.key === 'Enter') submitDropAmount();
 });

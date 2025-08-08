@@ -1,7 +1,7 @@
 let mobtype = {};
 let mobs = {};
 let mobloaded = false;
-let showMobData = false;
+let showData = false;
 
 function getMobArrayByType(type) {
   return mobs[type] || [];
@@ -57,6 +57,13 @@ function drawStar(ctx, x, y, size, points = 5, innerRadiusRatio = 0.4) {
   ctx.restore();
 }
 function drawMob() {
+  // Force feet animation for all mobs for testing
+  // Remove this line when you want real movement logic
+  for (const mobList of Object.values(mobs)) {
+    for (const mob of mobList) {
+      mob.isMovingForward = true;
+    }
+  }
   const now = performance.now();
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
@@ -89,34 +96,109 @@ function drawMob() {
         ctx.stroke();
         ctx.restore();
         
+        // Draw mob feet (rotating with facingAngle)
+        // Always use the same color for both body and feet
+        let mobColor = mob.color;
+        if (!mobColor) {
+          if (mob.type === "special_mob") mobColor = "white";
+          else if (mob.type === "aggressive_mob") mobColor = "red";
+          else mobColor = "green";
+        }
+        let outlineColor;
+        if (mob.type === "passive_mob") {
+          outlineColor = "white";
+        } else if (mob.type === "aggressive_mob") {
+          outlineColor = "red";
+        } else if (mob.type === "special_mob") {
+          outlineColor = "yellow";
+        } else {
+          outlineColor = "white";
+        }
+        const feetSize = mob.size / 3;
+        const bodyRadius = mob.size / 2;
+        // Use a fixed offset so all feet are at the same distance from the center
+        const feetOffset = bodyRadius + feetSize * 0.25;
+        // Four feet: left front, right front, left back, right back (relative to facingAngle)
+        // Indices: 0 = left front, 1 = right front, 2 = left back, 3 = right back
+        // Angles: left front (+45°), right front (-45°), left back (+135°), right back (-135°)
+        const footAngles = [Math.PI/4, -Math.PI/4, (3*Math.PI)/4, -(3*Math.PI)/4];
+        // Natural 4-legged walk: each foot moves with a sine wave, offset by 90°
+        // Animation speed depends on mob's movement speed
+        let mobSpeed = 40; // fallback default
+        if (mobtype[mob.type]) {
+          if (mobtype[mob.type].profiles && mob.profile && mobtype[mob.type].profiles[mob.profile]) {
+            // Aggressive mob with profile
+            const speedObj = mobtype[mob.type].profiles[mob.profile].speed;
+            if (speedObj && typeof speedObj.min === 'number' && typeof speedObj.max === 'number') {
+              mobSpeed = (speedObj.min + speedObj.max) / 2;
+            }
+          } else if (mobtype[mob.type].speed) {
+            // Passive mob
+            const speedObj = mobtype[mob.type].speed;
+            if (speedObj && typeof speedObj.min === 'number' && typeof speedObj.max === 'number') {
+              mobSpeed = (speedObj.min + speedObj.max) / 2;
+            }
+          }
+        }
+        // Map mobSpeed (e.g. 20-120) to walkSpeed (ms per cycle, e.g. 1800ms for slow, 600ms for fast)
+        // Higher mobSpeed = faster animation (lower walkSpeed)
+        const minMobSpeed = 20, maxMobSpeed = 120, minWalkSpeed = 600, maxWalkSpeed = 1800;
+        const clampedMobSpeed = Math.max(minMobSpeed, Math.min(maxMobSpeed, mobSpeed));
+        // Make animation much faster by multiplying speed (reduce walkSpeed)
+        const speedMultiplier = 0.4; // 0.4x original walkSpeed (2.5x faster)
+        const walkSpeed = (maxWalkSpeed - ((clampedMobSpeed - minMobSpeed) / (maxMobSpeed - minMobSpeed)) * (maxWalkSpeed - minWalkSpeed)) * speedMultiplier;
+        const t = mob.isMovingForward ? (performance.now() % walkSpeed) / walkSpeed : 0;
+        const footOffsets = footAngles.map((a, i) => {
+          // phase for all feet
+          const phase = t * Math.PI * 2;
+          // Mirrored gait: left front (0) & right back (3) use sin(phase), right front (1) & left back (2) use sin(phase + PI)
+          let walkOffset = 0;
+          if (mob.isMovingForward) {
+            const stepSize = 0.35; // smaller step
+            if (i === 0 || i === 3) {
+              walkOffset = feetSize * stepSize * Math.sin(phase);
+            } else {
+              walkOffset = feetSize * stepSize * Math.sin(phase + Math.PI);
+            }
+          }
+          let x = Math.cos(a + mob.facingAngle) * feetOffset + Math.cos(mob.facingAngle) * walkOffset;
+          let y = Math.sin(a + mob.facingAngle) * feetOffset + Math.sin(mob.facingAngle) * walkOffset;
+          return { x, y };
+        });
+        for (const foot of footOffsets) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(centerX + foot.x - feetSize/2, centerY + foot.y - feetSize/2, feetSize, feetSize);
+          ctx.fillStyle = mobColor;
+          ctx.fill();
+          ctx.strokeStyle = outlineColor;
+          ctx.lineWidth = 2; // Always set lineWidth for feet
+          ctx.stroke();
+          ctx.restore();
+        }
+        // Draw mob body (rotates with facingAngle)
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate(mob.facingAngle);
-        // Draw mob with appropriate shape
-        const mobColor = mob.color || (mob.type === "special_mob" ? "white" : mob.type === "aggressive_mob" ? "red" : "green");
         ctx.fillStyle = mobColor;
-        
-        
-        ctx.lineWidth = 3;
-        
         if (mob.type === "passive_mob") {
           ctx.strokeStyle = "white";
-          // Circle doesn't need rotation (symmetric)
+          ctx.lineWidth = 3; // Thicker outline for body
           ctx.beginPath();
           ctx.arc(0, 0, mob.size / 2, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
         } else if (mob.type === "aggressive_mob") {
           ctx.strokeStyle = "red";
+          ctx.lineWidth = 3;
           if (mob.profile === "speedster") {
-            // Triangle (pointing right by default)
             ctx.beginPath();
             ctx.moveTo(mob.size/2, 0);
             ctx.lineTo(-mob.size/3, mob.size/2);
             ctx.lineTo(-mob.size/3, -mob.size/2);
             ctx.closePath();
             ctx.fill();
-            ctx.stroke();// Triangle (point up)
+            ctx.stroke();
           } else if (mob.profile === "tank") {
             drawPolygon(ctx, 0, 0, mob.size, 6); // Hexagon
           } else if (mob.profile === "longRange") {
@@ -125,19 +207,19 @@ function drawMob() {
             drawPolygon(ctx, 0, 0, mob.size * Math.SQRT2, 4, Math.PI/4); // Diamond
           }
         } else if (mob.type === "special_mob") {
-            ctx.save();
-            ctx.translate(0, 0);
-            const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, mob.size / 2);
-            gradient.addColorStop(0, "white");
-            gradient.addColorStop(1, "rgba(255, 255, 255, 0.5)");
-            ctx.fillStyle = gradient;
-            ctx.strokeStyle = "yellow"; // Explicitly set stroke style
-            drawStar(ctx, 0, 0, mob.size);
-            ctx.restore();
-          }
-        // Restore context to pre-rotation state
+          ctx.save();
+          ctx.translate(0, 0);
+          const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, mob.size / 2);
+          gradient.addColorStop(0, mobColor);
+          gradient.addColorStop(1, "rgba(255, 255, 255, 0.5)");
+          ctx.fillStyle = gradient;
+          ctx.strokeStyle = "yellow";
+          ctx.lineWidth = 3;
+          drawStar(ctx, 0, 0, mob.size);
+          ctx.restore();
+        }
         ctx.restore();
-        if (showMobData) {
+        if (showData) {
           
           const aggroRadius = mobtype[mob.type].aggroRadius;
           const escapeRadius = mobtype[mob.type].escapeRadius;
@@ -171,12 +253,41 @@ function drawMob() {
               y -= fontSize + 2;
             }
           }
-          //hitbox
+          // collider (green outline, matches collision margin from mobdata.js)
+          // In mobdata.js, collision margin is: (mob.size + other.size)/2 - overlapMargin
+          // For visualizing the collider, use (mob.size/2 - overlapMargin)
+          const overlapMargin = mob.size * 0.4; // Must match mobdata.js
+          const colliderRadius = Math.max(1, mob.size / 2 - overlapMargin); // Prevent negative/zero radius
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, colliderRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(0, 255, 0, 0.7)"; // Green outline for collider
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          const pcenterX = player.x + player.size / 2;
+          const pcenterY = player.y + player.size / 2;
+          const PoverlapMargin = player.size * 0.2; // Must match mobdata.js
+          const PcolliderRadius = Math.max(1, player.size / 2 - PoverlapMargin); // Prevent negative/zero radius
+          ctx.beginPath();
+          ctx.arc(pcenterX, pcenterY, PcolliderRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(0, 255, 0, 0.7)"; // Green outline for collider
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          const PoverlapMargin2 = player.size * 0.4; // Must match mobdata.js
+          const PcolliderRadius2 = Math.max(1, player.size / 2 - PoverlapMargin2); // Prevent negative/zero radius
+          ctx.beginPath();
+          ctx.arc(pcenterX, pcenterY, PcolliderRadius2, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(246, 255, 0, 1)"; // Green outline for collider
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // hitbox (blue outline)
           const hitRadius = mob.size / 2;
           ctx.beginPath();
           ctx.arc(centerX, centerY, hitRadius, 0, Math.PI * 2);
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.3)"; // Transparent white
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = "rgba(0, 128, 255, 0.7)"; // Blue outline for hit detection
+          ctx.lineWidth = 2;
           ctx.stroke();
         }
         
@@ -206,23 +317,36 @@ function drawHealthBarM(mob) {
 
 function tryHitMob() {
   if (!player) return;
+
   let attackRange = 50;
   const coneAngle = ATTACK_ANGLE;
   const selected = hotbar.slots[hotbar.selectedIndex];
   let selectedTool = selected?.type || "hand";
-  const toolInfo = ItemTypes && ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1, attackRange: 50 };
+
+  const toolInfo = (ItemTypes && ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool)
+    ? ItemTypes[selectedTool]
+    : { category: "hand", tier: 0, damage: 1, attackRange: 50 };
+
   if (toolInfo.attackRange) attackRange = toolInfo.attackRange;
+
+  let staminaSpent = false; // ✅ Track if stamina has been deducted
 
   for (const [type, config] of Object.entries(mobtype)) {
     const list = getMobArrayByType(type);
+
     for (const mob of list) {
-      if (mob.size > 0) {
-        if (isObjectInAttackCone(player, mob, attackRange, coneAngle)) {
-          if (!config.requiredTool.categories.includes(toolInfo.category) || toolInfo.tier < config.requiredTool.minTier) {
-            showMessage("This tool is not effective.");
-            return;
-          }
-          const damage = toolInfo.damage;
+      if (mob.size > 0 && mob.health > 0 &&
+          isObjectInAttackCone(player, mob, attackRange, coneAngle)) {
+
+        // ✅ Tool effectiveness check
+        if (!config.requiredTool.categories.includes(toolInfo.category) ||
+            toolInfo.tier < config.requiredTool.minTier) {
+          showMessage("This tool is not effective.");
+          return;
+        }
+
+        // ✅ Stamina cost ONCE
+        if (!staminaSpent) {
           const cost = 10;
           if (stamina < cost) {
             showMessage("Low Stamina");
@@ -230,17 +354,39 @@ function tryHitMob() {
           }
           stamina -= cost;
           lastStaminaUseTime = 0;
-          mob.health -= damage; // Optimistic update
-          window.socket.emit("mobhit", { type, id: mob.id, newHealth: mob.health });
-          showDamageText(mob.x + mob.size / 2, mob.y + mob.size / 2, -damage);
-          mob.lastHitTime = performance.now();
-          player.isAttacking = true;
-          player.attackStartTime = performance.now();
-          
+          staminaSpent = true;
         }
+
+        // ✅ Apply damage
+        const damage = toolInfo.damage;
+        mob.health -= damage;
+        window.socket.emit("mobhit", { type, id: mob.id, newHealth: mob.health });
+        showDamageText(mob.x + mob.size / 2, mob.y + mob.size / 2, -damage);
+        mob.lastHitTime = performance.now();
+
+        player.isAttacking = true;
+        player.attackStartTime = performance.now();
       }
     }
   }
 }
 
+function isCollidingWithMobs(newX, newY, sizeX = player.size, sizeY = player.size, mobs) {
+  const overlapMargin = sizeX * 0.4 ; // 40% overlap allowed, consistent with resource collision
+  const { cx, cy } = getCenter(newX, newY, sizeX);
+  const allMobs = Object.values(mobs).flat();
+  return allMobs.some(mob => {
+    if (mob.size > 0) {
+      const mobColliderSize = mob.size * 0.4; 
+      const offset = (mob.size - mobColliderSize) / 2; 
+      const mcx = mob.x + offset + mobColliderSize / 2;
+      const mcy = mob.y + offset + mobColliderSize / 2;
+      const minDistX = (sizeX + mobColliderSize) / 2 - overlapMargin;
+      const minDistY = (sizeY + mobColliderSize) / 2 - overlapMargin;
+      return Math.abs(cx - mcx) < minDistX && Math.abs(cy - mcy) < minDistY;
+    }
+    return false;
+  });
+
+}
 window.tryHitMob = tryHitMob;
