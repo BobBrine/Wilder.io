@@ -1,6 +1,6 @@
 // Socket connection
 let socket = null;
-const devTest = true; // Set to true for development testing
+const devTest = false; // Set to true for development testing
 
 let latestSquare = null;
 let ping = 0;
