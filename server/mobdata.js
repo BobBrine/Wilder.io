@@ -212,7 +212,7 @@ function createMobSpawner(type, targetArray, isOverlapping, gameTime) {
     profiles = config.profiles;
   } else {
     profiles.default = {
-      count: () => maxCount,
+    // ...existing code...
       health: config.health,
       size: config.size,
       speed: config.speed,
@@ -223,7 +223,7 @@ function createMobSpawner(type, targetArray, isOverlapping, gameTime) {
   }
 
   for (const [profileName, profile] of Object.entries(profiles)) {
-    const profileMaxCount = profile.count(gameTime);
+  const profileMaxCount = typeof profile.count === 'function' ? profile.count(gameTime) : (typeof config.maxCount === 'function' ? config.maxCount(gameTime) : config.maxCount || 1);
     let profileActiveCount = targetArray.filter(r => r.size > 0 && r.profile === profileName).length;
 
     while (profileActiveCount < profileMaxCount) {
@@ -289,6 +289,26 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
 
     let profiles = {};
     if (type === "aggressive_mob") {
+
+  // Knockback mob: Prevent mob from entering resources
+  function applyKnockbackToMob(mob, knockbackVX, knockbackVY, duration, allResources) {
+    if (!mob || mob.health <= 0) return;
+    // Calculate new position after knockback
+    const newX = mob.x + knockbackVX * duration;
+    const newY = mob.y + knockbackVY * duration;
+    const mobSize = mob.size || 0;
+    // Use isOverlappingAny from resourceManager
+    const { isOverlappingAny } = require('./resourceManager');
+    // Prevent mob from entering resources
+    if (!isOverlappingAny(allResources, newX, newY, mobSize, mobSize)) {
+      mob.x = newX;
+      mob.y = newY;
+    } else {
+      // Optionally, slide along the edge or cancel knockback
+      // For now, just cancel knockback if overlap
+      // You can implement sliding logic if needed
+    }
+  }
       profiles = config.profiles;
     } else {
       profiles.default = {
@@ -458,6 +478,9 @@ function spawnAllMob(allResources, players, gameTime) {
   console.log(`Total mobs spawned: ${totalMobCount} (${Object.entries(mobs).map(([type, list]) => `${type}: ${list.filter(r => r.size > 0).length}`).join(', ')})`);
 }
 
+let ioRef = null;
+function setIO(ioInstance) { ioRef = ioInstance; }
+
 function updateMobs(allResources, players, deltaTime) {
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
@@ -572,10 +595,28 @@ function updateMobs(allResources, players, deltaTime) {
       }
 
       if (!mob.isTurning) {
-        const dx = Math.cos(mob.facingAngle) * mob.moveSpeed * deltaTime;
-        const dy = Math.sin(mob.facingAngle) * mob.moveSpeed * deltaTime;
-        const newX = mob.x + dx;
-        const newY = mob.y + dy;
+        // Base intended movement from AI
+        let moveDx = Math.cos(mob.facingAngle) * mob.moveSpeed * deltaTime;
+        let moveDy = Math.sin(mob.facingAngle) * mob.moveSpeed * deltaTime;
+
+        // Apply knockback velocity if active
+        if (mob.kbTimer && mob.kbTimer > 0) {
+          moveDx += (mob.kbVx || 0) * deltaTime;
+          moveDy += (mob.kbVy || 0) * deltaTime;
+          // Damping knockback
+          const damp = 3.5; // reduced damping for floatier knockback (was 6)
+          mob.kbVx *= Math.max(0, 1 - damp * deltaTime);
+          mob.kbVy *= Math.max(0, 1 - damp * deltaTime);
+          mob.kbTimer -= deltaTime;
+          if (mob.kbTimer <= 0 || (Math.abs(mob.kbVx) + Math.abs(mob.kbVy)) < 5) {
+            mob.kbTimer = 0;
+            mob.kbVx = 0;
+            mob.kbVy = 0;
+          }
+        }
+
+        const newX = mob.x + moveDx;
+        const newY = mob.y + moveDy;
 
         const minX = 0;
         const minY = 0;
@@ -674,6 +715,48 @@ function updateMobs(allResources, players, deltaTime) {
 
         if (!collideX) mob.x = Math.max(minX, Math.min(maxX, newX));
         if (!collideY) mob.y = Math.max(minY, Math.min(maxY, newY));
+        // If both axes blocked (likely tight overlap) attempt gentle separation from closest overlapping mob
+        if (collideX && collideY) {
+          const { cx, cy } = getCenter(mob.x, mob.y, mobSize);
+          let bestOther = null;
+            let bestOverlapScore = 0;
+          const allMobs = Object.values(mobs).flat();
+          for (const other of allMobs) {
+            if (other === mob || other.size <= 0) continue;
+            const otherColliderSize = other.size * 0.4;
+            const offset = (other.size - otherColliderSize) / 2;
+            const ocx = other.x + offset + otherColliderSize / 2;
+            const ocy = other.y + offset + otherColliderSize / 2;
+            const minDistX = (mobSize + otherColliderSize) / 2 - overlapMargin;
+            const minDistY = (mobSize + otherColliderSize) / 2 - overlapMargin;
+            const dx = cx - ocx;
+            const dy = cy - ocy;
+            const adx = Math.abs(dx);
+            const ady = Math.abs(dy);
+            if (adx < minDistX && ady < minDistY) {
+              const overlapX = minDistX - adx;
+              const overlapY = minDistY - ady;
+              const overlapScore = overlapX * overlapY; // area-based score
+              if (overlapScore > bestOverlapScore) {
+                bestOverlapScore = overlapScore;
+                bestOther = { dx, dy, overlapX, overlapY };
+              }
+            }
+          }
+          if (bestOther) {
+            // Resolve along axis of least penetration for stability
+            if (bestOther.overlapX < bestOther.overlapY) {
+              const push = bestOther.overlapX * 0.6; // move 60% out, remaining resolved over frames
+              mob.x += (bestOther.dx >= 0 ? push : -push);
+            } else {
+              const push = bestOther.overlapY * 0.6;
+              mob.y += (bestOther.dy >= 0 ? push : -push);
+            }
+            // Clamp after separation
+            mob.x = Math.max(minX, Math.min(maxX, mob.x));
+            mob.y = Math.max(minY, Math.min(maxY, mob.y));
+          }
+        }
       }
 
       if (config.isAggressive && mob.currentBehavior === 'chase' && mob.damageCooldown <= 0 && mob.health > 0) {
@@ -694,6 +777,14 @@ function updateMobs(allResources, players, deltaTime) {
 
             if (targetPlayer.health < 0) targetPlayer.health = 0;
             mob.damageCooldown = 1; 
+                // Emit knockback event using stored socketId
+                if (ioRef && targetPlayer.socketId) {
+                  ioRef.to(targetPlayer.socketId).emit('playerKnockback', {
+                    mobX: mob.x,
+                    mobY: mob.y,
+                    mobId: mob.id || null
+                  });
+                }
           }
         }
       }
@@ -739,4 +830,5 @@ module.exports = {
   updateMobs,
   updateMobRespawns,
   difficulty,
+  setIO,
 };

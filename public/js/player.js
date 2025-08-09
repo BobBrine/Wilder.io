@@ -7,6 +7,10 @@ let staminaRegenSpeed = 0;
 const DEFAULT_ATTACK_RANGE = 50;
 const ATTACK_ANGLE = Math.PI / 2; // 90 degrees
 let punchHand = 'right'; // 'left' or 'right'
+// Knockback variables
+let knockback = { active: false, vx: 0, vy: 0, timer: 0 };
+const KNOCKBACK_DURATION = 0.2; // seconds
+const KNOCKBACK_FORCE = 350; // pixels/sec
 
 // Load player image
 const playerImage = new Image();
@@ -70,6 +74,60 @@ function sendPlayerPosition(x, y) {
 function updatePlayerPosition(deltaTime) {
   if (isDead || !player) return;
   if (typeof keys === 'undefined') return;
+
+  // Knockback physics
+  if (knockback.active && player) {
+      // Desired movement this frame from knockback
+      let kdx = knockback.vx * deltaTime;
+      let kdy = knockback.vy * deltaTime;
+
+      // Collision aware move: attempt full, then axis, then damp/stop
+      function isCollidingAt(x, y) {
+        return (typeof isCollidingWithResources === 'function' && 
+                isCollidingWithResources(x, y, player.size, player.size, allResources)) ||
+               (typeof isCollidingWithMobs === 'function' && 
+                isCollidingWithMobs(x, y, player.size, player.size, mobs));
+      }
+
+      const attemptX = player.x + kdx;
+      const attemptY = player.y + kdy;
+      if (!isCollidingAt(attemptX, attemptY)) {
+        player.x = attemptX;
+        player.y = attemptY;
+      } else {
+        // Try X only
+        if (!isCollidingAt(attemptX, player.y)) {
+          player.x = attemptX;
+          // damp Y velocity if blocked
+          knockback.vy *= 0.4;
+        } else if (!isCollidingAt(player.x, attemptY)) {
+          player.y = attemptY;
+          knockback.vx *= 0.4;
+        } else {
+          // Fully blocked: cancel knockback
+          knockback.active = false;
+          knockback.vx = 0;
+          knockback.vy = 0;
+        }
+      }
+
+      // Apply friction/damping each frame
+      const damping = 6; // higher = stops faster
+      const speedBefore = Math.hypot(knockback.vx, knockback.vy);
+      const speedAfter = Math.max(0, speedBefore - damping * speedBefore * deltaTime);
+      if (speedBefore > 0) {
+        const scale = speedAfter / speedBefore;
+        knockback.vx *= scale;
+        knockback.vy *= scale;
+      }
+
+      knockback.timer -= deltaTime;
+      if (knockback.timer <= 0 || speedAfter < 5) {
+        knockback.active = false;
+        knockback.vx = 0;
+        knockback.vy = 0;
+      }
+  }
   
   let moveX = 0, moveY = 0;
   let speed = player.speed || 0;
@@ -252,6 +310,9 @@ function updatePlayerFacing(mouseX, mouseY) {
 }
 
 function drawPlayer() {
+  const centerX = player.x + player.size / 2;
+  const centerY = player.y + player.size / 2;
+  
   if (!player || isDead || typeof ctx === 'undefined') return;
   // Enable high-quality image smoothing for cleaner rotations
   ctx.imageSmoothingEnabled = true;
@@ -261,8 +322,6 @@ function drawPlayer() {
   ctx.shadowOffsetX = 3;
   ctx.shadowOffsetY = 3;
 
-  const centerX = player.x + player.size / 2;
-  const centerY = player.y + player.size / 2;
   // Determine attack range from selected tool or default
   let attackRange = DEFAULT_ATTACK_RANGE;
   const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
@@ -574,6 +633,7 @@ function drawPlayer() {
     ctx.fill();
   }
   ctx.restore();
+
   ctx.fillStyle = "white";
   ctx.font = "14px Arial";
   ctx.textAlign = "center";
@@ -913,3 +973,16 @@ function isEdgeIntersectingArc(edgeStart, edgeEnd, cx, cy, radius, facingAngle, 
 window.sendPlayerPosition = sendPlayerPosition;
 window.consumeFood = consumeFood;
 window.tryAttack = tryAttack;
+window.applyKnockbackFromMob = applyKnockbackFromMob;
+
+// Called when mob hits player
+function applyKnockbackFromMob(mob) {
+  if (!player || !mob) return;
+  const dx = player.x - mob.x;
+  const dy = player.y - mob.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  knockback.vx = (dx / dist) * KNOCKBACK_FORCE;
+  knockback.vy = (dy / dist) * KNOCKBACK_FORCE;
+  knockback.timer = KNOCKBACK_DURATION;
+  knockback.active = true;
+}

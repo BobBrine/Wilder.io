@@ -29,7 +29,11 @@ const {
   spawnAllMob,
   updateMobs,
   updateMobRespawns,
+  setIO,
 } = require('./mobdata');
+
+// Provide io to mobdata for targeted emits (e.g., knockback)
+setIO(io);
 
 const {
   players,
@@ -92,6 +96,8 @@ io.on('connection', (socket) => {
       delete players[socket.id];
     }
     players[socket.id] = createNewPlayer(socket.id, name);
+    // Store only socket id to avoid circular reference
+    players[socket.id].socketId = socket.id;
     socket.emit('currentPlayers', players);
     socket.emit('playerSelf', players[socket.id]);
     socket.broadcast.emit('newPlayer', players[socket.id]);
@@ -136,6 +142,11 @@ io.on('connection', (socket) => {
   socket.on('consumeFood', ({ amount }) => handleConsumeFood(socket, amount));
   socket.on('disconnect', () => handleDisconnect(socket));
 
+    // Remove socket reference from player on disconnect
+    if (players[socket.id]) {
+      delete players[socket.id].socket;
+    }
+
 });
 
 
@@ -145,14 +156,14 @@ setInterval(() => {
   const deltaTime = (now - lastUpdate) / 1000;
   lastUpdate = now;
   updatePlayers(deltaTime, now);
-  
+
   gameTime = (gameTime + deltaTime) % CYCLE_LENGTH;
 
-  
-  emitMobsWithPlayerNames();
+  // Update mobs BEFORE broadcasting so clients get freshest positions (reduces ~1 tick latency)
   updateMobs(allResources, players, deltaTime);
+  emitMobsWithPlayerNames();
   io.emit("gameTime", gameTime);
-}, 50);
+}, 15); // ~30 FPS tick (was 50ms) for lower knockback latency
 
 // Static update loop (every 10s)
 setInterval(() => {
@@ -225,7 +236,6 @@ function emitMobsWithPlayerNames() {
         x: mob.x,
         y: mob.y,
         profile: mob.profile,
-        color: mob.color,
         health: mob.health,
         maxHealth: mob.maxHealth,
         size: mob.size,
@@ -252,6 +262,40 @@ function handleHit(socket, collection, type, id, newHealth, configTypes, isMob =
     entity.threatTable[socket.id] = (entity.threatTable[socket.id] || 0) + (5 + damage * 0.2);
   }
   io.emit(isMob ? "updateMobHealth" : "updateResourceHealth", { id, type, health: newHealth });
+    // Emit knockback event for mob if it was hit by player
+  if (isMob) {
+    // Compute and store knockback on server so movement reflects it
+    const attacker = players[socket.id];
+    if (attacker && entity.health > 0) {
+      const dx = entity.x - attacker.x;
+      const dy = entity.y - attacker.y;
+      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      const FORCE = 250;
+      const nx = dx / dist;
+      const ny = dy / dist;
+      entity.kbVx = nx * FORCE;
+      entity.kbVy = ny * FORCE;
+      entity.kbTimer = 0.28;
+      const INITIAL_DT = 0.012;
+      // Calculate intended new position
+      const intendedX = entity.x + entity.kbVx * INITIAL_DT;
+      const intendedY = entity.y + entity.kbVy * INITIAL_DT;
+      // Prevent mob from entering resources
+      const { isOverlappingAny } = require('./resourceManager');
+      if (!isOverlappingAny(allResources, intendedX, intendedY, entity.size, entity.size)) {
+        entity.x = intendedX;
+        entity.y = intendedY;
+      }
+      // Clamp inside world (assuming WORLD_SIZE and mob has size)
+      if (typeof WORLD_SIZE !== 'undefined' && entity.size) {
+        const maxX = WORLD_SIZE - entity.size;
+        const maxY = WORLD_SIZE - entity.size;
+        if (entity.x < 0) entity.x = 0; else if (entity.x > maxX) entity.x = maxX;
+        if (entity.y < 0) entity.y = 0; else if (entity.y > maxY) entity.y = maxY;
+      }
+    }
+    io.emit('mobKnockback', { id, type, sourcePlayerId: socket.id, x: entity.x, y: entity.y, kbVx: entity.kbVx, kbVy: entity.kbVy, kbTimer: entity.kbTimer });
+  }
   if (!isMob) socket.emit("itemDrop", { item: config.drop, amount: damage });
   if (entity.health <= 0) {
     if (isMob) {

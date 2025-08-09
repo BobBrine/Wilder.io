@@ -1,6 +1,6 @@
 // Socket connection
 let socket = null;
-const devTest = false;
+const devTest = true; // Set to true for development testing
 
 let latestSquare = null;
 let ping = 0;
@@ -91,11 +91,21 @@ function setupSocketListeners() {
     } else {
       for (const type in data) {
         if (!mobs[type]) mobs[type] = [];
+        const nowTs = performance.now();
         data[type].forEach((serverR, i) => {
           const existing = mobs[type][i] || {};
+          const prevServerX = existing._serverX ?? existing.x ?? serverR.x;
+          const prevServerY = existing._serverY ?? existing.y ?? serverR.y;
+          const prevTime = existing._serverTime ?? nowTs;
           mobs[type][i] = {
             ...serverR,
             lastHitTime: existing.lastHitTime,
+            _lastServerX: prevServerX,
+            _lastServerY: prevServerY,
+            _lastServerTime: prevTime,
+            _serverX: serverR.x,
+            _serverY: serverR.y,
+            _serverTime: nowTs,
           };
         });
       }
@@ -245,6 +255,30 @@ function setupSocketListeners() {
       socket = null;
     }
   });
+
+    // Listen for knockback event from server
+    socket.on('playerKnockback', ({ mobX, mobY, mobId }) => {
+      // Create a minimal mob object for knockback direction
+      if (window.applyKnockbackFromMob) {
+        window.applyKnockbackFromMob({ x: mobX, y: mobY });
+      }
+    });
+
+    // Listen for mob knockback when player hits mob
+  socket.on('mobKnockback', ({ id, type, x, y, kbVx, kbVy, kbTimer, color }) => {
+      if (!mobs) return;
+      const list = mobs[type];
+      if (!list) return;
+      const mob = list.find(m => m.id === id);
+      if (!mob) return;
+      if (typeof x === 'number' && typeof y === 'number') {
+        mob.x = x;
+        mob.y = y;
+      }
+      mob.kbVx = kbVx || 0;
+      mob.kbVy = kbVy || 0;
+      mob.kbTimer = kbTimer || 0.15;
+    });
 
   // Ping check
   setInterval(() => {
@@ -513,7 +547,7 @@ if (devTest) {
     const tryLogin = () => {
       if (socket && socket.connected) {
         socket.emit("setName", "DevUser");
-        showData = true;
+        showData = false;
         inventory.addItem("wooden_sword", 1);
         inventory.addItem("wooden_pickaxe", 1);
         inventory.addItem("wooden_axe", 1);

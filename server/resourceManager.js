@@ -129,17 +129,19 @@ function createResourceSpawner(type, targetArray, isOverlapping) {
   while (activeCount + deadCount < config.maxCount) {
     const col = Math.floor(Math.random() * GRID_COLS);
     const row = Math.floor(Math.random() * GRID_ROWS);
-    const { x, y } = getRandomPositionInCell(col, row, config.sizeX, config.sizeY);
-    if (!isOverlapping(x, y, config.sizeX, config.sizeY)) {
+    const sizeX = typeof config.sizeX === 'function' ? config.sizeX() : config.sizeX;
+    const sizeY = typeof config.sizeY === 'function' ? config.sizeY() : config.sizeY;
+    const { x, y } = getRandomPositionInCell(col, row, sizeX, sizeY);
+    if (!isOverlapping(x, y, sizeX, sizeY)) {
       const id = crypto.randomUUID();
-      const initialHealth = config.health;
+      const initialHealth = typeof config.health === 'function' ? config.health() : config.health;
       targetArray.push({
         id,
         type,
         x,
         y,
-        sizeX: config.sizeX,
-        sizeY: config.sizeY,
+        sizeX,
+        sizeY,
         health: initialHealth,
         maxHealth: initialHealth,
         respawnTimer: 0,
@@ -168,22 +170,24 @@ function updateResourceRespawns(deltaTime) {
         r.respawnTimer -= deltaTime;
         if (r.respawnTimer <= 0) {
           const config = resourceTypes[r.type];
-          let newX, newY;
+          let newX, newY, newSizeX, newSizeY;
           do {
+            newSizeX = typeof config.sizeX === 'function' ? config.sizeX() : config.sizeX;
+            newSizeY = typeof config.sizeY === 'function' ? config.sizeY() : config.sizeY;
             const col = Math.floor(Math.random() * GRID_COLS);
             const row = Math.floor(Math.random() * GRID_ROWS);
-            ({ x: newX, y: newY } = getRandomPositionInCell(col, row, config.sizeX, config.sizeY));
+            ({ x: newX, y: newY } = getRandomPositionInCell(col, row, newSizeX, newSizeY));
           } while (
-            isOverlappingAny(allResources, newX, newY, config.sizeX, config.sizeY) ||
-            isOverlappingAny(mobs, newX, newY, config.sizeX, config.sizeY) ||
-            isOverlappingAny(players, newX, newY, config.sizeX, config.sizeY)
+            isOverlappingAny(allResources, newX, newY, newSizeX, newSizeY) ||
+            isOverlappingAny(mobs, newX, newY, newSizeX, newSizeY) ||
+            isOverlappingAny(players, newX, newY, newSizeX, newSizeY)
           );
-          const newHealth = config.health;
+          const newHealth = typeof config.health === 'function' ? config.health() : config.health;
           r.id = crypto.randomUUID();
           r.x = newX;
           r.y = newY;
-          r.sizeX = config.sizeX;
-          r.sizeY = config.sizeY;
+          r.sizeX = newSizeX;
+          r.sizeY = newSizeY;
           r.health = newHealth;
           r.maxHealth = newHealth;
           r.respawnTimer = 0;

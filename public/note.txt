@@ -86,3 +86,6 @@ Things I need to build this game:
 - tree respawn with 1 hp
 - mob stuck to tree when tree already already destroy
 - when player hit mob all stamina cost combine together
+
+- resource check if mob inside them
+- mob flash fix

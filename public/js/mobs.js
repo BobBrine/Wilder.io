@@ -65,16 +65,56 @@ function drawMob() {
     }
   }
   const now = performance.now();
+  // Interpolation tuning constants
+  const INTERP_EXTRA_DELAY = 32; // increased delay for floatier glide (was 25)
+  const MIN_BUFFER = 10; // slightly larger minimum
+  const MAX_BUFFER = 55; // allow a bit more smoothing span
+  const VELOCITY_BLEND = 0.08; // reduce forward lead so motion drifts smoothly
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
       if (mob.health > 0) {
+  // Client-side prediction removed to avoid double-push effect; server authoritative knockback only.
         ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+  // Time-based interpolation between last and current server states
+  if (mob._renderX === undefined) { mob._renderX = mob.x; mob._renderY = mob.y; }
+  const nowMs = performance.now();
+  const lastTime = mob._lastServerTime ?? nowMs;
+  const curTime = mob._serverTime ?? nowMs;
+  const rawDelta = curTime - lastTime;
+  const serverDelta = Math.max(1, rawDelta); // ms
+  // Dynamic buffer: proportional to serverDelta plus extra smoothing lag
+  let buffer = serverDelta * 0.35 + INTERP_EXTRA_DELAY;
+  buffer = Math.min(MAX_BUFFER, Math.max(MIN_BUFFER, buffer));
+  const totalWindow = serverDelta + buffer; // interpolation window
+  const elapsed = nowMs - curTime + buffer; // progress through window
+  const interpT = Math.min(1, Math.max(0, elapsed / totalWindow));
+  const fromX = mob._lastServerX !== undefined ? mob._lastServerX : mob.x;
+  const fromY = mob._lastServerY !== undefined ? mob._lastServerY : mob.y;
+  const toX = mob._serverX !== undefined ? mob._serverX : mob.x;
+  const toY = mob._serverY !== undefined ? mob._serverY : mob.y;
+  // Smooth ease (quintic) for very soft edges
+  const ease = (() => { const a = interpT; return a * a * a * (a * (6 * a - 15) + 10); })();
+  let targetX = fromX + (toX - fromX) * ease;
+  let targetY = fromY + (toY - fromY) * ease;
+  // Velocity blending: approximate velocity from last two snapshots and nudge forward slightly
+  if (mob._lastServerX !== undefined && mob._lastServerY !== undefined && serverDelta > 0) {
+    const vx = (toX - fromX) / (serverDelta / 1000); // px/sec
+    const vy = (toY - fromY) / (serverDelta / 1000);
+    const lead = (1 - ease) * VELOCITY_BLEND; // less lead as we approach end
+    targetX += vx * lead * (serverDelta / 1000);
+    targetY += vy * lead * (serverDelta / 1000);
+  }
+  // Directly assign render pos
+  mob._renderX = targetX;
+  mob._renderY = targetY;
+  const drawX = mob._renderX;
+  const drawY = mob._renderY;
         ctx.shadowBlur = 5;
         ctx.shadowOffsetX = 3;
         ctx.shadowOffsetY = 3;
         
-        const centerX = mob.x + mob.size / 2;
-        const centerY = mob.y + mob.size / 2;
+  const centerX = drawX + mob.size / 2;
+  const centerY = drawY + mob.size / 2;
         const fixedDistance = 15; // Fixed additional distance from mob's edge
         const coneLength = mob.size / 2 + fixedDistance; // Distance from center to triangle
 
@@ -98,11 +138,14 @@ function drawMob() {
         
         // Draw mob feet (rotating with facingAngle)
         // Always use the same color for both body and feet
-        let mobColor = mob.color;
-        if (!mobColor) {
-          if (mob.type === "special_mob") mobColor = "white";
-          else if (mob.type === "aggressive_mob") mobColor = "red";
-          else mobColor = "green";
+        // Set color based on type/profile (client-side only)
+        let mobColor = "pink"; // passive default
+        if (mob.type === "special_mob") mobColor = "purple";
+        else if (mob.type === "aggressive_mob") {
+          if (mob.profile === "speedster") mobColor = "#a4a400ff";
+          else if (mob.profile === "tank") mobColor = "#4b0000ff";
+          else if (mob.profile === "longRange") mobColor = "#000861ff";
+          else mobColor = "#4d321eff"; // normal mob = dark red
         }
         let outlineColor;
         if (mob.type === "passive_mob") {
@@ -113,6 +156,10 @@ function drawMob() {
           outlineColor = "yellow";
         } else {
           outlineColor = "white";
+        }
+        // Flash white when mob is hit (100ms)
+        if (mob.lastHitTime && now - mob.lastHitTime < 100) {
+          mobColor = "white";
         }
         const feetSize = mob.size / 3;
         const bodyRadius = mob.size / 2;
@@ -361,9 +408,11 @@ function tryHitMob() {
         const damage = toolInfo.damage;
         mob.health -= damage;
         window.socket.emit("mobhit", { type, id: mob.id, newHealth: mob.health });
+        // Client-side immediate knockback prediction for responsiveness
+  // Removed local knockback prediction to prevent double visual push; wait for server event.
         showDamageText(mob.x + mob.size / 2, mob.y + mob.size / 2, -damage);
         mob.lastHitTime = performance.now();
-
+        
         player.isAttacking = true;
         player.attackStartTime = performance.now();
       }
