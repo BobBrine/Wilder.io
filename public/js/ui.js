@@ -11,7 +11,8 @@ function drawHUD() {
     ctx.fillText(`Level: ${player.level}`, 10, 40);
     ctx.fillText(`XP: ${player.xp} / ${player.xpToNextLevel}`, 10, 60);
   }
-  if (devTest && inventory && inventory.items) {
+  const isDevUI = (typeof devModeActive !== 'undefined' ? devModeActive : (typeof devTest !== 'undefined' && devTest));
+  if (isDevUI && inventory && inventory.items) {
     let yOffset = 80;
     for (const [item, count] of Object.entries(inventory.items)) {
       ctx.fillText(`${item[0].toUpperCase() + item.slice(1)}: ${count}`, 10, yOffset);
@@ -28,11 +29,18 @@ function drawHUD() {
   // Scoreboard improvements
   const scoreboardX = canvas.width - scoreboardWidth - 10;
   const scoreboardY = 40;
-  const allPlayers = [
-    ...(player ? [{ id: socket.id, name: player.name, level: player.level }] : []),
-    ...Object.entries(otherPlayers).map(([id, p]) => ({ id, name: p.name, level: p.level }))
-  ].sort((a, b) => b.level - a.level);
-  const shownPlayers = allPlayers.slice(0, 5);
+  // Throttle scoreboard build to reduce per-frame work
+  if (!window.__scoreCache) window.__scoreCache = { last: 0, list: [] };
+  const nowTs = performance.now();
+  if (nowTs - window.__scoreCache.last > 150) {
+    const allPlayers = [
+      ...(player ? [{ id: socket.id, name: player.name, level: player.level }] : []),
+      ...Object.entries(otherPlayers).map(([id, p]) => ({ id, name: p.name, level: p.level }))
+    ].sort((a, b) => b.level - a.level).slice(0, 5);
+    window.__scoreCache.list = allPlayers;
+    window.__scoreCache.last = nowTs;
+  }
+  const shownPlayers = window.__scoreCache.list;
   ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
   ctx.fillRect(scoreboardX, scoreboardY, scoreboardWidth, 20 + 20 * (5 + 1)); // Always height for 5 players
   ctx.fillStyle = "white";
@@ -40,10 +48,11 @@ function drawHUD() {
   ctx.textAlign = "left";
   ctx.fillText("Scoreboard", scoreboardX + 10, scoreboardY + 15);
   let yOffset = scoreboardY + 40;
-  shownPlayers.forEach((p, index) => {
-    ctx.fillText(`${index + 1}. ${p.name}: Lv ${p.level}`, scoreboardX + 10, yOffset);
+  for (let i = 0; i < shownPlayers.length; i++) {
+    const p = shownPlayers[i];
+    ctx.fillText(`${i + 1}. ${p.name}: Lv ${p.level}`, scoreboardX + 10, yOffset);
     yOffset += 20;
-  });
+  }
   ctx.restore();
  
 }
@@ -191,20 +200,23 @@ function drawDamageTexts() {
   }
 }
 
-let lastFrameTime = performance.now();
-let fps = 0, ms = 0, fpsDisplay = 0, msDisplay = 0, fpsUpdateCounter = 0;
-const FPS_UPDATE_DELAY_FRAMES = 20;
+// Accurate FPS via moving average over a time window
+let fpsTimes = [];
+let fpsDisplay = 0;
+const FPS_WINDOW_MS = 1000; // 1-second window
 
 function updateFPSCounter() {
   const now = performance.now();
-  ms = now - lastFrameTime;
-  fps = 1000 / ms;
-  lastFrameTime = now;
-  fpsUpdateCounter++;
-  if (fpsUpdateCounter >= FPS_UPDATE_DELAY_FRAMES) {
-    fpsDisplay = fps;
-    msDisplay = ms;
-    fpsUpdateCounter = 0;
+  fpsTimes.push(now);
+  const cutoff = now - FPS_WINDOW_MS;
+  // Drop samples older than the window
+  while (fpsTimes.length && fpsTimes[0] < cutoff) fpsTimes.shift();
+  if (fpsTimes.length >= 2) {
+    const elapsed = fpsTimes[fpsTimes.length - 1] - fpsTimes[0];
+    const frames = fpsTimes.length - 1;
+    fpsDisplay = frames > 0 && elapsed > 0 ? (frames / (elapsed / 1000)) : 0;
+  } else {
+    fpsDisplay = 0;
   }
 }
 
@@ -239,6 +251,10 @@ function draw() {
 
 function drawDroppedItems() {
   droppedItems.forEach(item => {
+    // Cull off-screen
+    if (typeof isWorldRectOnScreen === 'function' && !isWorldRectOnScreen(item.x - 10, item.y - 10, 20, 20)) {
+      return;
+    }
     const screenX = item.x;
     const screenY = item.y;
     ctx.save();
@@ -268,20 +284,22 @@ function drawTimeIndicator() {
 
 function drawLightSources() {
   if (gameTime >= DAY_LENGTH) {
+    // Skip heavy lighting entirely in Performance Mode
+    if (window.graphicsSettings && window.graphicsSettings.performanceMode) return;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, -camera.x, -camera.y);
     ctx.globalCompositeOperation = 'lighter';
     const playerWorldX = player.x + player.size / 2;
     const playerWorldY = player.y + player.size / 2;
-    const playerRadius = 200;
+  const playerRadius = 160;
     let gradient = ctx.createRadialGradient(playerWorldX, playerWorldY, 0, playerWorldX, playerWorldY, playerRadius);
     gradient.addColorStop(0, 'rgba(255, 255, 245, 0.3)');
     gradient.addColorStop(0.7, 'rgba(255, 255, 245, 0.1)');
     gradient.addColorStop(1, 'rgba(255, 255, 245, 0)');
     ctx.fillStyle = gradient;
     ctx.fillRect(camera.x - playerRadius, camera.y - playerRadius, canvas.width + 2 * playerRadius, canvas.height + 2 * playerRadius);
-    if (hotbar.slots[hotbar.selectedIndex]?.type === 'torch') {
-      const torchRadius = 400;
+  if (hotbar && hotbar.slots && hotbar.slots[hotbar.selectedIndex]?.type === 'torch') {
+  const torchRadius = 300;
       gradient = ctx.createRadialGradient(playerWorldX, playerWorldY, 0, playerWorldX, playerWorldY, torchRadius);
       gradient.addColorStop(0, 'rgba(255, 255, 245, 0.3)');
       gradient.addColorStop(0.5, 'rgba(255, 140, 50, 0.2)');
@@ -295,6 +313,7 @@ function drawLightSources() {
 }
 
 function drawWorldBorder() {
+  if (window.graphicsSettings && window.graphicsSettings.performanceMode) return;
   ctx.strokeStyle = "red";
   ctx.lineWidth = 5;
   ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
@@ -302,6 +321,15 @@ function drawWorldBorder() {
 
 function drawButtons() {
   ctx.save(); // Save the current context state
+  // Only show dev-only buttons (Shadows/Performance) when dev UI is enabled
+  const isDevUI = (typeof devModeActive !== 'undefined' ? devModeActive : (typeof devTest !== 'undefined' && devTest));
+  if (isDevUI) {
+    if (typeof ensureShadowToggle === 'function') ensureShadowToggle();
+    if (typeof ensurePerformanceToggle === 'function') ensurePerformanceToggle();
+  } else {
+    // Remove any dev-only buttons if present
+    uiButtons = uiButtons.filter(b => !(b && b.text && (b.text.startsWith('Shadows:') || b.text.startsWith('Performance:'))));
+  }
   uiButtons.forEach(button => {
     if (button.image) {
       ctx.drawImage(button.image, button.x, button.y, button.width, button.height);
@@ -316,4 +344,63 @@ function drawButtons() {
     ctx.fillText(button.text, button.x + button.width / 2, button.y + button.height / 2);
   });
   ctx.restore(); // Restore the context state
+}
+
+// Create/update a persistent Shadows toggle using the shared createButton()
+function ensureShadowToggle() {
+  const label = (window.graphicsSettings && window.graphicsSettings.shadows) ? 'Shadows: On' : 'Shadows: Off';
+  const idx = uiButtons.findIndex(b => b && b.text && b.text.startsWith('Shadows:'));
+  if (idx === -1) {
+    if (typeof createButton === 'function') {
+      createButton(10, canvas.height - 100, label, () => {
+        window.graphicsSettings.shadows = !window.graphicsSettings.shadows;
+        try { localStorage.setItem('graphics.shadows', JSON.stringify(window.graphicsSettings.shadows)); } catch (_) {}
+      });
+    } else {
+      // Fallback if helper isn't available yet
+      uiButtons.unshift({
+        x: 10, y: 10, width: 130, height: 32,
+        text: label,
+        callback: () => {
+          window.graphicsSettings.shadows = !window.graphicsSettings.shadows;
+          try { localStorage.setItem('graphics.shadows', JSON.stringify(window.graphicsSettings.shadows)); } catch (_) {}
+        }
+      });
+    }
+  } else {
+    uiButtons[idx].text = label;
+  }
+}
+
+// Create/update a Performance Mode toggle that disables heavy effects (lighting, shadows)
+function ensurePerformanceToggle() {
+  if (!window.graphicsSettings) window.graphicsSettings = {};
+  const pmOn = !!window.graphicsSettings.performanceMode;
+  const label = pmOn ? 'Performance: On' : 'Performance: Off';
+  const idx = uiButtons.findIndex(b => b && b.text && b.text.startsWith('Performance:'));
+  const applyPerf = (next) => {
+    window.graphicsSettings.performanceMode = next;
+    // If enabling performance mode, also force shadows off
+    if (next) {
+      window.graphicsSettings.shadows = false;
+      try { localStorage.setItem('graphics.shadows', JSON.stringify(false)); } catch (_) {}
+    }
+    try { localStorage.setItem('graphics.performanceMode', JSON.stringify(next)); } catch (_) {}
+  };
+  if (idx === -1) {
+    if (typeof createButton === 'function') {
+      // Place above the Shadows toggle
+      createButton(10, canvas.height - 140, label, () => {
+        applyPerf(!pmOn);
+      });
+    } else {
+      uiButtons.unshift({
+        x: 10, y: 50, width: 160, height: 32,
+        text: label,
+        callback: () => applyPerf(!pmOn),
+      });
+    }
+  } else {
+    uiButtons[idx].text = label;
+  }
 }

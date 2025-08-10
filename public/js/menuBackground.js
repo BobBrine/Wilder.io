@@ -19,7 +19,7 @@
   // Animation state
   let offsetX = 0;
   let offsetY = 0;
-  const speed = 0.025; // even slower movement
+  const speed = 0.02; // slower movement
 
   function drawBackground() {
     if (!grassImg.complete) {
@@ -28,8 +28,8 @@
       return;
     }
     // Zoom in: scale up grass tiles even more
-    const tileSize = 512; // much bigger tile size for zoom
-    const scale = 8; // much larger scale factor for zoom
+  const tileSize = 512;
+  const scale = 6; // slightly lower scale to reduce draw count
     offsetX += speed;
     offsetY += speed * 0.5;
     if (offsetX > tileSize) offsetX -= tileSize;
@@ -68,8 +68,9 @@
     if (dropPrompt && dropPrompt.style.display !== 'none') {
       anyMenuVisible = false;
     }
-    canvas.style.display = anyMenuVisible ? 'block' : 'none';
-    if (canvas.style.display === 'block') {
+    const shouldShow = anyMenuVisible;
+    canvas.style.display = shouldShow ? 'block' : 'none';
+    if (shouldShow) {
       drawBackground();
     }
     requestAnimationFrame(animate);

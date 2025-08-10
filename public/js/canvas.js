@@ -1,10 +1,22 @@
 const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+// Prefer a desynchronized, opaque context to reduce compositor latency and blending cost
+const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+// Reduce filtering cost when scaling images
+ctx.imageSmoothingEnabled = false;
 
-// Make canvas fill the browser window
+// Make canvas fill the browser window (CSS) and allow lower internal resolution via renderScale
 function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const scale = (window.graphicsSettings && typeof window.graphicsSettings.renderScale === 'number')
+      ? Math.max(0.5, Math.min(1, window.graphicsSettings.renderScale))
+      : 1;
+    // CSS size (visual size)
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    // Backing store size (internal resolution)
+    canvas.width = Math.floor(window.innerWidth * scale);
+    canvas.height = Math.floor(window.innerHeight * scale);
+    // Reset any transforms that might be set during draws
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 resizeCanvas();
 window.addEventListener("resize", resizeCanvas);
@@ -19,8 +31,33 @@ backgroundImage.onload = function () {
 };
 
 function drawBackground() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(backgroundImage, 0, 0); // No scaling or repetition
+  // Always paint a dark-green base so uncovered areas aren't black (alpha:false context)
+  const baseColor = '#116d10'; // dark green
+  // If camera isn't ready yet (during initial load), draw full-canvas base and optional image
+  if (typeof camera === 'undefined' || camera == null) {
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (backgroundImage.complete) ctx.drawImage(backgroundImage, 0, 0);
+    return;
+  }
+  // With camera active, fill the current viewport in world coords first
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(camera.x, camera.y, canvas.width, canvas.height);
+  if (!backgroundImage.complete) return;
+  // Only draw the visible portion of the background (viewport) in world space
+  // World transform is already applied by main.js before calling drawBackground.
+  // Compute source rect based on camera viewport to avoid drawing the entire 5000x5000 each frame.
+  const viewX = Math.max(0, Math.min(camera.x, backgroundImage.width - canvas.width));
+  const viewY = Math.max(0, Math.min(camera.y, backgroundImage.height - canvas.height));
+  const viewW = Math.min(canvas.width, backgroundImage.width - viewX);
+  const viewH = Math.min(canvas.height, backgroundImage.height - viewY);
+
+  // Draw the subsection of the background image mapped 1:1 into world coords over the base
+  ctx.drawImage(
+    backgroundImage,
+    viewX, viewY, viewW, viewH,
+    viewX, viewY, viewW, viewH
+  );
 }
 
 //button
@@ -36,6 +73,16 @@ function createButton(x, y, text, callback, image = null) {
     callback: callback
   };
   uiButtons.push(button);
+}
+
+// Helper: check if a world-space rectangle is visible on screen (with optional margin)
+function isWorldRectOnScreen(x, y, w, h, margin = 64) {
+  if (typeof camera === 'undefined' || !camera) return true;
+  const camX = camera.x - margin,
+        camY = camera.y - margin,
+        camW = camera.width + margin * 2,
+        camH = camera.height + margin * 2;
+  return x < camX + camW && x + w > camX && y < camY + camH && y + h > camY;
 }
 
 

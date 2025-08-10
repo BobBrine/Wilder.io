@@ -13,7 +13,6 @@ if (typeof socket !== "undefined" && socket) {
     const mob = list.find(r => r.id === id);
     if (mob) {
       mob.health = health;
-      console.log(mob.maxHealth);
       if (health <= 0) {
         mob.size = 0;
         mob.respawnTimer = mob.respawnTime;
@@ -66,15 +65,27 @@ function drawMob() {
   }
   const now = performance.now();
   // Interpolation tuning constants
-  const INTERP_EXTRA_DELAY = 32; // increased delay for floatier glide (was 25)
-  const MIN_BUFFER = 10; // slightly larger minimum
-  const MAX_BUFFER = 55; // allow a bit more smoothing span
-  const VELOCITY_BLEND = 0.08; // reduce forward lead so motion drifts smoothly
+  const BASE_INTERP_EXTRA_DELAY = 20; // baseline extra delay
+  const BASE_MIN_BUFFER = 6; // baseline minimum buffer
+  const BASE_MAX_BUFFER = 40; // baseline max smoothing window
+  const BASE_VELOCITY_BLEND = 0.05; // baseline forward lead
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
       if (mob.health > 0) {
+        // Cull off-screen mobs to reduce draw calls
+        if (typeof isWorldRectOnScreen === 'function') {
+          const size = mob.size || 0;
+          if (!isWorldRectOnScreen(mob.x, mob.y, size, size)) {
+            continue;
+          }
+        }
   // Client-side prediction removed to avoid double-push effect; server authoritative knockback only.
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        // Optional shadows per-mob
+        if (window.graphicsSettings && window.graphicsSettings.shadows) {
+          ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        } else {
+          ctx.shadowColor = 'transparent';
+        }
   // Time-based interpolation between last and current server states
   if (mob._renderX === undefined) { mob._renderX = mob.x; mob._renderY = mob.y; }
   const nowMs = performance.now();
@@ -82,8 +93,19 @@ function drawMob() {
   const curTime = mob._serverTime ?? nowMs;
   const rawDelta = curTime - lastTime;
   const serverDelta = Math.max(1, rawDelta); // ms
-  // Dynamic buffer: proportional to serverDelta plus extra smoothing lag
-  let buffer = serverDelta * 0.35 + INTERP_EXTRA_DELAY;
+  // If within the brief snap window, bypass smoothing entirely
+  if (mob._kbSnapUntil && nowMs < mob._kbSnapUntil && mob._serverX !== undefined && mob._serverY !== undefined) {
+    mob._renderX = mob._serverX;
+    mob._renderY = mob._serverY;
+  } else {
+  // During active knockback, reduce smoothing and increase forward blend for a snappier feel
+  const kbActive = mob._kbActiveUntil && nowMs < mob._kbActiveUntil;
+  const INTERP_EXTRA_DELAY = kbActive ? 6 : BASE_INTERP_EXTRA_DELAY;
+  const MIN_BUFFER = kbActive ? 2 : BASE_MIN_BUFFER;
+  const MAX_BUFFER = BASE_MAX_BUFFER;
+  const VELOCITY_BLEND = kbActive ? 0.12 : BASE_VELOCITY_BLEND;
+  // Dynamic buffer: proportional to serverDelta plus small extra smoothing lag
+  let buffer = serverDelta * 0.2 + INTERP_EXTRA_DELAY;
   buffer = Math.min(MAX_BUFFER, Math.max(MIN_BUFFER, buffer));
   const totalWindow = serverDelta + buffer; // interpolation window
   const elapsed = nowMs - curTime + buffer; // progress through window
@@ -96,7 +118,7 @@ function drawMob() {
   const ease = (() => { const a = interpT; return a * a * a * (a * (6 * a - 15) + 10); })();
   let targetX = fromX + (toX - fromX) * ease;
   let targetY = fromY + (toY - fromY) * ease;
-  // Velocity blending: approximate velocity from last two snapshots and nudge forward slightly
+  // Velocity blending: approximate velocity from last two snapshots and nudge forward
   if (mob._lastServerX !== undefined && mob._lastServerY !== undefined && serverDelta > 0) {
     const vx = (toX - fromX) / (serverDelta / 1000); // px/sec
     const vy = (toY - fromY) / (serverDelta / 1000);
@@ -107,34 +129,43 @@ function drawMob() {
   // Directly assign render pos
   mob._renderX = targetX;
   mob._renderY = targetY;
+  }
   const drawX = mob._renderX;
   const drawY = mob._renderY;
-        ctx.shadowBlur = 5;
-        ctx.shadowOffsetX = 3;
-        ctx.shadowOffsetY = 3;
+        if (window.graphicsSettings && window.graphicsSettings.shadows) {
+          ctx.shadowBlur = 5;
+          ctx.shadowOffsetX = 3;
+          ctx.shadowOffsetY = 3;
+        } else {
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+        }
         
   const centerX = drawX + mob.size / 2;
   const centerY = drawY + mob.size / 2;
-        const fixedDistance = 15; // Fixed additional distance from mob's edge
-        const coneLength = mob.size / 2 + fixedDistance; // Distance from center to triangle
-
-        const triangleSize = 10; // Size of the triangle
-        const coneX = centerX + Math.cos(mob.facingAngle) * coneLength;
-        const coneY = centerY + Math.sin(mob.facingAngle) * coneLength;
-        ctx.save();
-        ctx.translate(coneX, coneY);
-        ctx.rotate(mob.facingAngle);
-        ctx.beginPath();
-        ctx.moveTo(triangleSize / 1.5, 0); // Shorter tip for less pointy shape
-        ctx.lineTo(-triangleSize / 1.5, triangleSize / 1.2); // Wider base, less steep
-        ctx.lineTo(-triangleSize / 1.5, -triangleSize / 1.2); // Wider base, less steep
-        ctx.closePath();
-        ctx.fillStyle = "white"; // White fill for triangle
-        ctx.fill();
-        ctx.strokeStyle = "black"; // Black outline for triangle
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.restore();
+        // Skip direction marker in performance mode
+        if (!(window.graphicsSettings && window.graphicsSettings.performanceMode)) {
+          const fixedDistance = 15; // Fixed additional distance from mob's edge
+          const coneLength = mob.size / 2 + fixedDistance; // Distance from center to triangle
+          const triangleSize = 10; // Size of the triangle
+          const coneX = centerX + Math.cos(mob.facingAngle) * coneLength;
+          const coneY = centerY + Math.sin(mob.facingAngle) * coneLength;
+          ctx.save();
+          ctx.translate(coneX, coneY);
+          ctx.rotate(mob.facingAngle);
+          ctx.beginPath();
+          ctx.moveTo(triangleSize / 1.5, 0);
+          ctx.lineTo(-triangleSize / 1.5, triangleSize / 1.2);
+          ctx.lineTo(-triangleSize / 1.5, -triangleSize / 1.2);
+          ctx.closePath();
+          ctx.fillStyle = "white";
+          ctx.fill();
+          ctx.strokeStyle = "black";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.restore();
+        }
         
         // Draw mob feet (rotating with facingAngle)
         // Always use the same color for both body and feet
@@ -161,67 +192,69 @@ function drawMob() {
         if (mob.lastHitTime && now - mob.lastHitTime < 100) {
           mobColor = "white";
         }
-        const feetSize = mob.size / 3;
-        const bodyRadius = mob.size / 2;
-        // Use a fixed offset so all feet are at the same distance from the center
-        const feetOffset = bodyRadius + feetSize * 0.25;
-        // Four feet: left front, right front, left back, right back (relative to facingAngle)
-        // Indices: 0 = left front, 1 = right front, 2 = left back, 3 = right back
-        // Angles: left front (+45°), right front (-45°), left back (+135°), right back (-135°)
-        const footAngles = [Math.PI/4, -Math.PI/4, (3*Math.PI)/4, -(3*Math.PI)/4];
-        // Natural 4-legged walk: each foot moves with a sine wave, offset by 90°
-        // Animation speed depends on mob's movement speed
-        let mobSpeed = 40; // fallback default
-        if (mobtype[mob.type]) {
-          if (mobtype[mob.type].profiles && mob.profile && mobtype[mob.type].profiles[mob.profile]) {
-            // Aggressive mob with profile
-            const speedObj = mobtype[mob.type].profiles[mob.profile].speed;
-            if (speedObj && typeof speedObj.min === 'number' && typeof speedObj.max === 'number') {
-              mobSpeed = (speedObj.min + speedObj.max) / 2;
-            }
-          } else if (mobtype[mob.type].speed) {
-            // Passive mob
-            const speedObj = mobtype[mob.type].speed;
-            if (speedObj && typeof speedObj.min === 'number' && typeof speedObj.max === 'number') {
-              mobSpeed = (speedObj.min + speedObj.max) / 2;
-            }
-          }
-        }
-        // Map mobSpeed (e.g. 20-120) to walkSpeed (ms per cycle, e.g. 1800ms for slow, 600ms for fast)
-        // Higher mobSpeed = faster animation (lower walkSpeed)
-        const minMobSpeed = 20, maxMobSpeed = 120, minWalkSpeed = 600, maxWalkSpeed = 1800;
-        const clampedMobSpeed = Math.max(minMobSpeed, Math.min(maxMobSpeed, mobSpeed));
-        // Make animation much faster by multiplying speed (reduce walkSpeed)
-        const speedMultiplier = 0.4; // 0.4x original walkSpeed (2.5x faster)
-        const walkSpeed = (maxWalkSpeed - ((clampedMobSpeed - minMobSpeed) / (maxMobSpeed - minMobSpeed)) * (maxWalkSpeed - minWalkSpeed)) * speedMultiplier;
-        const t = mob.isMovingForward ? (performance.now() % walkSpeed) / walkSpeed : 0;
-        const footOffsets = footAngles.map((a, i) => {
-          // phase for all feet
-          const phase = t * Math.PI * 2;
-          // Mirrored gait: left front (0) & right back (3) use sin(phase), right front (1) & left back (2) use sin(phase + PI)
-          let walkOffset = 0;
-          if (mob.isMovingForward) {
-            const stepSize = 0.35; // smaller step
-            if (i === 0 || i === 3) {
-              walkOffset = feetSize * stepSize * Math.sin(phase);
-            } else {
-              walkOffset = feetSize * stepSize * Math.sin(phase + Math.PI);
+        // Skip feet animation entirely in performance mode
+        if (window.graphicsSettings && window.graphicsSettings.performanceMode) {
+          // no-op
+        } else {
+          const feetSize = mob.size / 3;
+          const bodyRadius = mob.size / 2;
+          // Use a fixed offset so all feet are at the same distance from the center
+          const feetOffset = bodyRadius + feetSize * 0.25;
+          // Four feet
+          const footAngles = [Math.PI/4, -Math.PI/4, (3*Math.PI)/4, -(3*Math.PI)/4];
+          // Animation speed depends on mob's movement speed
+          let mobSpeed = 40; // fallback default
+          if (mobtype[mob.type]) {
+            if (mobtype[mob.type].profiles && mob.profile && mobtype[mob.type].profiles[mob.profile]) {
+              // Aggressive mob with profile
+              const speedObj = mobtype[mob.type].profiles[mob.profile].speed;
+              if (speedObj && typeof speedObj.min === 'number' && typeof speedObj.max === 'number') {
+                mobSpeed = (speedObj.min + speedObj.max) / 2;
+              }
+            } else if (mobtype[mob.type].speed) {
+              // Passive mob
+              const speedObj = mobtype[mob.type].speed;
+              if (speedObj && typeof speedObj.min === 'number' && typeof speedObj.max === 'number') {
+                mobSpeed = (speedObj.min + speedObj.max) / 2;
+              }
             }
           }
-          let x = Math.cos(a + mob.facingAngle) * feetOffset + Math.cos(mob.facingAngle) * walkOffset;
-          let y = Math.sin(a + mob.facingAngle) * feetOffset + Math.sin(mob.facingAngle) * walkOffset;
-          return { x, y };
-        });
-        for (const foot of footOffsets) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(centerX + foot.x - feetSize/2, centerY + foot.y - feetSize/2, feetSize, feetSize);
-          ctx.fillStyle = mobColor;
-          ctx.fill();
-          ctx.strokeStyle = outlineColor;
-          ctx.lineWidth = 2; // Always set lineWidth for feet
-          ctx.stroke();
-          ctx.restore();
+          // Map mobSpeed (e.g. 20-120) to walkSpeed (ms per cycle, e.g. 1800ms for slow, 600ms for fast)
+          // Higher mobSpeed = faster animation (lower walkSpeed)
+          const minMobSpeed = 20, maxMobSpeed = 120, minWalkSpeed = 600, maxWalkSpeed = 1800;
+          const clampedMobSpeed = Math.max(minMobSpeed, Math.min(maxMobSpeed, mobSpeed));
+          // Make animation much faster by multiplying speed (reduce walkSpeed)
+          const speedMultiplier = 0.4; // 0.4x original walkSpeed (2.5x faster)
+          const walkSpeed = (maxWalkSpeed - ((clampedMobSpeed - minMobSpeed) / (maxMobSpeed - minMobSpeed)) * (maxWalkSpeed - minWalkSpeed)) * speedMultiplier;
+          const t = mob.isMovingForward ? (performance.now() % walkSpeed) / walkSpeed : 0;
+          const footOffsets = footAngles.map((a, i) => {
+            // phase for all feet
+            const phase = t * Math.PI * 2;
+            // Mirrored gait: left front (0) & right back (3) use sin(phase), right front (1) & left back (2) use sin(phase + PI)
+            let walkOffset = 0;
+            if (mob.isMovingForward) {
+              const stepSize = 0.35; // smaller step
+              if (i === 0 || i === 3) {
+                walkOffset = feetSize * stepSize * Math.sin(phase);
+              } else {
+                walkOffset = feetSize * stepSize * Math.sin(phase + Math.PI);
+              }
+            }
+            let x = Math.cos(a + mob.facingAngle) * feetOffset + Math.cos(mob.facingAngle) * walkOffset;
+            let y = Math.sin(a + mob.facingAngle) * feetOffset + Math.sin(mob.facingAngle) * walkOffset;
+            return { x, y };
+          });
+          for (const foot of footOffsets) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(centerX + foot.x - feetSize/2, centerY + foot.y - feetSize/2, feetSize, feetSize);
+            ctx.fillStyle = mobColor;
+            ctx.fill();
+            ctx.strokeStyle = outlineColor;
+            ctx.lineWidth = 2; // Always set lineWidth for feet
+            ctx.stroke();
+            ctx.restore();
+          }
         }
         // Draw mob body (rotates with facingAngle)
         ctx.save();
@@ -408,8 +441,18 @@ function tryHitMob() {
         const damage = toolInfo.damage;
         mob.health -= damage;
         window.socket.emit("mobhit", { type, id: mob.id, newHealth: mob.health });
-        // Client-side immediate knockback prediction for responsiveness
-  // Removed local knockback prediction to prevent double visual push; wait for server event.
+        // Micro client-side nudge for responsiveness; reconciles when server event arrives
+        if (!mob._kbPendingAt || (performance.now() - mob._kbPendingAt) > 120) {
+          const dx = (mob.x + mob.size/2) - (player.x + player.size/2);
+          const dy = (mob.y + mob.size/2) - (player.y + player.size/2);
+          const len = Math.hypot(dx, dy) || 1;
+          const nx = dx / len, ny = dy / len;
+          const nudge = 9; // slightly larger immediate displacement in px
+          mob.x += nx * nudge;
+          mob.y += ny * nudge;
+          // mark pending so rapid multi-hits don't stack too much before server says so
+          mob._kbPendingAt = performance.now();
+        }
         showDamageText(mob.x + mob.size / 2, mob.y + mob.size / 2, -damage);
         mob.lastHitTime = performance.now();
         

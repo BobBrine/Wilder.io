@@ -1,4 +1,4 @@
-const WORLD_SIZE = 1000;
+const WORLD_SIZE = 5000;
 
 const GRID_CELL_SIZE = 100;
 const GRID_COLS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE); // 50
@@ -351,9 +351,7 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
               break;
             }
           } while (
-            isOverlappingAny(allResources, newX, newY, size, size) ||
-            isOverlappingAny(mobs, newX, newY, size, size) ||
-            isOverlappingAny(players, newX, newY, size, size) ||
+            mobPositionBlocked(newX, newY, size, allResources, players, mobs, null, size * 0.4) ||
             checkOverlap(newX, newY, size, size, pond.x, pond.y, pond.size, pond.size)
           );
           if (attempts <= maxAttempts) {
@@ -418,9 +416,7 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
               break;
             }
           } while (
-            isOverlappingAny(allResources, newX, newY, size, size) ||
-            isOverlappingAny(mobs, newX, newY, size, size) ||
-            isOverlappingAny(players, newX, newY, size, size) ||
+            mobPositionBlocked(newX, newY, size, allResources, players, mobs, null, size * 0.4) ||
             checkOverlap(newX, newY, size, size, pond.x, pond.y, pond.size, pond.size)
           );
           if (attempts <= maxAttempts) {
@@ -465,11 +461,16 @@ function spawnAllMob(allResources, players, gameTime) {
   let totalMobCount = 0;
   for (const type in mobs) {
     mobs[type] = mobs[type].filter(r => r.size > 0);
-    createMobSpawner(type, mobs[type], (x, y, sizeX, sizeY) =>
-      isOverlappingAny(allResources, x, y, sizeX, sizeY) ||
-      isOverlappingAny(mobs, x, y, sizeX, sizeY) ||
-      isOverlappingAny(players, x, y, sizeX, sizeY) ||
-      checkOverlap(x, y, sizeX, sizeY, pond.x, pond.y, pond.size, pond.size),
+    createMobSpawner(
+      type,
+      mobs[type],
+      (x, y, sizeX, sizeY) => {
+        const overlapMargin = sizeX * 0.4;
+        return (
+          mobPositionBlocked(x, y, sizeX, allResources, players, mobs, null, overlapMargin) ||
+          checkOverlap(x, y, sizeX, sizeY, pond.x, pond.y, pond.size, pond.size)
+        );
+      },
       gameTime
     );
     const activeCount = mobs[type].filter(r => r.size > 0).length;
@@ -480,6 +481,67 @@ function spawnAllMob(allResources, players, gameTime) {
 
 let ioRef = null;
 function setIO(ioInstance) { ioRef = ioInstance; }
+
+// Shared centered-collider helpers (consistent with updateMobs collision rules)
+function getCenterPos(x, y, size) {
+  return { cx: x + size / 2, cy: y + size / 2 };
+}
+
+function mobCollideResourcesCentered(newX, newY, size, allResources, overlapMargin) {
+  const { cx, cy } = getCenterPos(newX, newY, size);
+  const all = Object.values(allResources || {}).flat();
+  return all.some(resource => {
+    if (resource.sizeX > 0 && resource.sizeY > 0) {
+      const rcx = resource.x + resource.sizeX / 2;
+      const rcy = resource.y + resource.sizeY / 2;
+      const minDistX = (size + resource.sizeX) / 2 - overlapMargin;
+      const minDistY = (size + resource.sizeY) / 2 - overlapMargin;
+      return Math.abs(cx - rcx) < minDistX && Math.abs(cy - rcy) < minDistY;
+    }
+    return false;
+  });
+}
+
+function mobCollideMobsCentered(newX, newY, size, selfMob, mobsObj, overlapMargin) {
+  const { cx, cy } = getCenterPos(newX, newY, size);
+  const allMobs = Object.values(mobsObj || {}).flat();
+  return allMobs.some(otherMob => {
+    if (otherMob !== selfMob && otherMob.size > 0) {
+      const mobColliderSize = otherMob.size * 0.4;
+      const offset = (otherMob.size - mobColliderSize) / 2;
+      const ocx = otherMob.x + offset + mobColliderSize / 2;
+      const ocy = otherMob.y + offset + mobColliderSize / 2;
+      const minDistX = (size + mobColliderSize) / 2 - overlapMargin;
+      const minDistY = (size + mobColliderSize) / 2 - overlapMargin;
+      return Math.abs(cx - ocx) < minDistX && Math.abs(cy - ocy) < minDistY;
+    }
+    return false;
+  });
+}
+
+function mobCollidePlayersCentered(newX, newY, size, playersObj, overlapMargin) {
+  const { cx, cy } = getCenterPos(newX, newY, size);
+  return Object.values(playersObj || {}).some(player => {
+    if (player.size > 0) {
+      const playerColliderSize = player.size * 0.6;
+      const offset = (player.size - playerColliderSize) / 2;
+      const pcx = player.x + offset + playerColliderSize / 2;
+      const pcy = player.y + offset + playerColliderSize / 2;
+      const minDistX = (size + playerColliderSize) / 2 - overlapMargin;
+      const minDistY = (size + playerColliderSize) / 2 - overlapMargin;
+      return Math.abs(cx - pcx) < minDistX && Math.abs(cy - pcy) < minDistY;
+    }
+    return false;
+  });
+}
+
+function mobPositionBlocked(newX, newY, size, allResources, playersObj, mobsObj, selfMob, overlapMargin) {
+  return (
+    mobCollideResourcesCentered(newX, newY, size, allResources, overlapMargin) ||
+    mobCollideMobsCentered(newX, newY, size, selfMob, mobsObj, overlapMargin) ||
+    mobCollidePlayersCentered(newX, newY, size, playersObj, overlapMargin)
+  );
+}
 
 function updateMobs(allResources, players, deltaTime) {
   for (const mobList of Object.values(mobs)) {
@@ -715,13 +777,13 @@ function updateMobs(allResources, players, deltaTime) {
 
         if (!collideX) mob.x = Math.max(minX, Math.min(maxX, newX));
         if (!collideY) mob.y = Math.max(minY, Math.min(maxY, newY));
-        // If both axes blocked (likely tight overlap) attempt gentle separation from closest overlapping mob
-        if (collideX && collideY) {
-          const { cx, cy } = getCenter(mob.x, mob.y, mobSize);
-          let bestOther = null;
-            let bestOverlapScore = 0;
-          const allMobs = Object.values(mobs).flat();
-          for (const other of allMobs) {
+        // If both axes blocked (likely tight overlap) attempt gentle separation (mobs first, then resources)
+  if (collideX && collideY) {
+          const { cx, cy } = getCenterPos(mob.x, mob.y, mobSize);
+          let bestSep = null;
+          let bestScore = 0;
+          // Prefer separating from overlapping mobs
+          for (const other of Object.values(mobs).flat()) {
             if (other === mob || other.size <= 0) continue;
             const otherColliderSize = other.size * 0.4;
             const offset = (other.size - otherColliderSize) / 2;
@@ -736,23 +798,83 @@ function updateMobs(allResources, players, deltaTime) {
             if (adx < minDistX && ady < minDistY) {
               const overlapX = minDistX - adx;
               const overlapY = minDistY - ady;
-              const overlapScore = overlapX * overlapY; // area-based score
-              if (overlapScore > bestOverlapScore) {
-                bestOverlapScore = overlapScore;
-                bestOther = { dx, dy, overlapX, overlapY };
+              const score = overlapX * overlapY;
+              if (score > bestScore) {
+                bestScore = score;
+                bestSep = { dx, dy, overlapX, overlapY };
               }
             }
           }
-          if (bestOther) {
-            // Resolve along axis of least penetration for stability
-            if (bestOther.overlapX < bestOther.overlapY) {
-              const push = bestOther.overlapX * 0.6; // move 60% out, remaining resolved over frames
-              mob.x += (bestOther.dx >= 0 ? push : -push);
-            } else {
-              const push = bestOther.overlapY * 0.6;
-              mob.y += (bestOther.dy >= 0 ? push : -push);
+          // If still stuck, push away from overlapping resources (trees/rocks)
+          if (!bestSep) {
+            for (const res of Object.values(allResources).flat()) {
+              if (!res || res.sizeX <= 0 || res.sizeY <= 0) continue;
+              const rcx = res.x + res.sizeX / 2;
+              const rcy = res.y + res.sizeY / 2;
+              const minDistX = (mobSize + res.sizeX) / 2 - overlapMargin;
+              const minDistY = (mobSize + res.sizeY) / 2 - overlapMargin;
+              const dx = cx - rcx;
+              const dy = cy - rcy;
+              const adx = Math.abs(dx);
+              const ady = Math.abs(dy);
+              if (adx < minDistX && ady < minDistY) {
+                const overlapX = minDistX - adx;
+                const overlapY = minDistY - ady;
+                const score = overlapX * overlapY;
+                if (score > bestScore) {
+                  bestScore = score;
+                  bestSep = { dx, dy, overlapX, overlapY };
+                }
+              }
             }
-            // Clamp after separation
+          }
+          if (bestSep) {
+            if (bestSep.overlapX < bestSep.overlapY) {
+              const push = bestSep.overlapX * 0.6;
+              mob.x += (bestSep.dx >= 0 ? push : -push);
+            } else {
+              const push = bestSep.overlapY * 0.6;
+              mob.y += (bestSep.dy >= 0 ? push : -push);
+            }
+            mob.x = Math.max(minX, Math.min(maxX, mob.x));
+            mob.y = Math.max(minY, Math.min(maxY, mob.y));
+          }
+        }
+
+        // Final guarantee: if still overlapping any resource (e.g., due to idle server/no players),
+        // push the mob out along the least-penetration axis so it can't remain stuck inside.
+        if (mobCollideResourcesCentered(mob.x, mob.y, mobSize, allResources, overlapMargin)) {
+          const { cx, cy } = getCenterPos(mob.x, mob.y, mobSize);
+          let bestRes = null;
+          let bestScore = 0;
+          for (const res of Object.values(allResources).flat()) {
+            if (!res || res.sizeX <= 0 || res.sizeY <= 0) continue;
+            const rcx = res.x + res.sizeX / 2;
+            const rcy = res.y + res.sizeY / 2;
+            const minDistX = (mobSize + res.sizeX) / 2 - overlapMargin;
+            const minDistY = (mobSize + res.sizeY) / 2 - overlapMargin;
+            const dx = cx - rcx;
+            const dy = cy - rcy;
+            const adx = Math.abs(dx);
+            const ady = Math.abs(dy);
+            if (adx < minDistX && ady < minDistY) {
+              const overlapX = minDistX - adx;
+              const overlapY = minDistY - ady;
+              const score = overlapX * overlapY;
+              if (score > bestScore) {
+                bestScore = score;
+                bestRes = { dx, dy, overlapX, overlapY };
+              }
+            }
+          }
+          if (bestRes) {
+            if (bestRes.overlapX < bestRes.overlapY) {
+              const push = bestRes.overlapX * 0.8; // stronger push to fully clear resource
+              mob.x += (bestRes.dx >= 0 ? push : -push);
+            } else {
+              const push = bestRes.overlapY * 0.8;
+              mob.y += (bestRes.dy >= 0 ? push : -push);
+            }
             mob.x = Math.max(minX, Math.min(maxX, mob.x));
             mob.y = Math.max(minY, Math.min(maxY, mob.y));
           }

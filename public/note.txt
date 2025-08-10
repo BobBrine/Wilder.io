@@ -89,3 +89,5 @@ Things I need to build this game:
 
 - resource check if mob inside them
 - mob flash fix
+
+-smooth client side

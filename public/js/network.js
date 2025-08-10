@@ -1,6 +1,19 @@
 // Socket connection
 let socket = null;
 const devTest = false; // Set to true for development testing
+// Dev mode strictly follows devTest only (no localStorage/host overrides)
+const devModeActive = !!devTest;
+// Helpful diagnostic
+try { console.log('Dev mode check', { devTest, devModeActive, host: location.hostname }); } catch (_) {}
+
+// Run a callback now if DOM is ready, otherwise on DOMContentLoaded
+function onReady(cb) {
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', cb, { once: true });
+  } else {
+    try { cb(); } catch (e) { console.error('onReady error', e); }
+  }
+}
 
 let latestSquare = null;
 let ping = 0;
@@ -63,8 +76,15 @@ function setupSocketListeners() {
 
   socket.on('connect', () => {
     console.log('Connected as', socket.id);
-    document.querySelector("#playerNameInput").disabled = false;
-    document.querySelector("#nameEntry button").disabled = false;
+  const nameInput = document.querySelector("#playerNameInput");
+  const nameBtn = document.querySelector("#nameEntry button");
+  if (nameInput) nameInput.disabled = false;
+  if (nameBtn) nameBtn.disabled = false;
+  });
+
+  // Receive server time at a modest rate for lighting/day-night effects
+  socket.on('gameTime', (serverTime) => {
+    gameTime = serverTime;
   });
 
   socket.on("resources", (data) => {
@@ -86,29 +106,102 @@ function setupSocketListeners() {
   });
 
   socket.on("mobs", (data) => {
-    if (!mobs) {
-      mobs = data;
-    } else {
-      for (const type in data) {
-        if (!mobs[type]) mobs[type] = [];
-        const nowTs = performance.now();
-        data[type].forEach((serverR, i) => {
-          const existing = mobs[type][i] || {};
-          const prevServerX = existing._serverX ?? existing.x ?? serverR.x;
-          const prevServerY = existing._serverY ?? existing.y ?? serverR.y;
-          const prevTime = existing._serverTime ?? nowTs;
-          mobs[type][i] = {
-            ...serverR,
-            lastHitTime: existing.lastHitTime,
-            _lastServerX: prevServerX,
-            _lastServerY: prevServerY,
-            _lastServerTime: prevTime,
-            _serverX: serverR.x,
-            _serverY: serverR.y,
-            _serverTime: nowTs,
-          };
+    if (!mobs) mobs = {};
+    const nowTs = performance.now();
+    for (const type in data) {
+      const list = mobs[type] || [];
+      const byId = new Map();
+      for (let i = 0; i < list.length; i++) {
+        const m = list[i];
+        if (m && m.id) byId.set(m.id, m);
+      }
+      const nextList = [];
+      const incoming = data[type] || [];
+      for (let i = 0; i < incoming.length; i++) {
+        const serverR = incoming[i];
+        const existing = byId.get(serverR.id) || {};
+        const prevServerX = existing._serverX ?? existing.x ?? serverR.x;
+        const prevServerY = existing._serverY ?? existing.y ?? serverR.y;
+        const prevTime = existing._serverTime ?? nowTs;
+        nextList.push({
+          ...serverR,
+          lastHitTime: existing.lastHitTime,
+          _lastServerX: prevServerX,
+          _lastServerY: prevServerY,
+          _lastServerTime: prevTime,
+          _serverX: serverR.x,
+          _serverY: serverR.y,
+          _serverTime: nowTs,
         });
       }
+      mobs[type] = nextList;
+    }
+    mobloaded = true;
+  });
+
+  // Apply delta updates for mobs to reduce payload size
+  socket.on("mobsDelta", ({ add = [], update = [], remove = [] }) => {
+    const nowTs = performance.now();
+    const ensureList = (type) => { if (!mobs[type]) mobs[type] = []; return mobs[type]; };
+    const indexById = (list) => {
+      const map = new Map();
+      for (let i = 0; i < list.length; i++) map.set(list[i]?.id, i);
+      return map;
+    };
+    // Adds
+    for (const m of add) {
+      const list = ensureList(m.type);
+      const byId = indexById(list);
+      if (byId.has(m.id)) continue; // already present
+      list.push({
+        ...m,
+        _lastServerX: m.x,
+        _lastServerY: m.y,
+        _lastServerTime: nowTs,
+        _serverX: m.x,
+        _serverY: m.y,
+        _serverTime: nowTs,
+      });
+    }
+    // Updates
+    for (const m of update) {
+      const list = ensureList(m.type);
+      const idx = list.findIndex(x => x && x.id === m.id);
+      if (idx === -1) { // treat as add if not found
+        list.push({
+          ...m,
+          _lastServerX: m.x,
+          _lastServerY: m.y,
+          _lastServerTime: nowTs,
+          _serverX: m.x,
+          _serverY: m.y,
+          _serverTime: nowTs,
+        });
+      } else {
+        const existing = list[idx] || {};
+        // If we missed prior updates (stale), snap to current to avoid rubber-banding
+        const prevTime = existing._serverTime ?? nowTs;
+        const dt = nowTs - prevTime;
+        const tooOld = dt > 500; // >0.5s
+        const snap = tooOld || Math.hypot((existing._serverX ?? existing.x ?? m.x) - m.x, (existing._serverY ?? existing.y ?? m.y) - m.y) > 600;
+        list[idx] = {
+          ...existing,
+          ...m,
+          lastHitTime: existing.lastHitTime,
+          _lastServerX: snap ? m.x : (existing._serverX ?? existing.x ?? m.x),
+          _lastServerY: snap ? m.y : (existing._serverY ?? existing.y ?? m.y),
+          _lastServerTime: snap ? nowTs : (existing._serverTime ?? nowTs),
+          _serverX: m.x,
+          _serverY: m.y,
+          _serverTime: nowTs,
+        };
+      }
+    }
+    // Removes
+    for (const r of remove) {
+      const list = ensureList(r.type);
+      const idx = list.findIndex(x => x && x.id === r.id);
+      if (idx !== -1) list.splice(idx, 1);
     }
     mobloaded = true;
   });
@@ -126,6 +219,9 @@ function setupSocketListeners() {
   maxHunger = playerData.maxHunger;
   hunger = playerData.hunger;
   isDead = playerData.isDead;
+  // Ensure the game loop resumes after respawn without waiting for a resources re-broadcast
+  if (typeof resourcesLoaded !== 'undefined') resourcesLoaded = true;
+  if (typeof mobloaded !== 'undefined') mobloaded = true;
   // Close death screen immediately on respawn
   const deathScreen = document.getElementById("deathScreen");
   if (deathScreen) deathScreen.style.display = "none";
@@ -134,6 +230,30 @@ function setupSocketListeners() {
   socket.on('playerRenamed', ({ id, name }) => {
     if (otherPlayers[id]) {
       otherPlayers[id].name = name;
+    }
+  });
+
+  // Apply players delta for non-pos fields
+  socket.on("playersDelta", ({ add = [], update = [], remove = [] }) => {
+    // Adds
+    for (const p of add) {
+      if (!otherPlayers[p.id]) otherPlayers[p.id] = {};
+      otherPlayers[p.id].name = p.name;
+      otherPlayers[p.id].level = p.level;
+      otherPlayers[p.id].color = p.color;
+      otherPlayers[p.id].health = p.health;
+    }
+    // Updates
+    for (const p of update) {
+      if (!otherPlayers[p.id]) otherPlayers[p.id] = {};
+      otherPlayers[p.id].name = p.name;
+      otherPlayers[p.id].level = p.level;
+      otherPlayers[p.id].color = p.color;
+      otherPlayers[p.id].health = p.health;
+    }
+    // Removes
+    for (const r of remove) {
+      delete otherPlayers[r.id];
     }
   });
 
@@ -149,7 +269,7 @@ function setupSocketListeners() {
     staminaRegenSpeed = data.self.staminaRegenSpeed;
     maxHunger = data.self.maxHunger;
     hunger = data.self.hunger;
-    droppedItems = data.droppedItems || [];
+  // droppedItems moved to its own event for diffed proximity updates
 
     for (const id in serverPlayers) {
       if (id !== socket.id) {
@@ -171,6 +291,19 @@ function setupSocketListeners() {
       player.hunger = data.self.hunger;
       player.maxHunger = data.self.maxHunger;
     }
+  });
+
+  // Receive per-client, proximity-filtered dropped items snapshot
+  socket.on("droppedItems", (items) => {
+    droppedItems = items || [];
+  });
+
+  // Low-latency item appear: merge single new item between snapshots
+  socket.on("newDroppedItem", (item) => {
+    if (!item || typeof item.id !== 'number') return;
+    if (!Array.isArray(droppedItems)) droppedItems = [];
+    const exists = droppedItems.some(it => it && it.id === item.id);
+    if (!exists) droppedItems.push(item);
   });
 
   socket.on('playerMoved', (playerData) => {
@@ -207,15 +340,15 @@ function setupSocketListeners() {
   });
 
   socket.on("removeDroppedItem", (itemId) => {
-    droppedItems = droppedItems.filter(item => item.id !== itemId);
+  if (!Array.isArray(droppedItems)) { droppedItems = []; return; }
+  droppedItems = droppedItems.filter(item => item && item.id !== itemId);
   });
 
   socket.on('playerDied', () => {
     isDead = true;
-    player = null;
-    otherPlayers = {};
-    resourcesLoaded = false;
-    mobloaded = false;
+  player = null;
+  otherPlayers = {};
+  // Keep resources/mobs flags so the loop doesn't stall during respawn
     if (inventory && typeof inventory.clear === "function") {
       inventory.clear();
     }
@@ -237,8 +370,10 @@ function setupSocketListeners() {
           backToHome();
           return;
         }
-        deathScreen.style.display = "none";
-        isDead = false;
+  // Clear dead flag immediately to resume gameplay visuals
+  deathScreen.style.display = "none";
+  isDead = false;
+  // Reset any local movement/input state if needed
         socket.emit("setName", name);
       };
       deathScreen.appendChild(respawnBtn);
@@ -274,7 +409,23 @@ function setupSocketListeners() {
       if (typeof x === 'number' && typeof y === 'number') {
         mob.x = x;
         mob.y = y;
+  // Snap interpolation anchors to the new server position for instant response
+  const nowTs = performance.now();
+  mob._lastServerX = x;
+  mob._lastServerY = y;
+  mob._lastServerTime = nowTs;
+  mob._serverX = x;
+  mob._serverY = y;
+  mob._serverTime = nowTs;
+ mob._kbActiveUntil = nowTs + (kbTimer ? kbTimer * 1000 : 150);
+ // Very brief hard snap window to feel snappy (bypass smoothing for ~80ms)
+ mob._kbSnapUntil = nowTs + 80;
+ // Update render position immediately so the next frame is already at server pos
+ mob._renderX = x;
+ mob._renderY = y;
       }
+  // Clear pending local nudge flag; server is authoritative now
+  mob._kbPendingAt = 0;
       mob.kbVx = kbVx || 0;
       mob.kbVy = kbVy || 0;
       mob.kbTimer = kbTimer || 0.15;
@@ -299,9 +450,17 @@ function joinMainServer() {
   document.getElementById("homePage").style.display = "none";
   document.getElementById("serverJoin").style.display = "block";
   
-  const statusElement = document.getElementById("serverStatus");
-  statusElement.textContent = "Connecting to main server...";
-  statusElement.style.color = "white";
+  let statusElement = document.getElementById("serverStatus");
+  if (!statusElement) {
+    statusElement = document.createElement('div');
+    statusElement.id = 'serverStatus';
+    const container = document.getElementById('serverJoin');
+    if (container) container.prepend(statusElement);
+  }
+  if (statusElement) {
+    statusElement.textContent = "Connecting to main server...";
+    statusElement.style.color = "white";
+  }
   
   // Clear any existing retry button
   const existingRetry = document.querySelector('#serverJoin button.retry');
@@ -323,9 +482,14 @@ function joinMainServer() {
     if (socket) {
       socket.on('connect', () => {
         console.log('Socket connected, showing name entry UI');
-        document.getElementById("serverJoin").style.display = "none";
-        document.getElementById("nameEntry").style.display = "block";
-        document.getElementById("playerNameInput").focus();
+        const serverJoin = document.getElementById("serverJoin");
+        const nameEntry = document.getElementById("nameEntry");
+        if (serverJoin) serverJoin.style.display = "none";
+        if (nameEntry) {
+          nameEntry.style.display = "block";
+          const input = document.getElementById("playerNameInput");
+          if (input) input.focus();
+        }
       });
     }
   } catch (error) {
@@ -531,8 +695,8 @@ function promptDropAmount(type, maxCount) {
 }
 
 // Dev testing
-if (devTest) {
-  window.addEventListener("DOMContentLoaded", () => {
+if (devModeActive) {
+  onReady(() => {
     // Hide all menus and show game instantly
     document.getElementById("homePage").style.display = "none";
     document.getElementById("serverJoin").style.display = "none";
@@ -541,6 +705,7 @@ if (devTest) {
     document.getElementById("joinLocalPrompt").style.display = "none";
     document.getElementById("nameEntry").style.display = "none";
     document.getElementById("deathScreen").style.display = "none";
+    console.log('[Dev] Auto-connect initializing...');
     // Connect to localhost and login instantly
     initializeSocket("http://localhost:3000");
     // Wait for socket connection before submitting name
@@ -554,10 +719,45 @@ if (devTest) {
         inventory.addItem("wood", 100);
         inventory.addItem("torch", 1);
         inventory.addItem("food", 10);
+        console.log('[Dev] Auto-login done');
       } else {
         setTimeout(tryLogin, 100);
       }
     };
     tryLogin();
+  });
+} else {
+  // Minimal UI bootstrap for non-dev mode to ensure menus/buttons exist
+  onReady(() => {
+    const home = document.getElementById('homePage');
+    if (home && home.children.length <= 1) {
+      const btnOnline = document.createElement('button');
+      btnOnline.textContent = 'Play Online';
+      btnOnline.onclick = joinMainServer;
+      const btnLAN = document.createElement('button');
+      btnLAN.textContent = 'Local LAN';
+      btnLAN.onclick = showLocalLAN;
+      home.appendChild(btnOnline);
+      home.appendChild(btnLAN);
+    }
+    const nameEntry = document.getElementById('nameEntry');
+    if (nameEntry && nameEntry.children.length === 0) {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.id = 'playerNameInput';
+      input.placeholder = 'Enter your name';
+      input.disabled = true;
+      const btn = document.createElement('button');
+      btn.textContent = 'Join';
+      btn.onclick = submitName;
+      btn.disabled = true;
+      nameEntry.appendChild(input);
+      nameEntry.appendChild(btn);
+    }
+    // Hide non-home pages on load
+    ['serverJoin','localLAN','hostPrompt','joinLocalPrompt','nameEntry','deathScreen']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+    const homePage = document.getElementById('homePage');
+    if (homePage) homePage.style.display = 'block';
   });
 }

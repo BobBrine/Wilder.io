@@ -1,3 +1,16 @@
+// Global graphics settings (persisted)
+if (!window.graphicsSettings) {
+  try {
+    const saved = localStorage.getItem('graphics.shadows');
+    window.graphicsSettings = {
+  shadows: saved ? JSON.parse(saved) : false,
+  performanceMode: JSON.parse(localStorage.getItem('graphics.performanceMode') ?? 'false'),
+    };
+  } catch (_) {
+    window.graphicsSettings = { shadows: false };
+  }
+}
+
 let resourceTypes = {};
 let allResources = {};
 let resourcesLoaded = false;
@@ -54,10 +67,12 @@ function hitResourceInCone() {
       const ry = resource.y;
 
       // Debug visuals (optional)
-      ctx.beginPath();
-      ctx.fillStyle = 'rgba(0, 255, 255, 0.92)';
-      ctx.arc(rx, ry, 5, 0, Math.PI * 2);
-      ctx.fill();
+      if (typeof showData !== 'undefined' && showData) {
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(0, 255, 255, 0.92)';
+        ctx.arc(rx, ry, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       // ✅ Only hit if resource is in cone
       if (resource.sizeX > 0 && resource.sizeY > 0 &&
@@ -168,6 +183,14 @@ function drawResources() {
   for (const resources of Object.values(allResources)) {
     for (const r of resources) {
       if (r.sizeX > 0 && r.sizeY > 0) {
+        // Cull off-screen resources to reduce draw calls
+        if (typeof isWorldRectOnScreen === 'function') {
+          const w = r.sizeX || 32;
+          const h = r.sizeY || 32;
+          if (!isWorldRectOnScreen(r.x, r.y, w, h)) {
+            continue;
+          }
+        }
 
         // ===== Apply hit animation offset (visual only) =====
         let drawX = r.x;
@@ -186,10 +209,18 @@ function drawResources() {
         }
 
         ctx.save();
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-        ctx.shadowBlur = 5;
-        ctx.shadowOffsetX = 3;
-        ctx.shadowOffsetY = 3;
+        // Apply optional shadows
+        if (window.graphicsSettings && window.graphicsSettings.shadows) {
+          ctx.shadowColor = 'rgba(0,0,0,0.5)';
+          ctx.shadowBlur = 5;
+          ctx.shadowOffsetX = 3;
+          ctx.shadowOffsetY = 3;
+        } else {
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+        }
 
         if (r.type === 'food') {
           // Main food rectangle
