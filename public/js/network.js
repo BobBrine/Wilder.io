@@ -76,10 +76,13 @@ function setupSocketListeners() {
 
   socket.on('connect', () => {
     console.log('Connected as', socket.id);
-  const nameInput = document.querySelector("#playerNameInput");
-  const nameBtn = document.querySelector("#nameEntry button");
-  if (nameInput) nameInput.disabled = false;
-  if (nameBtn) nameBtn.disabled = false;
+    const nameInput = document.querySelector("#playerNameInput");
+    const nameBtn = document.querySelector("#nameEntry button");
+    if (nameInput) nameInput.disabled = false;
+    if (nameBtn) nameBtn.disabled = false;
+
+    window.graphicsSettings.performanceMode = false;
+    window.graphicsSettings.shadows = true;
   });
 
   // Receive server time at a modest rate for lighting/day-night effects
