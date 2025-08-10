@@ -81,8 +81,18 @@ function setupSocketListeners() {
     if (nameInput) nameInput.disabled = false;
     if (nameBtn) nameBtn.disabled = false;
 
-    window.graphicsSettings.performanceMode = false;
-    window.graphicsSettings.shadows = true;
+    // Initialize graphics settings from localStorage or defaults
+    if (!window.graphicsSettings) window.graphicsSettings = {};
+    try {
+      const savedPerformanceMode = localStorage.getItem('graphics.performanceMode');
+      window.graphicsSettings.performanceMode = savedPerformanceMode ? JSON.parse(savedPerformanceMode) : false;
+      // Shadows are always inverse of performance mode
+      window.graphicsSettings.shadows = !window.graphicsSettings.performanceMode;
+    } catch (e) {
+      // Fallback to defaults if localStorage fails
+      window.graphicsSettings.performanceMode = false;
+      window.graphicsSettings.shadows = true; // Default: shadows on when performance mode off
+    }
   });
 
   // Receive server time at a modest rate for lighting/day-night effects

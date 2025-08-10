@@ -321,7 +321,7 @@ function drawWorldBorder() {
 
 function drawButtons() {
   ctx.save(); // Save the current context state
-  // Only show dev-only buttons (Shadows/Performance) when dev UI is enabled
+  // Only show dev-only buttons (Performance) when dev UI is enabled
   const isDevUI = (typeof devModeActive !== 'undefined' ? devModeActive : (typeof devTest !== 'undefined' && devTest));
   if (isDevUI) {
     if (typeof ensurePerformanceToggle === 'function') ensurePerformanceToggle();
@@ -345,33 +345,7 @@ function drawButtons() {
   ctx.restore(); // Restore the context state
 }
 
-// Create/update a persistent Shadows toggle using the shared createButton()
-function ensureShadowToggle() {
-  const label = (window.graphicsSettings && window.graphicsSettings.shadows) ? 'Shadows: On' : 'Shadows: Off';
-  const idx = uiButtons.findIndex(b => b && b.text && b.text.startsWith('Shadows:'));
-  if (idx === -1) {
-    if (typeof createButton === 'function') {
-      createButton(10, canvas.height - 100, label, () => {
-        window.graphicsSettings.shadows = !window.graphicsSettings.shadows;
-        try { localStorage.setItem('graphics.shadows', JSON.stringify(window.graphicsSettings.shadows)); } catch (_) {}
-      });
-    } else {
-      // Fallback if helper isn't available yet
-      uiButtons.unshift({
-        x: 10, y: 10, width: 130, height: 32,
-        text: label,
-        callback: () => {
-          window.graphicsSettings.shadows = !window.graphicsSettings.shadows;
-          try { localStorage.setItem('graphics.shadows', JSON.stringify(window.graphicsSettings.shadows)); } catch (_) {}
-        }
-      });
-    }
-  } else {
-    uiButtons[idx].text = label;
-  }
-}
-
-// Create/update a Performance Mode toggle that disables heavy effects (lighting, shadows)
+// Create/update a Performance Mode toggle that controls both performance and shadows
 function ensurePerformanceToggle() {
   if (!window.graphicsSettings) window.graphicsSettings = {};
   const pmOn = !!window.graphicsSettings.performanceMode;
@@ -379,21 +353,18 @@ function ensurePerformanceToggle() {
   const idx = uiButtons.findIndex(b => b && b.text && b.text.startsWith('Performance:'));
   const applyPerf = (next) => {
     window.graphicsSettings.performanceMode = next;
-    // If enabling performance mode, also force shadows off
-    if (next) {
-      window.graphicsSettings.shadows = true;
-      try { localStorage.setItem('graphics.shadows', JSON.stringify(true)); } catch (_) {}
-    }
-    try { localStorage.setItem('graphics.performanceMode', JSON.stringify(next)); } catch (_) {}
+    // Shadows are always inverse of performance mode
+    window.graphicsSettings.shadows = !next;
+    try { 
+      localStorage.setItem('graphics.performanceMode', JSON.stringify(next)); 
+      // Remove old shadows setting from localStorage since it's now controlled by performance mode
+      localStorage.removeItem('graphics.shadows');
+    } catch (_) {}
   };
   if (idx === -1) {
     if (typeof createButton === 'function') {
-      // Place above the Shadows toggle
-      createButton(10, canvas.height - 140, label, () => {
+      createButton(10, canvas.height - 100, label, () => {
         applyPerf(!pmOn);
-
-        window.graphicsSettings.shadows = !window.graphicsSettings.shadows;
-        try { localStorage.setItem('graphics.shadows', JSON.stringify(window.graphicsSettings.shadows)); } catch (_) {}
       });
     } else {
       uiButtons.unshift({
@@ -405,5 +376,4 @@ function ensurePerformanceToggle() {
   } else {
     uiButtons[idx].text = label;
   }
-
 }
