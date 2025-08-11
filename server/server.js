@@ -12,8 +12,10 @@ const io = socketIO(server, {
 });
 const PORT = process.env.PORT || 3000;
 // Performance tuning constants (override with environment variables to tune without code changes)
-// You can push further by setting env: TICK_MS=20 (50 FPS) or 16 (60 FPS) if CPU allows
-const TICK_MS = Number(process.env.TICK_MS) || 25; // default ~40 FPS
+// Multi-frequency approach: different update rates for different systems
+const TICK_MS = Number(process.env.TICK_MS) || 20; // default 50 FPS for responsive movement
+const MOB_TICK_MS = Number(process.env.MOB_TICK_MS) || 25; // 40 FPS for mob AI/logic
+const WORLD_TICK_MS = Number(process.env.WORLD_TICK_MS) || 50; // 20 FPS for world updates
 const MOB_VIS_RADIUS = Number(process.env.MOB_VIS_RADIUS) || 1400; // Per-client mob visibility radius (world pixels)
 // Spatial grid cell size for mob lookup (tune based on typical mob density)
 const MOB_GRID_CELL = Number(process.env.MOB_GRID_CELL) || 350;
@@ -45,6 +47,7 @@ const {
   updateMobs,
   updateMobRespawns,
   setIO,
+  isMobPosBlockedForServer,
 } = require('./mobdata');
 
 // Provide io to mobdata for targeted emits (e.g., knockback)
@@ -59,6 +62,8 @@ let droppedItems = [];
 let nextItemId = 0;
 let lastUpdate = Date.now();
 let lastStaticUpdate = Date.now();
+let lastMobUpdate = Date.now();
+let lastWorldUpdate = Date.now();
 const WORLD_SIZE = 5000;
 // Tick timing stats (ms)
 let __tickStats = { count: 0, sum: 0, min: Infinity, max: 0 };
@@ -295,7 +300,7 @@ io.on('connection', (socket) => {
 
   //old code
   socket.on('resourceHit', ({ id, type, newHealth }) => handleHit(socket, allResources, type, id, newHealth, resourceTypes));
-  socket.on('mobhit', ({ id, type, newHealth }) => handleHit(socket, mobs, type, id, newHealth, mobtype, true));
+  socket.on('mobhit', ({ id, type, newHealth, knockback }) => handleHit(socket, mobs, type, id, newHealth, mobtype, true, knockback));
   socket.on('dropItem', ({ type, amount, x, y }) => handleDropItem(socket, type, amount, x, y));
   socket.on('pickupItem', itemId => handlePickupItem(socket, itemId));
   // Inside io.on('connection', (socket) => {...})
@@ -351,25 +356,36 @@ function maybeEmitGameTime() {
   }
 }
 
-//update contiunous
+//update continuous - Multi-frequency approach
 setInterval(() => {
   const t0 = Date.now();
   const now = t0;
   const deltaTime = (now - lastUpdate) / 1000;
   lastUpdate = now;
+  
+  // High-frequency: Player updates and movement (every tick)
   updatePlayers(deltaTime, now);
-
   gameTime = (gameTime + deltaTime) % CYCLE_LENGTH;
 
-  // Update mobs BEFORE broadcasting so clients get freshest positions (reduces ~1 tick latency)
-  updateMobs(allResources, players, deltaTime);
-  // Rebuild spatial grid for fast per-client mob queries
-  rebuildMobGrid();
-  // Rebuild spatial grid for items
-  rebuildItemGrid();
-  emitVisibleMobsPerClient();
-  emitVisibleDroppedItemsPerClient();
-  maybeEmitGameTime();
+  // Medium-frequency: Mob AI and movement (less frequent)
+  const mobDeltaTime = (now - lastMobUpdate) / 1000;
+  if (now - lastMobUpdate >= MOB_TICK_MS) {
+    lastMobUpdate = now;
+    updateMobs(allResources, players, mobDeltaTime);
+    // Rebuild spatial grids after mob updates
+    rebuildMobGrid();
+  }
+
+  // Lower-frequency: World state broadcasts (even less frequent)
+  const worldDeltaTime = (now - lastWorldUpdate) / 1000;
+  if (now - lastWorldUpdate >= WORLD_TICK_MS) {
+    lastWorldUpdate = now;
+    rebuildItemGrid();
+    emitVisibleMobsPerClient();
+    emitVisibleDroppedItemsPerClient();
+    maybeEmitGameTime();
+  }
+
   // Record tick duration stats
   const dtMs = Date.now() - t0;
   __tickStats.count++;
@@ -407,6 +423,8 @@ server.listen(PORT, '0.0.0.0', () => {
   // Startup config summary
   console.log('⚙️  Config:', {
     TICK_MS,
+    MOB_TICK_MS,
+    WORLD_TICK_MS,
     MOB_VIS_RADIUS,
     MOB_GRID_CELL,
     ITEM_GRID_CELL: 350,
@@ -577,15 +595,17 @@ function emitVisibleDroppedItemsPerClient() {
   }
 }
 
-function handleHit(socket, collection, type, id, newHealth, configTypes, isMob = false) {
+function handleHit(socket, collection, type, id, newHealth, configTypes, isMob = false, knockback = null) {
   const list = collection[type];
   if (!list) return;
   const entity = list?.find(e => e.id === id);
   if (!entity) return;
+  const attacker = players[socket.id];
+  const dist = Math.hypot(attacker.x - entity.x, attacker.y - entity.y);
+  if (dist > 200) return;  // Increased to account for lag
   const damage = entity.health - newHealth;
   entity.health = newHealth;
   entity.lastHitBy = socket.id;
-  if (isMob) entity.pauseTimer = 0.1;
   const config = configTypes[type];
   if (isMob && config.isAggressive) {
     entity.threatTable[socket.id] = (entity.threatTable[socket.id] || 0) + (5 + damage * 0.2);
@@ -598,38 +618,33 @@ function handleHit(socket, collection, type, id, newHealth, configTypes, isMob =
     emitToNearby("updateResourceHealth", { id, type, health: newHealth }, entity.x, entity.y, MOB_VIS_RADIUS);
   }
     // Emit knockback event for mob if it was hit by player
-  if (isMob) {
-    // Compute and store knockback on server so movement reflects it
-    const attacker = players[socket.id];
+  if (isMob && entity.health > 0) {
+    // Server-side knockback with smooth follow-through
+    
     if (attacker && entity.health > 0) {
-      const dx = entity.x - attacker.x;
-      const dy = entity.y - attacker.y;
-      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-  const FORCE = 320; // slightly stronger for snappier response
-      const nx = dx / dist;
-      const ny = dy / dist;
-      entity.kbVx = nx * FORCE;
-      entity.kbVy = ny * FORCE;
-  entity.kbTimer = 0.3; // a touch longer to be visible
-  const INITIAL_DT = 0.02; // push a bit further immediately
-      // Calculate intended new position
-      const intendedX = entity.x + entity.kbVx * INITIAL_DT;
-      const intendedY = entity.y + entity.kbVy * INITIAL_DT;
-      // Prevent mob from entering resources
-  if (!isOverlappingAny(allResources, intendedX, intendedY, entity.size, entity.size)) {
-        entity.x = intendedX;
-        entity.y = intendedY;
-      }
-      // Clamp inside world (assuming WORLD_SIZE and mob has size)
-      if (typeof WORLD_SIZE !== 'undefined' && entity.size) {
-        const maxX = WORLD_SIZE - entity.size;
-        const maxY = WORLD_SIZE - entity.size;
-        if (entity.x < 0) entity.x = 0; else if (entity.x > maxX) entity.x = maxX;
-        if (entity.y < 0) entity.y = 0; else if (entity.y > maxY) entity.y = maxY;
-      }
+  const { vx, vy, duration: reqDur } = knockback || { vx: 0, vy: 0 };
+  const duration = (typeof reqDur === 'number' && reqDur > 0) ? reqDur : 0.2; // match client/player knockback feel
+
+      // Continuous knockback: schedule velocity over time; movement/collision handled in updateMobs
+      const invDur = duration > 0 ? (1 / duration) : 0;
+      const addVx = vx * invDur;
+      const addVy = vy * invDur;
+      entity.kbVx = (entity.kbVx || 0) + addVx;
+      entity.kbVy = (entity.kbVy || 0) + addVy;
+      entity.kbTimer = Math.max(entity.kbTimer || 0, duration);
+
+      // Notify nearby clients that knockback started (no instant displacement to avoid double-move on client)
+      emitToNearbyReliable('mobKnockback', {
+        id: entity.id,
+        type,
+        knockbackVx: 0,
+        knockbackVy: 0,
+        duration,
+        continuous: true
+      }, entity.x, entity.y, MOB_VIS_RADIUS);
     }
-  // Notify only nearby clients of mob knockback
-  emitToNearbyReliable('mobKnockback', { id, type, sourcePlayerId: socket.id, x: entity.x, y: entity.y, kbVx: entity.kbVx, kbVy: entity.kbVy, kbTimer: entity.kbTimer }, entity.x, entity.y, MOB_VIS_RADIUS);
+  
+    
   }
   if (!isMob) socket.emit("itemDrop", { item: config.drop, amount: damage });
   if (entity.health <= 0) {
@@ -652,7 +667,6 @@ function handleHit(socket, collection, type, id, newHealth, configTypes, isMob =
     socket.emit("gainXP", 3);
   }
 }
-
 function handlePlayerHit(socket, targetId, newHealth) {
   const attacker = players[socket.id], target = players[targetId];
   if (!attacker || !target || target.health <= 0 || targetId === socket.id || newHealth > target.health) return;

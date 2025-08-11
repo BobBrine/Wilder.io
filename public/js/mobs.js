@@ -19,6 +19,17 @@ if (typeof socket !== "undefined" && socket) {
       }
     }
   });
+
+  socket.on("mobKnockback", ({ id, type, knockbackVx, knockbackVy, duration, continuous }) => {
+    const list = getMobArrayByType(type);
+    const mob = list.find(m => m.id === id);
+    if (mob) {
+      const now = performance.now();
+      // Disable client-side knockback animation; rely on server position updates only
+      mob.flashEndTime = now + 150;
+      mob._kbFlashUntil = now + 150;
+    }
+  });
 }
 
 function drawPolygon(ctx, x, y, size, sides, rotation = 0) {
@@ -75,7 +86,9 @@ function drawMob() {
         // Cull off-screen mobs to reduce draw calls
         if (typeof isWorldRectOnScreen === 'function') {
           const size = mob.size || 0;
-          if (!isWorldRectOnScreen(mob.x, mob.y, size, size)) {
+          const rx = (mob._renderX !== undefined ? mob._renderX : mob.x);
+          const ry = (mob._renderY !== undefined ? mob._renderY : mob.y);
+          if (!isWorldRectOnScreen(rx, ry, size, size)) {
             continue;
           }
         }
@@ -86,50 +99,21 @@ function drawMob() {
         } else {
           ctx.shadowColor = 'transparent';
         }
-  // Time-based interpolation between last and current server states
+  // Smoothly follow server/logic position only (knockback animation disabled)
   if (mob._renderX === undefined) { mob._renderX = mob.x; mob._renderY = mob.y; }
-  const nowMs = performance.now();
-  const lastTime = mob._lastServerTime ?? nowMs;
-  const curTime = mob._serverTime ?? nowMs;
-  const rawDelta = curTime - lastTime;
-  const serverDelta = Math.max(1, rawDelta); // ms
-  // If within the brief snap window, bypass smoothing entirely
-  if (mob._kbSnapUntil && nowMs < mob._kbSnapUntil && mob._serverX !== undefined && mob._serverY !== undefined) {
-    mob._renderX = mob._serverX;
-    mob._renderY = mob._serverY;
+  const follow = 0.35; // snappy follow to reduce visible snap-back
+  const dfx = mob.x - mob._renderX;
+  const dfy = mob.y - mob._renderY;
+  const d2 = dfx * dfx + dfy * dfy;
+  // Dead-zone to prevent micro jitter
+  if (d2 < 0.25) { // ~0.5px
+    mob._renderX = mob.x;
+    mob._renderY = mob.y;
   } else {
-  // During active knockback, reduce smoothing and increase forward blend for a snappier feel
-  const kbActive = mob._kbActiveUntil && nowMs < mob._kbActiveUntil;
-  const INTERP_EXTRA_DELAY = kbActive ? 6 : BASE_INTERP_EXTRA_DELAY;
-  const MIN_BUFFER = kbActive ? 2 : BASE_MIN_BUFFER;
-  const MAX_BUFFER = BASE_MAX_BUFFER;
-  const VELOCITY_BLEND = kbActive ? 0.12 : BASE_VELOCITY_BLEND;
-  // Dynamic buffer: proportional to serverDelta plus small extra smoothing lag
-  let buffer = serverDelta * 0.2 + INTERP_EXTRA_DELAY;
-  buffer = Math.min(MAX_BUFFER, Math.max(MIN_BUFFER, buffer));
-  const totalWindow = serverDelta + buffer; // interpolation window
-  const elapsed = nowMs - curTime + buffer; // progress through window
-  const interpT = Math.min(1, Math.max(0, elapsed / totalWindow));
-  const fromX = mob._lastServerX !== undefined ? mob._lastServerX : mob.x;
-  const fromY = mob._lastServerY !== undefined ? mob._lastServerY : mob.y;
-  const toX = mob._serverX !== undefined ? mob._serverX : mob.x;
-  const toY = mob._serverY !== undefined ? mob._serverY : mob.y;
-  // Smooth ease (quintic) for very soft edges
-  const ease = (() => { const a = interpT; return a * a * a * (a * (6 * a - 15) + 10); })();
-  let targetX = fromX + (toX - fromX) * ease;
-  let targetY = fromY + (toY - fromY) * ease;
-  // Velocity blending: approximate velocity from last two snapshots and nudge forward
-  if (mob._lastServerX !== undefined && mob._lastServerY !== undefined && serverDelta > 0) {
-    const vx = (toX - fromX) / (serverDelta / 1000); // px/sec
-    const vy = (toY - fromY) / (serverDelta / 1000);
-    const lead = (1 - ease) * VELOCITY_BLEND; // less lead as we approach end
-    targetX += vx * lead * (serverDelta / 1000);
-    targetY += vy * lead * (serverDelta / 1000);
+    mob._renderX += dfx * follow;
+    mob._renderY += dfy * follow;
   }
-  // Directly assign render pos
-  mob._renderX = targetX;
-  mob._renderY = targetY;
-  }
+
   const drawX = mob._renderX;
   const drawY = mob._renderY;
         if (window.graphicsSettings && window.graphicsSettings.shadows) {
@@ -188,8 +172,10 @@ function drawMob() {
         } else {
           outlineColor = "white";
         }
-        // Flash white when mob is hit (100ms)
-        if (mob.lastHitTime && now - mob.lastHitTime < 100) {
+        // Flash white when mob is hit (100ms) or knocked back
+        const isFlashing = (mob.lastHitTime && now - mob.lastHitTime < 100) || 
+                          (mob._kbFlashUntil && now < mob._kbFlashUntil);
+        if (isFlashing) {
           mobColor = "white";
         }
         // Skip feet animation entirely in performance mode
@@ -325,8 +311,8 @@ function drawMob() {
             ctx.fillStyle = "white";
             ctx.strokeStyle = "black";
             ctx.lineWidth = 1;
-            const x = mob.x;
-            let y = mob.y - 10;
+            const x = drawX;
+            let y = drawY - 10;
             for (const line of textLines) {
               ctx.strokeText(line, x, y);
               ctx.fillText(line, x, y);
@@ -387,8 +373,8 @@ function drawHealthBarM(mob) {
   const barWidth = mob.size;
   const barHeight = 5;
   const padding = 2;
-  const x = mob.x;
-  const y = mob.y - barHeight - padding;
+  const x = (mob._renderX !== undefined ? mob._renderX : mob.x);
+  const y = (mob._renderY !== undefined ? mob._renderY : mob.y) - barHeight - padding;
   ctx.fillStyle = "red";
   ctx.fillRect(x, y, barWidth, barHeight);
   ctx.fillStyle = "lime";
@@ -409,7 +395,7 @@ function tryHitMob() {
 
   if (toolInfo.attackRange) attackRange = toolInfo.attackRange;
 
-  let staminaSpent = false; // ✅ Track if stamina has been deducted
+  let staminaSpent = false;
 
   for (const [type, config] of Object.entries(mobtype)) {
     const list = getMobArrayByType(type);
@@ -418,14 +404,12 @@ function tryHitMob() {
       if (mob.size > 0 && mob.health > 0 &&
           isObjectInAttackCone(player, mob, attackRange, coneAngle)) {
 
-        // ✅ Tool effectiveness check
         if (!config.requiredTool.categories.includes(toolInfo.category) ||
             toolInfo.tier < config.requiredTool.minTier) {
           showMessage("This tool is not effective.");
           return;
         }
 
-        // ✅ Stamina cost ONCE
         if (!staminaSpent) {
           const cost = 10;
           if (stamina < cost) {
@@ -437,27 +421,38 @@ function tryHitMob() {
           staminaSpent = true;
         }
 
-        // ✅ Apply damage
         const damage = toolInfo.damage;
         mob.health -= damage;
-        window.socket.emit("mobhit", { type, id: mob.id, newHealth: mob.health });
-        // Micro client-side nudge for responsiveness; reconciles when server event arrives
-        if (!mob._kbPendingAt || (performance.now() - mob._kbPendingAt) > 120) {
-          const dx = (mob.x + mob.size/2) - (player.x + player.size/2);
-          const dy = (mob.y + mob.size/2) - (player.y + player.size/2);
-          const len = Math.hypot(dx, dy) || 1;
-          const nx = dx / len, ny = dy / len;
-          const nudge = 9; // slightly larger immediate displacement in px
-          mob.x += nx * nudge;
-          mob.y += ny * nudge;
-          // mark pending so rapid multi-hits don't stack too much before server says so
-          mob._kbPendingAt = performance.now();
-        }
-        showDamageText(mob.x + mob.size / 2, mob.y + mob.size / 2, -damage);
+
+        // Calculate knockback
+        const dx = (mob.x + mob.size/2) - (player.x + player.size/2);
+        const dy = (mob.y + mob.size/2) - (player.y + player.size/2);
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = dx / len, ny = dy / len;
+  const knockbackDistance = (toolInfo && toolInfo.isTool) ? 60 : 40;
+  const knockbackDuration = 0.2; // match player knockback duration for consistency
+
+        // Visual effects
+        mob.flashEndTime = performance.now() + 100;
+  const dX = (mob._renderX !== undefined ? mob._renderX : mob.x) + mob.size / 2;
+  const dY = (mob._renderY !== undefined ? mob._renderY : mob.y) + mob.size / 2;
+  showDamageText(dX, dY, -damage);
         mob.lastHitTime = performance.now();
-        
+
         player.isAttacking = true;
         player.attackStartTime = performance.now();
+
+  // Emit hit and requested knockback to server (no client-side animation)
+        window.socket.emit("mobhit", { 
+          type, 
+          id: mob.id, 
+          newHealth: mob.health,
+          knockback: {
+            vx: nx * knockbackDistance,
+            vy: ny * knockbackDistance,
+            duration: knockbackDuration,  // Seconds
+          }
+        });
       }
     }
   }

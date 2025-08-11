@@ -39,34 +39,22 @@ function randomBetween(min, max) {
   return Math.random() * (max - min) + min;
 }
 
-// Function to generate a passive mob type
+// Function to generate a passive mob type with fixed, difficulty-scaled stats
 function generatePassiveMobType(id, difficulty) {
-  const baseHealth = { min: 50, max: 150 };
-  const baseSize = { min: 20, max: 40 };
-  const baseSpeed = { min: 30, max: 70 };
   const baseTurnSpeed = Math.PI;
-  const baseDropAmount = 1; // Drops one "pure core"
-
-  const health = {
-    min: baseHealth.min * (1 + 0.5 * (difficulty - 1)),
-    max: baseHealth.max * (1 + 0.5 * (difficulty - 1)),
-  };
-  const size = {
-    min: baseSize.min * (1 + 0.2 * (difficulty - 1)),
-    max: baseSize.max * (1 + 0.2 * (difficulty - 1)),
-  };
-  const speed = {
-    min: baseSpeed.min * (1 + 0.2 * (difficulty - 1)),
-    max: baseSpeed.max * (1 + 0.2 * (difficulty - 1)),
-  };
   const turnSpeed = baseTurnSpeed * (1 + 0.1 * (difficulty - 1));
-  const dropAmount = baseDropAmount * difficulty;
+  const dropAmount = 1 * difficulty; // Drops one "pure core"
+
+  // Use midpoint of previous ranges as base, then scale with difficulty
+  const fixedHealth = 100 * (1 + 0.5 * (difficulty - 1)); // avg of 50..150
+  const fixedSize = 30 * (1 + 0.2 * (difficulty - 1));   // avg of 20..40
+  const fixedSpeed = 50 * (1 + 0.2 * (difficulty - 1));  // avg of 30..70
 
   return {
     maxCount: 20,
-    size,
-    health,
-    speed,
+    size: fixedSize,
+    health: fixedHealth,
+    speed: fixedSpeed,
     color: () => passiveColors[Math.floor(Math.random() * passiveColors.length)],
     drop: "pure_core",
     requiredTool: { categories: ["hand", "sword"], minTier: 0 },
@@ -78,7 +66,7 @@ function generatePassiveMobType(id, difficulty) {
   };
 }
 
-// Function to generate an aggressive mob type with profiles
+// Function to generate an aggressive mob type with profiles (fixed stats)
 function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 20) {
   const baseTurnSpeed = Math.PI * 2;
   const turnSpeed = baseTurnSpeed * (1 + 0.1 * (difficulty - 1));
@@ -87,39 +75,44 @@ function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 20)
   const aggroRadius = baseAggroRadius * (1 + 0.2 * (difficulty - 1));
   const escapeRadius = baseEscapeRadius * (1 + 0.2 * (difficulty - 1));
   const baseDropAmount = 1 * difficulty;
+  const attackSpeedScale = 1 + 0.2 * (difficulty - 1);
 
   return {
     maxCount: (gameTime) => (gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1), // *1.4
     profiles: {
       tank: {
         count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.2),
-        health: { min: 200 * (1 + 0.5 * (difficulty - 1)), max: 300 * (1 + 0.5 * (difficulty - 1)) },
-        size: { min: 40 * (1 + 0.2 * (difficulty - 1)), max: 60 * (1 + 0.2 * (difficulty - 1)) },
-        speed: { min: 20 * (1 + 0.2 * (difficulty - 1)), max: 40 * (1 + 0.2 * (difficulty - 1)) },
-        damage: { min: 15 * (1 + 0.3 * (difficulty - 1)), max: 25 * (1 + 0.3 * (difficulty - 1)) },
+        health: 250 * (1 + 0.5 * (difficulty - 1)), // avg of 200..300
+        size: 50 * (1 + 0.2 * (difficulty - 1)),   // avg of 40..60
+        speed: 30 * (1 + 0.2 * (difficulty - 1)),  // avg of 20..40
+        damage: 20 * (1 + 0.3 * (difficulty - 1)), // avg of 15..25
+  attackspeed: 0.7 * attackSpeedScale, // slow
       },
       speedster: {
         count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.2),
-        health: { min: 50 * (1 + 0.5 * (difficulty - 1)), max: 100 * (1 + 0.5 * (difficulty - 1)) },
-        size: { min: 15 * (1 + 0.2 * (difficulty - 1)), max: 25 * (1 + 0.2 * (difficulty - 1)) },
-        speed: { min: 80 * (1 + 0.2 * (difficulty - 1)), max: 120 * (1 + 0.2 * (difficulty - 1)) },
-        damage: { min: 5 * (1 + 0.3 * (difficulty - 1)), max: 10 * (1 + 0.3 * (difficulty - 1)) },
+        health: 75 * (1 + 0.5 * (difficulty - 1)),  // avg of 50..100
+        size: 20 * (1 + 0.2 * (difficulty - 1)),    // avg of 15..25
+        speed: 100 * (1 + 0.2 * (difficulty - 1)),  // avg of 80..120
+        damage: 7.5 * (1 + 0.3 * (difficulty - 1)), // avg of 5..10
+  attackspeed: 1.5 * attackSpeedScale, // fast
       },
       longRange: {
         count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.2),
-        health: { min: 80 * (1 + 0.5 * (difficulty - 1)), max: 150 * (1 + 0.5 * (difficulty - 1)) },
-        size: { min: 20 * (1 + 0.2 * (difficulty - 1)), max: 30 * (1 + 0.2 * (difficulty - 1)) },
-        speed: { min: 60 * (1 + 0.2 * (difficulty - 1)), max: 90 * (1 + 0.2 * (difficulty - 1)) },
-        damage: { min: 8 * (1 + 0.3 * (difficulty - 1)), max: 12 * (1 + 0.3 * (difficulty - 1)) },
+        health: 115 * (1 + 0.5 * (difficulty - 1)), // avg of 80..150
+        size: 25 * (1 + 0.2 * (difficulty - 1)),    // avg of 20..30
+        speed: 75 * (1 + 0.2 * (difficulty - 1)),   // avg of 60..90
+        damage: 10 * (1 + 0.3 * (difficulty - 1)),  // avg of 8..12
         aggroRadius: aggroRadius * 1.5,
         escapeRadius: escapeRadius * 1.5,
+  attackspeed: 1 * attackSpeedScale, // normal = 1
       },
       balanced: {
         count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.4),
-        health: { min: 100 * (1 + 0.5 * (difficulty - 1)), max: 200 * (1 + 0.5 * (difficulty - 1)) },
-        size: { min: 25 * (1 + 0.2 * (difficulty - 1)), max: 35 * (1 + 0.2 * (difficulty - 1)) },
-        speed: { min: 50 * (1 + 0.2 * (difficulty - 1)), max: 80 * (1 + 0.2 * (difficulty - 1)) },
-        damage: { min: 10 * (1 + 0.3 * (difficulty - 1)), max: 15 * (1 + 0.3 * (difficulty - 1)) },
+        health: 150 * (1 + 0.5 * (difficulty - 1)), // avg of 100..200
+        size: 30 * (1 + 0.2 * (difficulty - 1)),    // avg of 25..35
+        speed: 65 * (1 + 0.2 * (difficulty - 1)),   // avg of 50..80
+  damage: 12.5 * (1 + 0.3 * (difficulty - 1)),// avg of 10..15
+  attackspeed: 1 * attackSpeedScale, // normal = 1
       },
     },
     color: () => aggressiveColors[Math.floor(Math.random() * aggressiveColors.length)],
@@ -137,40 +130,25 @@ function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 20)
 
 // Function to generate a special aggressive mob
 function generateSpecialAggressiveMobType(id, gameTime, difficulty) {
-  const baseHealth = { min: 400, max: 600 };
-  const baseSize = { min: 25, max: 35 };
-  const baseSpeed = { min: 80, max: 120 };
-  const baseDamage = { min: 25, max: 35 };
   const baseTurnSpeed = Math.PI * 2;
-  const baseAggroRadius = 200;
-  const baseEscapeRadius = 400;
-  const baseDropAmount = 3 * difficulty;
-
-  const health = {
-    min: baseHealth.min * (1 + 0.5 * (difficulty - 1)),
-    max: baseHealth.max * (1 + 0.5 * (difficulty - 1)),
-  };
-  const size = {
-    min: baseSize.min * (1 + 0.2 * (difficulty - 1)),
-    max: baseSize.max * (1 + 0.2 * (difficulty - 1)),
-  };
-  const speed = {
-    min: baseSpeed.min * (1 + 0.2 * (difficulty - 1)),
-    max: baseSpeed.max * (1 + 0.2 * (difficulty - 1)),
-  };
-  const damage = {
-    min: baseDamage.min * (1 + 0.3 * (difficulty - 1)),
-    max: baseDamage.max * (1 + 0.3 * (difficulty - 1)),
-  };
   const turnSpeed = baseTurnSpeed * (1 + 0.1 * (difficulty - 1));
-  const aggroRadius = baseAggroRadius * (1 + 0.2 * (difficulty - 1));
-  const escapeRadius = baseEscapeRadius * (1 + 0.2 * (difficulty - 1));
+  const aggroRadius = 200 * (1 + 0.2 * (difficulty - 1));
+  const escapeRadius = 400 * (1 + 0.2 * (difficulty - 1));
+  const baseDropAmount = 3 * difficulty;
+  const attackSpeedScale = 1 + 0.2 * (difficulty - 1);
+
+  // Fixed values based on previous midpoints
+  const fixedHealth = 500 * (1 + 0.5 * (difficulty - 1)); // avg of 400..600
+  const fixedSize = 30 * (1 + 0.2 * (difficulty - 1));    // avg of 25..35
+  const fixedSpeed = 100 * (1 + 0.2 * (difficulty - 1));  // avg of 80..120
+  const fixedDamage = 30 * (1 + 0.3 * (difficulty - 1));  // avg of 25..35
 
   return {
     maxCount: 1,
-    size,
-    health,
-    speed,
+    size: fixedSize,
+    health: fixedHealth,
+    speed: fixedSpeed,
+  attackspeed: 1.5 * attackSpeedScale, // special = fast
     color: "white",
     drop: ["pure_core", "dark_core", "mythic_core"],
     requiredTool: { categories: ["sword"], minTier: 2 },
@@ -184,7 +162,7 @@ function generateSpecialAggressiveMobType(id, gameTime, difficulty) {
     isAggressive: true,
     aggroRadius,
     escapeRadius,
-    damage,
+    damage: fixedDamage,
     turnSpeed,
   };
 }
@@ -212,13 +190,14 @@ function createMobSpawner(type, targetArray, isOverlapping, gameTime) {
     profiles = config.profiles;
   } else {
     profiles.default = {
-    // ...existing code...
+      // Fixed stats for non-aggressive types
       health: config.health,
       size: config.size,
       speed: config.speed,
-      damage: config.damage || { min: 0, max: 0 },
+      damage: config.damage || 0,
       aggroRadius: config.aggroRadius || 0,
       escapeRadius: config.escapeRadius || 0,
+  attackspeed: config.attackspeed || 1,
     };
   }
 
@@ -227,15 +206,13 @@ function createMobSpawner(type, targetArray, isOverlapping, gameTime) {
     let profileActiveCount = targetArray.filter(r => r.size > 0 && r.profile === profileName).length;
 
     while (profileActiveCount < profileMaxCount) {
-      const health = randomBetween(profile.health.min, profile.health.max);
-      const sizeFactor = (health - profile.health.min) / (profile.health.max - profile.health.min);
-      const size = randomBetween(profile.size.min, profile.size.max) * (1 + 0.5 * sizeFactor);
-      const damage = profile.damage
-        ? randomBetween(profile.damage.min, profile.damage.max) * (1 + 0.3 * sizeFactor)
-        : 0;
-      const speed = randomBetween(profile.speed.min, profile.speed.max) * (1 - 0.3 * sizeFactor);
-      const aggroRadius = profile.aggroRadius || config.aggroRadius || 0;
+      const health = profile.health;
+      const size = profile.size;
+      const damage = profile.damage ? profile.damage : 0;
+      const speed = profile.speed;
+  const aggroRadius = profile.aggroRadius || config.aggroRadius || 0;
       const escapeRadius = profile.escapeRadius || config.escapeRadius || 0;
+  const attackspeed = profile.attackspeed || 1;
 
       const col = Math.floor(Math.random() * GRID_COLS);
       const row = Math.floor(Math.random() * GRID_ROWS);
@@ -255,6 +232,7 @@ function createMobSpawner(type, targetArray, isOverlapping, gameTime) {
           maxHealth: health,
           moveSpeed: speed,
           damage,
+          attackspeed,
           behavior: config.behavior,
           currentBehavior: config.behavior,
           targetPlayerId: null,
@@ -316,9 +294,10 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
         health: config.health,
         size: config.size,
         speed: config.speed,
-        damage: config.damage || { min: 0, max: 0 },
+        damage: config.damage || 0,
         aggroRadius: config.aggroRadius || 0,
         escapeRadius: config.escapeRadius || 0,
+  attackspeed: config.attackspeed || 1,
       };
     }
 
@@ -327,15 +306,13 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
         r.respawnTimer -= deltaTime;
         if (r.respawnTimer <= 0) {
           const profile = profiles[r.profile || "default"];
-          const health = randomBetween(profile.health.min, profile.health.max);
-          const sizeFactor = (health - profile.health.min) / (profile.health.max - profile.health.min);
-          const size = randomBetween(profile.size.min, profile.size.max) * (1 + 0.5 * sizeFactor);
-          const damage = profile.damage
-            ? randomBetween(profile.damage.min, profile.damage.max) * (1 + 0.3 * sizeFactor)
-            : 0;
-          const speed = randomBetween(profile.speed.min, profile.speed.max) * (1 - 0.3 * sizeFactor);
+          const health = profile.health;
+          const size = profile.size;
+          const damage = profile.damage ? profile.damage : 0;
+          const speed = profile.speed;
           const aggroRadius = profile.aggroRadius || config.aggroRadius || 0;
           const escapeRadius = profile.escapeRadius || config.escapeRadius || 0;
+          const attackspeed = profile.attackspeed || 1;
           const color = typeof config.color === "function" ? config.color() : config.color;
 
           let newX, newY;
@@ -363,6 +340,7 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
             r.maxHealth = health;
             r.moveSpeed = speed;
             r.damage = damage;
+            r.attackspeed = attackspeed;
             r.color = color;
             r.aggroRadius = aggroRadius;
             r.escapeRadius = escapeRadius;
@@ -392,15 +370,13 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
         const profileCurrentCount = mobList.filter(r => r.profile === profileName).length;
         const profileToSpawn = Math.min(profileMaxCount - profileCurrentCount, toSpawn);
         for (let i = 0; i < profileToSpawn; i++) {
-          const health = randomBetween(profile.health.min, profile.health.max);
-          const sizeFactor = (health - profile.health.min) / (profile.health.max - profile.health.min);
-          const size = randomBetween(profile.size.min, profile.size.max) * (1 + 0.5 * sizeFactor);
-          const damage = profile.damage
-            ? randomBetween(profile.damage.min, profile.damage.max) * (1 + 0.3 * sizeFactor)
-            : 0;
-          const speed = randomBetween(profile.speed.min, profile.speed.max) * (1 - 0.3 * sizeFactor);
+          const health = profile.health;
+          const size = profile.size;
+          const damage = profile.damage ? profile.damage : 0;
+          const speed = profile.speed;
           const aggroRadius = profile.aggroRadius || config.aggroRadius || 0;
           const escapeRadius = profile.escapeRadius || config.escapeRadius || 0;
+          const attackspeed = profile.attackspeed || 1;
           const color = typeof config.color === "function" ? config.color() : config.color;
 
           let newX, newY;
@@ -432,6 +408,7 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
               maxHealth: health,
               moveSpeed: speed,
               damage,
+              attackspeed,
               color,
               aggroRadius,
               escapeRadius,
@@ -541,6 +518,12 @@ function mobPositionBlocked(newX, newY, size, allResources, playersObj, mobsObj,
     mobCollideMobsCentered(newX, newY, size, selfMob, mobsObj, overlapMargin) ||
     mobCollidePlayersCentered(newX, newY, size, playersObj, overlapMargin)
   );
+}
+
+// Helper for server: consistent collision rule used during knockback resolution
+function isMobPosBlockedForServer(newX, newY, size, allResources, playersObj, mobsObj, selfMob) {
+  const overlapMargin = size * 0.4; // keep in sync with client and spawn logic
+  return mobPositionBlocked(newX, newY, size, allResources, playersObj, mobsObj, selfMob, overlapMargin);
 }
 
 function updateMobs(allResources, players, deltaTime) {
@@ -665,12 +648,12 @@ function updateMobs(allResources, players, deltaTime) {
         if (mob.kbTimer && mob.kbTimer > 0) {
           moveDx += (mob.kbVx || 0) * deltaTime;
           moveDy += (mob.kbVy || 0) * deltaTime;
-          // Damping knockback
-          const damp = 3.5; // reduced damping for floatier knockback (was 6)
+          // Faster damping for snappier knockback
+          const damp = 2.8; // increased damping for more responsive feel
           mob.kbVx *= Math.max(0, 1 - damp * deltaTime);
           mob.kbVy *= Math.max(0, 1 - damp * deltaTime);
           mob.kbTimer -= deltaTime;
-          if (mob.kbTimer <= 0 || (Math.abs(mob.kbVx) + Math.abs(mob.kbVy)) < 5) {
+          if (mob.kbTimer <= 0 || (Math.abs(mob.kbVx) + Math.abs(mob.kbVy)) < 3) {
             mob.kbTimer = 0;
             mob.kbVx = 0;
             mob.kbVy = 0;
@@ -898,7 +881,9 @@ function updateMobs(allResources, players, deltaTime) {
             }, 100);
 
             if (targetPlayer.health < 0) targetPlayer.health = 0;
-            mob.damageCooldown = 1; 
+            // Damage cooldown scales with mob attackspeed (higher attackspeed => shorter cooldown)
+            const atk = mob.attackspeed || 1;
+            mob.damageCooldown = Math.max(0.1, 1 / atk);
                 // Emit knockback event using stored socketId
                 if (ioRef && targetPlayer.socketId) {
                   ioRef.to(targetPlayer.socketId).emit('playerKnockback', {
@@ -953,4 +938,5 @@ module.exports = {
   updateMobRespawns,
   difficulty,
   setIO,
+  isMobPosBlockedForServer,
 };

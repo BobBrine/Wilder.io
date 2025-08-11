@@ -413,37 +413,7 @@ function setupSocketListeners() {
     });
 
     // Listen for mob knockback when player hits mob
-  socket.on('mobKnockback', ({ id, type, x, y, kbVx, kbVy, kbTimer, color }) => {
-      if (!mobs) return;
-      const list = mobs[type];
-      if (!list) return;
-      const mob = list.find(m => m.id === id);
-      if (!mob) return;
-      if (typeof x === 'number' && typeof y === 'number') {
-        mob.x = x;
-        mob.y = y;
-  // Snap interpolation anchors to the new server position for instant response
-  const nowTs = performance.now();
-  mob._lastServerX = x;
-  mob._lastServerY = y;
-  mob._lastServerTime = nowTs;
-  mob._serverX = x;
-  mob._serverY = y;
-  mob._serverTime = nowTs;
- mob._kbActiveUntil = nowTs + (kbTimer ? kbTimer * 1000 : 150);
- // Very brief hard snap window to feel snappy (bypass smoothing for ~80ms)
- mob._kbSnapUntil = nowTs + 80;
- // Update render position immediately so the next frame is already at server pos
- mob._renderX = x;
- mob._renderY = y;
-      }
-  // Clear pending local nudge flag; server is authoritative now
-  mob._kbPendingAt = 0;
-      mob.kbVx = kbVx || 0;
-      mob.kbVy = kbVy || 0;
-      mob.kbTimer = kbTimer || 0.15;
-    });
-
+  
   // Ping check
   setInterval(() => {
     if (socket && socket.connected) {
