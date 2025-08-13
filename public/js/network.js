@@ -1,6 +1,6 @@
 // Socket connection
 let socket = null;
-let devTest = false; // runtime-togglable dev flag from server
+let devTest = false; // will be set by server after connect
 
 // Dev mode strictly follows devTest only (no localStorage/host overrides)
 const isDevMode = () => !!devTest;
@@ -57,6 +57,10 @@ function setupSocketListeners() {
   // Socket event handlers
   socket.on("resourceType", (data) => {  
     resourceTypes = data;
+  });
+  // Receive dev flag from server so clients don’t assume localhost
+  socket.on('DevTest', (flag) => {
+    devTest = !!flag;
   });
 
   socket.on("mobType", (data) => {  
@@ -719,8 +723,13 @@ if (isDevMode()) {
     document.getElementById("nameEntry").style.display = "none";
     document.getElementById("deathScreen").style.display = "none";
     console.log('[Dev] Auto-connect initializing...');
-    // Connect to localhost and login instantly
-    initializeSocket("http://localhost:3000");
+    // In dev mode, connect to the same host the page was served from
+    try {
+      const base = `${location.protocol}//${location.host}`;
+      initializeSocket(base);
+    } catch(_) {
+      initializeSocket("http://localhost:3000");
+    }
     // Wait for socket connection before submitting name
     const tryLogin = () => {
       if (socket && socket.connected) {

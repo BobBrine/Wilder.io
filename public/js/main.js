@@ -36,6 +36,17 @@ function update() {
   staminaRegen(deltaTime);
   updateCamera();
   updatePlayerFacing(mouseX, mouseY);
+  // Mobile: auto-attack while right aim joystick is held
+  try {
+    const mode = (window.controlsSettings && window.controlsSettings.getMode && window.controlsSettings.getMode()) || 'pc';
+    if (mode === 'mobile' && window.mobileControls && typeof window.mobileControls.aim === 'function') {
+      const aim = window.mobileControls.aim();
+      if (aim && aim.active && typeof tryHitResource === 'function') {
+        // tryHitResource() is rate-limited internally by attackSpeed and stamina
+        tryHitResource();
+      }
+    }
+  } catch (_) {}
   
   
   // Apply world transform

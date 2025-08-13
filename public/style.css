@@ -1,6 +1,8 @@
 /* Ensure drop prompt is above menu background and menu background is always at the back */
 #dropAmountPrompt { z-index: 2000 !important; }
 #menuBgCanvas { z-index: 0 !important; }
+/* Background canvas should never capture input */
+#menuBgCanvas { pointer-events: none !important; }
 /* Settings panel/overlay/gear layering */
 #settingsOverlay { z-index: 900 !important; }
 #settingsPanel { z-index: 1100 !important; }
@@ -26,6 +28,15 @@ canvas {
   display: block;
   image-rendering: crisp-edges; 
 }
+
+/* Default: game canvas does not capture input while in menus; JS will enable during gameplay */
+#gameCanvas { pointer-events: none; }
+
+/* Mobile controls (shown on touch during gameplay) */
+#mobileControls { z-index: 1200; }
+#joystickWrap { touch-action: none; }
+#sprintBtn { touch-action: none; }
+#aimWrap { touch-action: none; }
 
 .menu {
   position: absolute;

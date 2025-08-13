@@ -1,4 +1,5 @@
 const express = require('express');
+const os = require('os');
 const http = require('http');
 const socketIO = require('socket.io');
 const path = require('path');
@@ -113,8 +114,9 @@ const ItemTypes = {
 };
 
 
-// Toggle cache for static assets based on devTest
-const devTest = false; // Set to false for production caching
+// Toggle cache and behavior for development
+// Set DEV_TEST=true in env to enable dev mode
+const devTest = String(process.env.DEV_TEST || '').toLowerCase() === 'true';
 const staticOptions = devTest
   ? { maxAge: 0, etag: false, lastModified: false, index: false }
   : { maxAge: '365d', immutable: true, index: false };
@@ -123,7 +125,10 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-io.emit('DevTest', devTest);
+// Expose dev flag to newly connected clients
+io.on('connection', (sock) => {
+  try { sock.emit('DevTest', devTest); } catch(_) {}
+});
 
 spawnAllResources();
 spawnAllMob(allResources, players, gameTime);
@@ -488,7 +493,21 @@ setInterval(() => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
-  console.log(`✅ Server running on http://192.168.4.48:${PORT} (LAN accessible)`);
+  try {
+    const ifaces = os.networkInterfaces();
+    const addrs = [];
+    for (const name of Object.keys(ifaces)) {
+      for (const ni of ifaces[name] || []) {
+        if (ni && ni.family === 'IPv4' && !ni.internal) addrs.push(ni.address);
+      }
+    }
+    if (addrs.length) {
+      console.log('✅ LAN addresses:');
+      addrs.forEach(ip => console.log(`   → http://${ip}:${PORT}`));
+    } else {
+      console.log('ℹ️  No non-internal IPv4 interfaces detected.');
+    }
+  } catch (_) {}
   // Startup config summary
   console.log('⚙️  Config:', {
     TICK_MS,

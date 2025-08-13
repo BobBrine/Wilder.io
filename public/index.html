@@ -168,6 +168,12 @@
       <button id="settingsRespawnBtn">Respawn Player</button>
       <button id="settingsPerformanceBtn">Performance: Toggle</button>
       <button id="settingsDebugBtn">Debug: Toggle</button>
+  <button id="settingsControlsModeBtn">Controls: PC</button>
+      <div id="settingsJoystickRow" style="display:none; gap:8px; align-items:center;">
+        <label for="settingsJoystickScale" style="flex:0 0 130px; text-align:left;">Joystick Size</label>
+        <input id="settingsJoystickScale" type="range" min="0.6" max="1.6" step="0.05" value="1.0" style="flex:1;" />
+        <span id="settingsJoystickScaleVal" style="min-width:46px; text-align:right;">1.0×</span>
+      </div>
       <button id="settingsGoMainBtn">Go Main</button>
     </div>
   </div>
@@ -202,6 +208,7 @@
   <script src="js/settingsPanel.js"></script>
   <script src="js/canvas.js"></script>
   <script src="js/camera.js"></script>
+  <script src="js/mobileControls.js"></script>
   <script src="js/input.js"></script>
   <script src="js/main.js"></script>
 
@@ -224,9 +231,15 @@
       document.getElementById('privacyModal').style.display = 'none';
     }
     // Patch joinMainServer and showLocalLAN to hide siteContent
-    const origJoinMainServer = window.joinMainServer;
+  const origJoinMainServer = window.joinMainServer;
     window.joinMainServer = function() {
       showSiteContent(false);
+      try {
+        const mode = (window.controlsSettings && window.controlsSettings.getMode && window.controlsSettings.getMode()) || (localStorage.getItem('controls.mode') || 'pc');
+        window.mobileControls && window.mobileControls.setVisible(mode === 'mobile');
+    // Enable game canvas interactions during gameplay
+    var gc = document.getElementById('gameCanvas'); if (gc) gc.style.pointerEvents = 'auto';
+      } catch (_) {}
       if (origJoinMainServer) origJoinMainServer();
     };
     const origShowLocalLAN = window.showLocalLAN;
@@ -238,10 +251,22 @@
     const origBackToHome = window.backToHome;
     window.backToHome = function() {
       showSiteContent(true);
+      try { window.mobileControls && window.mobileControls.setVisible(false); } catch (_) {}
+      // Disable game canvas interactions while in menus so it doesn't block taps
+      try { var gc = document.getElementById('gameCanvas'); if (gc) gc.style.pointerEvents = 'none'; } catch(_) {}
       if (origBackToHome) origBackToHome();
     };
     // On page load, show siteContent
     showSiteContent(true);
+    // Ensure canvas is not blocking clicks on home page initially
+    try { var gc = document.getElementById('gameCanvas'); if (gc) gc.style.pointerEvents = 'none'; } catch(_) {}
+
+    // Also enable canvas when name is submitted (some flows go via nameEntry)
+    const origSubmitName = window.submitName;
+    window.submitName = function(){
+      try { var gc = document.getElementById('gameCanvas'); if (gc) gc.style.pointerEvents = 'auto'; } catch(_) {}
+      if (origSubmitName) return origSubmitName();
+    };
   </script>
 </body>
 </html>

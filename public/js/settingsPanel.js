@@ -5,6 +5,21 @@
   const gear = document.getElementById('settingsGear');
   if (!panel || !overlay || !gear) return;
 
+  // Controls settings persistence and helpers
+  window.controlsSettings = (function(){
+    const KEY = 'controls.mode'; // 'pc' | 'mobile'
+    function getMode(){
+      try { return localStorage.getItem(KEY) || 'pc'; } catch(_) { return 'pc'; }
+    }
+    function setMode(mode){
+      const m = (mode === 'mobile') ? 'mobile' : 'pc';
+      try { localStorage.setItem(KEY, m); } catch(_){ }
+      // Reflect visibility immediately during gameplay
+      try { window.mobileControls && window.mobileControls.setVisible(m === 'mobile' && isInGameplay()); } catch(_) {}
+    }
+    return { getMode, setMode };
+  })();
+
   // Simple hover/click styling
   gear.addEventListener('mouseenter', () => { gear.style.background = 'rgba(0,0,0,0.8)'; });
   gear.addEventListener('mouseleave', () => { gear.style.background = 'rgba(0,0,0,0.6)'; });
@@ -64,7 +79,11 @@
   const respawnBtn = document.getElementById('settingsRespawnBtn');
   const perfBtn = document.getElementById('settingsPerformanceBtn');
   const debugBtn = document.getElementById('settingsDebugBtn');
+  const controlsBtn = document.getElementById('settingsControlsModeBtn');
   const goMainBtn = document.getElementById('settingsGoMainBtn');
+  const jsRow = document.getElementById('settingsJoystickRow');
+  const jsRange = document.getElementById('settingsJoystickScale');
+  const jsVal = document.getElementById('settingsJoystickScaleVal');
 
   // Reuse death screen respawn logic: emulate clicking respawn (calls socket setName, etc.)
   function doRespawn() {
@@ -105,6 +124,40 @@
   }
   if (debugBtn) debugBtn.addEventListener('click', toggleDebug);
 
+  // Controls mode toggle button
+  function refreshControlsBtn(){
+    if (!controlsBtn) return;
+    const mode = window.controlsSettings.getMode();
+    controlsBtn.textContent = `Controls: ${mode === 'mobile' ? 'Mobile' : 'PC'}`;
+    if (jsRow) jsRow.style.display = mode === 'mobile' ? 'flex' : 'none';
+    // Sync range with stored scale
+    try {
+      const scale = (function(){ try { return parseFloat(localStorage.getItem('controls.joystickScale')||'1'); } catch(_) { return 1; } })();
+      if (jsRange) jsRange.value = String(scale);
+      if (jsVal) jsVal.textContent = `${scale.toFixed(2)}×`;
+    } catch(_) {}
+  }
+  function toggleControlsMode(){
+    const curr = window.controlsSettings.getMode();
+    const next = (curr === 'pc') ? 'mobile' : 'pc';
+    window.controlsSettings.setMode(next);
+    refreshControlsBtn();
+    if (window.showMessage) window.showMessage(`Controls: ${next === 'mobile' ? 'Mobile' : 'PC'}`, 2);
+  }
+  if (controlsBtn) {
+    controlsBtn.addEventListener('click', toggleControlsMode);
+    refreshControlsBtn();
+  }
+
+  // Joystick size slider wiring
+  if (jsRange) {
+    jsRange.addEventListener('input', () => {
+      const v = parseFloat(jsRange.value || '1');
+      if (jsVal) jsVal.textContent = `${v.toFixed(2)}×`;
+      try { window.mobileControls && window.mobileControls.setScale(v); } catch(_) {}
+    });
+  }
+
   if (goMainBtn) goMainBtn.addEventListener('click', () => {
     closePanel();
     if (typeof window.backToMain === 'function') window.backToMain();
@@ -113,6 +166,16 @@
   // Keep gear visible only in gameplay
   function updateGearVisibility(){
     gear.style.display = isInGameplay() ? 'block' : 'none';
+    // Keep mobileControls visibility in sync when gameplay state changes
+    try {
+      const mode = window.controlsSettings.getMode();
+      window.mobileControls && window.mobileControls.setVisible(mode === 'mobile' && isInGameplay());
+    } catch(_) {}
+    // Ensure canvas captures input only during gameplay (fixes PC mouse not working)
+    try {
+      const gc = document.getElementById('gameCanvas');
+      if (gc) gc.style.pointerEvents = isInGameplay() ? 'auto' : 'none';
+    } catch(_) {}
     // Position gear under scoreboard: scoreboard starts at top-right 10px + header (~40px), so we offset ~150-220px
     // Already positioned via CSS inline (top:190px). We could adjust dynamically based on canvas height if needed.
   }

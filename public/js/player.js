@@ -114,15 +114,28 @@ function updatePlayerPosition(deltaTime) {
   
   let moveX = 0, moveY = 0;
   let speed = player.speed || 0;
+
+  // Prefer mobile joystick axis when mode is mobile and joystick active
+  const controlsMode = (typeof window !== 'undefined' && window.controlsSettings && window.controlsSettings.getMode && window.controlsSettings.getMode()) || 'pc';
+  const hasMobile = controlsMode === 'mobile' && typeof window !== 'undefined' && window.mobileControls && window.mobileControls.isActive();
+  if (hasMobile) {
+    const axis = window.mobileControls.axis;
+    moveX = axis.x;
+    moveY = axis.y;
+  } else {
+    if (keys["a"]) moveX -= 1;
+    if (keys["d"]) moveX += 1;
+    if (keys["w"]) moveY -= 1;
+    if (keys["s"]) moveY += 1;
+  }
   
-  if (keys["a"]) moveX -= 1;
-  if (keys["d"]) moveX += 1;
-  if (keys["w"]) moveY -= 1;
-  if (keys["s"]) moveY += 1;
-  
-  const wantsToSprint = keys[" "];
+  let wantsToSprint = hasMobile ? false : keys[" "];
+  // Mobile sprint button
+  if (hasMobile && window.mobileControls && typeof window.mobileControls.isSprinting === 'function') {
+    wantsToSprint = window.mobileControls.isSprinting();
+  }
   const isMovingInput = (moveX !== 0 || moveY !== 0);
-  if (moveX !== 0 && moveY !== 0) {
+  if (!hasMobile && moveX !== 0 && moveY !== 0) {
     const norm = Math.sqrt(2) / 2;
     moveX *= norm;
     moveY *= norm;
@@ -315,11 +328,21 @@ function drawHealthbar(startX, hotbarY) {
 }
 
 function updatePlayerFacing(mouseX, mouseY) {
-  const worldMouseX = mouseX + camera.x;
-  const worldMouseY = mouseY + camera.y;
-  const dx = worldMouseX - player.x;
-  const dy = worldMouseY - player.y;
-  player.facingAngle = Math.atan2(dy, dx);
+  // On mobile joystick, face toward joystick vector when active; otherwise aim at mouse.
+  const controlsMode = (typeof window !== 'undefined' && window.controlsSettings && window.controlsSettings.getMode && window.controlsSettings.getMode()) || 'pc';
+  if (controlsMode === 'mobile' && typeof window !== 'undefined' && window.mobileControls) {
+    const aim = (typeof window.mobileControls.aim === 'function') ? window.mobileControls.aim() : { active:false };
+    if (aim && aim.active && typeof aim.angle === 'number') {
+      // Mobile: right joystick controls face angle exclusively while held
+      player.facingAngle = aim.angle;
+    }
+  } else {
+    const worldMouseX = mouseX + camera.x;
+    const worldMouseY = mouseY + camera.y;
+    const dx = worldMouseX - player.x;
+    const dy = worldMouseY - player.y;
+    player.facingAngle = Math.atan2(dy, dx);
+  }
 }
 
 function drawPlayer() {
