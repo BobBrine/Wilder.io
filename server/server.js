@@ -12,18 +12,20 @@ const io = socketIO(server, {
 });
 const PORT = process.env.PORT || 3000;
 // Performance tuning constants (override with environment variables to tune without code changes)
-// Multi-frequency approach: different update rates for different systems
-const TICK_MS = Number(process.env.TICK_MS) || 20; // default 50 FPS for responsive movement
-const MOB_TICK_MS = Number(process.env.MOB_TICK_MS) || 25; // 40 FPS for mob AI/logic
-const WORLD_TICK_MS = Number(process.env.WORLD_TICK_MS) || 50; // 20 FPS for world updates
+// You can push further by setting env: TICK_MS=20 (50 FPS) or 16 (60 FPS) if CPU allows
+const TICK_MS = Number(process.env.TICK_MS) || 25; // default ~40 FPS
 const MOB_VIS_RADIUS = Number(process.env.MOB_VIS_RADIUS) || 1400; // Per-client mob visibility radius (world pixels)
+const RESOURCE_VIS_RADIUS = Number(process.env.RESOURCE_VIS_RADIUS) || 1400; // Per-client resource visibility radius
 // Spatial grid cell size for mob lookup (tune based on typical mob density)
 const MOB_GRID_CELL = Number(process.env.MOB_GRID_CELL) || 350;
+// Spatial grid cell size for resource lookup (tune based on typical resource density)
+const RESOURCE_GRID_CELL = Number(process.env.RESOURCE_GRID_CELL) || 350;
 // Rate limits (per client)
 // For a faster feel with more CPU, try MOBS_DELTA_MIN_MS=30 (~33 Hz)
 const MOBS_DELTA_MIN_MS = Number(process.env.MOBS_DELTA_MIN_MS) || 40;    // default ~25 Hz for mobsDelta
 const ITEMS_EMIT_MIN_MS = Number(process.env.ITEMS_EMIT_MIN_MS) || 100;   // max ~10 Hz for droppedItems snapshots
 const PLAYERS_DELTA_MIN_MS = Number(process.env.PLAYERS_DELTA_MIN_MS) || 100; // max ~10 Hz for playersDelta
+const RESOURCES_EMIT_MIN_MS = Number(process.env.RESOURCES_EMIT_MIN_MS) || 120; // max ~8 Hz for resources snapshots
 // Global rate limits
 const GAME_TIME_MIN_MS = Number(process.env.GAME_TIME_MIN_MS) || 100; // emit gameTime at ~10 Hz
 // Server stats logging interval (set STATS_LOG_MS=0 to disable)
@@ -47,7 +49,6 @@ const {
   updateMobs,
   updateMobRespawns,
   setIO,
-  isMobPosBlockedForServer,
 } = require('./mobdata');
 
 // Provide io to mobdata for targeted emits (e.g., knockback)
@@ -62,8 +63,6 @@ let droppedItems = [];
 let nextItemId = 0;
 let lastUpdate = Date.now();
 let lastStaticUpdate = Date.now();
-let lastMobUpdate = Date.now();
-let lastWorldUpdate = Date.now();
 const WORLD_SIZE = 5000;
 // Tick timing stats (ms)
 let __tickStats = { count: 0, sum: 0, min: Infinity, max: 0 };
@@ -80,8 +79,9 @@ const lastItemsSnapshot = new Map(); // sid -> string
 const lastItemsEmitAt = new Map(); // sid -> timestamp
 // Cache last sent state per client
 const lastStateSnapshot = new Map(); // sid -> string
-// Cache last resources snapshot for periodic broadcasts
-let lastResourcesSnapshot = "";
+// Cache last resources snapshot per client (proximity-filtered)
+const lastResourcesSnapshot = new Map(); // sid -> string
+const lastResourcesEmitAt = new Map(); // sid -> timestamp
 // Cache last per-client players map for delta (id -> minimal fields)
 const lastPlayersDeltaMap = new Map(); // sid -> Map(id, obj)
 const lastPlayersDeltaAt = new Map(); // sid -> timestamp
@@ -92,11 +92,9 @@ const ItemTypes = {
   iron: { name: "Iron", color: "white", attackSpeed: 0.35 },
   gold: { name: "Gold", color: "gold", attackSpeed: 0.35 },
   food: { name: "Food", color: "red", attackSpeed: 0.35 },
-  slime: { name: "Slime", color: "pink", attackSpeed: 0.35 },
-  stick: { name: "Stick", color: "brown", attackSpeed: 0.35 },
-  fur: { name: "Fur", color: "gray", attackSpeed: 0.35 },
-  web: { name: "Web", color: "white", attackSpeed: 0.35 },
-  paw: { name: "Paw", color: "yellow", attackSpeed: 0.35 },
+  pure_core: { name: "Pure Core", color: "pink", attackSpeed: 0.35 },
+  dark_core: { name: "Dark Core", color: "white", attackSpeed: 0.35 },
+  mythic_core: { name: "Mythic Core", color: "yellow", attackSpeed: 0.35 },
   torch: { name: "Torch", color: "yellow", attackSpeed: 0.35 },
   // Tools
   wooden_axe: { name: "Wooden Axe", color: "sienna", isTool: true, category: "axe", tier: 1, damage: 5, attackRange: 50, attackSpeed: 0.3 },
@@ -114,11 +112,18 @@ const ItemTypes = {
   hand: { name: "Hand", color: "peachpuff", attackSpeed: 0.35 },
 };
 
-// Cache busting: cache static assets aggressively; disable index so SPA shell isn't cached here
-app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '365d', immutable: true, index: false }));
+
+// Toggle cache for static assets based on devTest
+const devTest = false; // Set to false for production caching
+const staticOptions = devTest
+  ? { maxAge: 0, etag: false, lastModified: false, index: false }
+  : { maxAge: '365d', immutable: true, index: false };
+app.use(express.static(path.join(__dirname, '..', 'public'), staticOptions));
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
+
+io.emit('DevTest', devTest);
 
 spawnAllResources();
 spawnAllMob(allResources, players, gameTime);
@@ -161,6 +166,51 @@ function gatherMobsNear(x, y, r) {
         const dx = mx - x;
         const dy = my - y;
         if (dx * dx + dy * dy <= r2) res.push({ type, mob: m });
+      }
+    }
+  }
+  return res;
+}
+
+// Simple spatial grid for resources (rebuilt each tick)
+let resourceGrid = new Map();
+function resourceGridKey(cx, cy) { return `${cx},${cy}`; }
+function rebuildResourceGrid() {
+  resourceGrid.clear();
+  for (const [type, list] of Object.entries(allResources)) {
+    if (!Array.isArray(list)) continue;
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i];
+      if (!r) continue;
+      const sizeX = r.sizeX || 0, sizeY = r.sizeY || 0;
+      if (sizeX <= 0 || sizeY <= 0) continue; // skip dead/hidden
+      const cx = Math.floor(r.x / RESOURCE_GRID_CELL);
+      const cy = Math.floor(r.y / RESOURCE_GRID_CELL);
+      const key = resourceGridKey(cx, cy);
+      let arr = resourceGrid.get(key);
+      if (!arr) { arr = []; resourceGrid.set(key, arr); }
+      arr.push({ type, ref: r });
+    }
+  }
+}
+function gatherResourcesNear(x, y, r) {
+  const res = [];
+  const cellMinX = Math.floor((x - r) / RESOURCE_GRID_CELL);
+  const cellMaxX = Math.floor((x + r) / RESOURCE_GRID_CELL);
+  const cellMinY = Math.floor((y - r) / RESOURCE_GRID_CELL);
+  const cellMaxY = Math.floor((y + r) / RESOURCE_GRID_CELL);
+  const r2 = r * r;
+  for (let cy = cellMinY; cy <= cellMaxY; cy++) {
+    for (let cx = cellMinX; cx <= cellMaxX; cx++) {
+      const arr = resourceGrid.get(resourceGridKey(cx, cy));
+      if (!arr) continue;
+      for (let i = 0; i < arr.length; i++) {
+        const { type, ref: rsrc } = arr[i];
+        const mx = rsrc.x + (rsrc.sizeX || 0) / 2;
+        const my = rsrc.y + (rsrc.sizeY || 0) / 2;
+        const dx = mx - x;
+        const dy = my - y;
+        if (dx * dx + dy * dy <= r2) res.push({ type, res: rsrc });
       }
     }
   }
@@ -210,7 +260,6 @@ io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
   // Send initial static data only to the connecting client
   socket.emit("resourceType", resourceTypes);
-  socket.emit("resources", allResources);
   socket.emit("mobType", mobtype);
   socket.emit("itemTypes", ItemTypes);
 
@@ -223,13 +272,42 @@ io.on('connection', (socket) => {
     players[socket.id] = createNewPlayer(socket.id, name);
     // Store only socket id to avoid circular reference
     players[socket.id].socketId = socket.id;
-    socket.emit('currentPlayers', players);
+  socket.emit('currentPlayers', players);
     socket.emit('playerSelf', players[socket.id]);
-    socket.broadcast.emit('newPlayer', players[socket.id]);
+  socket.broadcast.emit('newPlayer', players[socket.id]);
     // On respawn, proactively send essential world data again
     try {
       socket.emit("resourceType", resourceTypes);
-      socket.emit("resources", allResources);
+      // Send immediate proximity-filtered resources snapshot
+      {
+        const pp = players[socket.id];
+        if (pp) {
+        const px = pp.x + (pp.size || 0) / 2;
+        const py = pp.y + (pp.size || 0) / 2;
+        const nearRes = gatherResourcesNear(px, py, RESOURCE_VIS_RADIUS);
+        const round1 = (v) => Math.round(v * 10) / 10;
+        const perType = {};
+        for (let i = 0; i < nearRes.length; i++) {
+          const { type, res } = nearRes[i];
+          if (!perType[type]) perType[type] = [];
+          perType[type].push({
+            id: res.id,
+            type,
+            x: round1(res.x),
+            y: round1(res.y),
+            sizeX: Math.round(res.sizeX || 0),
+            sizeY: Math.round(res.sizeY || 0),
+            health: Math.round(res.health || 0),
+            maxHealth: Math.round(res.maxHealth || res.health || 0),
+          });
+        }
+        const normalized = {};
+        for (const t of Object.keys(perType).sort()) {
+          normalized[t] = perType[t].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+        }
+        socket.compress(false).emit("resources", normalized);
+        }
+      }
       socket.emit("mobType", mobtype);
       socket.emit("itemTypes", ItemTypes);
       // Send immediate proximity snapshots to avoid waiting for the next tick
@@ -260,7 +338,11 @@ io.on('connection', (socket) => {
         for (const t of Object.keys(payload).sort()) {
           normalized[t] = payload[t].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
         }
-        socket.compress(false).emit("mobs", normalized);
+        // Include empty arrays for all known types so client clears absent ones
+        for (const t of Object.keys(mobtype)) {
+          if (!normalized[t]) normalized[t] = [];
+        }
+  socket.compress(false).emit("mobs", normalized);
         const r = MOB_VIS_RADIUS;
         const items = gatherItemsNear(px, py, r).map(it => ({ id: it.id, type: it.type, amount: it.amount, x: round1(it.x), y: round1(it.y) }));
         items.sort((a, b) => a.id - b.id);
@@ -276,10 +358,15 @@ io.on('connection', (socket) => {
     if (p && p.health > 0) {
       p.x = data.x;
       p.y = data.y;
+      if (typeof data.facingAngle === 'number') p.facingAngle = data.facingAngle;
+      // Track selected tool type for remote rendering (no server logic depends on it)
+      if ('selectedToolType' in data) p.selectedToolType = data.selectedToolType || null;
   socket.compress(false).volatile.broadcast.emit('playerMoved', {
         id: socket.id,
         x: data.x,
         y: data.y,
+        facingAngle: typeof data.facingAngle === 'number' ? data.facingAngle : p.facingAngle,
+        selectedToolType: ('selectedToolType' in data) ? data.selectedToolType : p.selectedToolType,
       });
     }
   });
@@ -356,36 +443,28 @@ function maybeEmitGameTime() {
   }
 }
 
-//update continuous - Multi-frequency approach
+//update contiunous
 setInterval(() => {
   const t0 = Date.now();
   const now = t0;
   const deltaTime = (now - lastUpdate) / 1000;
   lastUpdate = now;
-  
-  // High-frequency: Player updates and movement (every tick)
   updatePlayers(deltaTime, now);
+
   gameTime = (gameTime + deltaTime) % CYCLE_LENGTH;
 
-  // Medium-frequency: Mob AI and movement (less frequent)
-  const mobDeltaTime = (now - lastMobUpdate) / 1000;
-  if (now - lastMobUpdate >= MOB_TICK_MS) {
-    lastMobUpdate = now;
-    updateMobs(allResources, players, mobDeltaTime);
-    // Rebuild spatial grids after mob updates
-    rebuildMobGrid();
-  }
-
-  // Lower-frequency: World state broadcasts (even less frequent)
-  const worldDeltaTime = (now - lastWorldUpdate) / 1000;
-  if (now - lastWorldUpdate >= WORLD_TICK_MS) {
-    lastWorldUpdate = now;
-    rebuildItemGrid();
-    emitVisibleMobsPerClient();
-    emitVisibleDroppedItemsPerClient();
-    maybeEmitGameTime();
-  }
-
+  // Update mobs BEFORE broadcasting so clients get freshest positions (reduces ~1 tick latency)
+  updateMobs(allResources, players, deltaTime);
+  // Rebuild spatial grid for fast per-client mob queries
+  rebuildMobGrid();
+  // Rebuild spatial grid for items
+  rebuildItemGrid();
+  // Rebuild spatial grid for resources
+  rebuildResourceGrid();
+  emitVisibleMobsPerClient();
+  emitVisibleResourcesPerClient();
+  emitVisibleDroppedItemsPerClient();
+  maybeEmitGameTime();
   // Record tick duration stats
   const dtMs = Date.now() - t0;
   __tickStats.count++;
@@ -402,17 +481,7 @@ setInterval(() => {
 
   updateResourceRespawns(deltaTime);
   updateMobRespawns(deltaTime, allResources, players, gameTime);
-  // Emit resources only when snapshot changes (reduces redundant bandwidth)
-  try {
-    const snap = JSON.stringify(allResources);
-    if (snap !== lastResourcesSnapshot) {
-      lastResourcesSnapshot = snap;
-      io.emit("resources", allResources);
-    }
-  } catch (_) {
-    // Fallback: emit if snapshot fails for any reason
-    io.emit("resources", allResources);
-  }
+  // No global broadcast of resources; proximity-filtered snapshots are sent per client more frequently.
 
 
 }, 10000);
@@ -423,12 +492,13 @@ server.listen(PORT, '0.0.0.0', () => {
   // Startup config summary
   console.log('⚙️  Config:', {
     TICK_MS,
-    MOB_TICK_MS,
-    WORLD_TICK_MS,
     MOB_VIS_RADIUS,
+  RESOURCE_VIS_RADIUS,
     MOB_GRID_CELL,
+  RESOURCE_GRID_CELL,
     ITEM_GRID_CELL: 350,
     MOBS_DELTA_MIN_MS,
+  RESOURCES_EMIT_MIN_MS,
     ITEMS_EMIT_MIN_MS,
     PLAYERS_DELTA_MIN_MS,
     GAME_TIME_MIN_MS,
@@ -507,14 +577,20 @@ function emitVisibleMobsPerClient() {
       });
     }
     // Normalize order per type and type keys for stable snapshot
-    const sortedTypes = Object.keys(payload).sort();
     const normalized = {};
+    const sortedTypes = Object.keys(payload).sort();
     for (const t of sortedTypes) {
       normalized[t] = payload[t].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     }
-    // Delta compression: build flat maps for current and previous
-    const flatNow = new Map();
-    for (const [t, arr] of Object.entries(normalized)) {
+    // Ensure all known mob types are present (empty arrays) to clear stale client-side entries
+    for (const t of Object.keys(mobtype)) {
+      if (!normalized[t]) normalized[t] = [];
+    }
+
+    // Build flat map for delta computation
+    const flatNow = new Map(); // key -> mob summary
+    for (const t of Object.keys(normalized)) {
+      const arr = normalized[t];
       for (let i = 0; i < arr.length; i++) {
         const m = arr[i];
         flatNow.set(`${t}:${m.id}`, m);
@@ -524,13 +600,13 @@ function emitVisibleMobsPerClient() {
     const add = [];
     const update = [];
     const remove = [];
-    // Detect adds and updates
+
+    // Detect additions and updates
     for (const [key, mNow] of flatNow.entries()) {
       const mPrev = prevFlat.get(key);
       if (!mPrev) {
         add.push(mNow);
       } else {
-        // Compare fields that can change frequently
         if (
           mNow.x !== mPrev.x ||
           mNow.y !== mPrev.y ||
@@ -550,24 +626,26 @@ function emitVisibleMobsPerClient() {
         remove.push({ type, id });
       }
     }
-    // Decide whether to send a full snapshot periodically or if there is no previous state
+
+    // Decide whether to send full snapshot or deltas
     const nowMs = Date.now();
     const lastFull = lastMobsFullAt.get(sid) || 0;
-  const needFull = lastFull === 0 || (nowMs - lastFull) > 300; // Full snapshot at least every 300ms
-    if (needFull) {
+    const needFull = lastFull === 0 || nowMs - lastFull > 300; // ensure periodic full refresh
+    const topologyChange = add.length > 0 || remove.length > 0; // spawn/despawn near this client
+    if (needFull || topologyChange) {
       const snapshot = JSON.stringify(normalized);
       lastMobsSnapshot.set(sid, snapshot);
       lastMobsFlat.set(sid, flatNow);
       lastMobsFullAt.set(sid, nowMs);
-  sock.compress(false).volatile.emit("mobs", normalized);
+      // Reliable full snapshot
+      sock.compress(false).emit("mobs", normalized);
     } else if (add.length || update.length || remove.length) {
       const lastDelta = lastMobsDeltaAt.get(sid) || 0;
       if (nowMs - lastDelta < MOBS_DELTA_MIN_MS) continue;
       lastMobsDeltaAt.set(sid, nowMs);
-      // Send delta
       lastMobsFlat.set(sid, flatNow);
-  // Use reliable delivery for mobsDelta to avoid visual freezes when packets drop
-  sock.compress(false).emit("mobsDelta", { add, update, remove });
+      // Reliable deltas to avoid visual freezes when packets drop
+      sock.compress(false).emit("mobsDelta", { add, update, remove });
     }
   }
 }
@@ -595,6 +673,47 @@ function emitVisibleDroppedItemsPerClient() {
   }
 }
 
+function emitVisibleResourcesPerClient() {
+  for (const [sid, sock] of io.of("/").sockets) {
+    const p = players[sid];
+    if (!p) continue;
+    const px = p.x + (p.size || 0) / 2;
+    const py = p.y + (p.size || 0) / 2;
+    const nearby = gatherResourcesNear(px, py, RESOURCE_VIS_RADIUS);
+    const round1 = (v) => Math.round(v * 10) / 10;
+    const perType = {};
+    for (let i = 0; i < nearby.length; i++) {
+      const { type, res } = nearby[i];
+      if (!perType[type]) perType[type] = [];
+      perType[type].push({
+        id: res.id,
+        type,
+        x: round1(res.x),
+        y: round1(res.y),
+        sizeX: Math.round(res.sizeX || 0),
+        sizeY: Math.round(res.sizeY || 0),
+        health: Math.round(res.health || 0),
+        maxHealth: Math.round(res.maxHealth || res.health || 0),
+      });
+    }
+    // Normalize order and types for stable snapshot
+    const normalized = {};
+    for (const t of Object.keys(perType).sort()) {
+      normalized[t] = perType[t].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    }
+    const snapshot = JSON.stringify(normalized);
+    const nowMs = Date.now();
+    if (snapshot !== lastResourcesSnapshot.get(sid)) {
+      const lastAt = lastResourcesEmitAt.get(sid) || 0;
+      if (nowMs - lastAt >= RESOURCES_EMIT_MIN_MS) {
+        lastResourcesSnapshot.set(sid, snapshot);
+        lastResourcesEmitAt.set(sid, nowMs);
+  sock.compress(false).emit("resources", normalized);
+      }
+    }
+  }
+}
+
 function handleHit(socket, collection, type, id, newHealth, configTypes, isMob = false, knockback = null) {
   const list = collection[type];
   if (!list) return;
@@ -612,10 +731,10 @@ function handleHit(socket, collection, type, id, newHealth, configTypes, isMob =
   }
   // Target health updates only to nearby clients to reduce bandwidth
   if (isMob) {
-    emitToNearby("updateMobHealth", { id, type, health: newHealth }, entity.x, entity.y, MOB_VIS_RADIUS);
+    emitToNearbyReliable("updateMobHealth", { id, type, health: newHealth }, entity.x, entity.y, MOB_VIS_RADIUS);
   } else {
-    // For resources, reuse the same radius
-    emitToNearby("updateResourceHealth", { id, type, health: newHealth }, entity.x, entity.y, MOB_VIS_RADIUS);
+    // For resources, use resource visibility radius and reliable delivery so health changes aren't dropped
+    emitToNearbyReliable("updateResourceHealth", { id, type, health: newHealth }, entity.x, entity.y, RESOURCE_VIS_RADIUS);
   }
     // Emit knockback event for mob if it was hit by player
   if (isMob && entity.health > 0) {
@@ -667,6 +786,7 @@ function handleHit(socket, collection, type, id, newHealth, configTypes, isMob =
     socket.emit("gainXP", 3);
   }
 }
+
 function handlePlayerHit(socket, targetId, newHealth) {
   const attacker = players[socket.id], target = players[targetId];
   if (!attacker || !target || target.health <= 0 || targetId === socket.id || newHealth > target.health) return;

@@ -33,10 +33,15 @@ function drawHUD() {
   if (!window.__scoreCache) window.__scoreCache = { last: 0, list: [] };
   const nowTs = performance.now();
   if (nowTs - window.__scoreCache.last > 150) {
-    const allPlayers = [
-      ...(player ? [{ id: socket.id, name: player.name, level: player.level }] : []),
-      ...Object.entries(otherPlayers).map(([id, p]) => ({ id, name: p.name, level: p.level }))
-    ].sort((a, b) => b.level - a.level).slice(0, 5);
+    const selfEntries = (player
+      ? [{ id: (window.socket && window.socket.id) ? window.socket.id : 'self', name: player.name, level: player.level }]
+      : []);
+    const others = Object.entries(otherPlayers || {})
+      .filter(([, p]) => p && typeof p.name === 'string' && typeof p.level !== 'undefined')
+      .map(([id, p]) => ({ id, name: p.name, level: p.level }));
+    const allPlayers = [...selfEntries, ...others]
+      .sort((a, b) => (b.level || 0) - (a.level || 0))
+      .slice(0, 5);
     window.__scoreCache.list = allPlayers;
     window.__scoreCache.last = nowTs;
   }
@@ -63,77 +68,134 @@ const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
 
 function drawHotbar() {
   if (!hotbar || !hotbar.slots) return;
+  ctx.save();
   const startX = (canvas.width - totalWidth) / 2;
   const y = canvas.height - slotSize - 20;
   drawHealthbar(startX, y);
   drawHungerBar(startX, y);
+  // Track hovered slot for tooltip
+  let hoveredSlotInfo = null;
   for (let i = 0; i < hotbar.slots.length; i++) {
     const x = startX + i * (slotSize + padding);
+    ctx.save();
     ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
     ctx.fillRect(x, y, slotSize, slotSize);
     ctx.strokeStyle = "white";
     ctx.strokeRect(x, y, slotSize, slotSize);
+    ctx.restore();
     if (i === hotbar.selectedIndex) {
+      ctx.save();
       ctx.strokeStyle = "yellow";
       ctx.lineWidth = 3;
       ctx.strokeRect(x - 2, y - 2, slotSize + 4, slotSize + 4);
+      ctx.restore();
     }
+    // Detect mouse hover over this slot
+    const isHover = typeof mouseX === 'number' && typeof mouseY === 'number' &&
+                    mouseX >= x && mouseX <= x + slotSize &&
+                    mouseY >= y && mouseY <= y + slotSize;
     const slot = hotbar.slots[i];
+    if (isHover) {
+      hoveredSlotInfo = { x, y, slot };
+    }
     if (slot) {
-      if (slot.type === 'wooden_sword' && typeof swordImage !== 'undefined' && swordImage.complete) {
-        const imgSize = 28;
-        ctx.drawImage(
-          swordImage,
-          x + (slotSize - imgSize) / 2,
-          y + (slotSize - imgSize) / 2,
-          imgSize,
-          imgSize
-        );
-      } else if (slot.type === 'wooden_pickaxe' && typeof wooden_pickaxe_Image !== 'undefined' && pickaxeImageLoaded) {
-        const imgSize = 28;
-        ctx.drawImage(
-          wooden_pickaxe_Image,
-          x + (slotSize - imgSize) / 2,
-          y + (slotSize - imgSize) / 2,
-          imgSize,
-          imgSize
-        );
-      } else if (slot.type === 'wooden_axe' && typeof wooden_axe_Image !== 'undefined' && axeImageLoaded) {
-        const imgSize = 28;
-        ctx.drawImage(
-          wooden_axe_Image,
-          x + (slotSize - imgSize) / 2,
-          y + (slotSize - imgSize) / 2,
-          imgSize,
-          imgSize
-        );
+      const toolImage = toolImages[slot.type];
+      const resourceImage = resourceImages[slot.type];
+      const imgSize = 28;
+      const imgX = x + (slotSize - imgSize) / 2;
+      const imgY = y + (slotSize - imgSize) / 2;
+
+      if (toolImage && toolImage.complete) {
+        ctx.drawImage(toolImage, imgX, imgY, imgSize, imgSize);
+      } else if (resourceImage && resourceImage.complete) {
+        ctx.drawImage(resourceImage, imgX, imgY, imgSize, imgSize);
       } else {
         const itemColor = ItemTypes[slot.type]?.color || "black";
         ctx.fillStyle = itemColor;
         ctx.fillRect(x + 8, y + 4, 24, 24);
       }
+      // Show item count with background overlay at bottom-right of the slot
+      const badgeW = 18, badgeH = 14;
+      const badgeX = x - 2;  // Changed to left side with small padding
+      const badgeY = y + slotSize - badgeH - 2;
       ctx.fillStyle = "white";
-      ctx.font = "11px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText(slot.type, x + slotSize / 2, y + slotSize - 16);
-      ctx.font = "13px Arial";
-      ctx.fillText(slot.count, x + slotSize / 2, y + slotSize - 4);
+      ctx.textAlign = "left";
+      ctx.font = "12px Arial";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(slot.count), badgeX + 4, badgeY + badgeH / 2);
     }
   }
+  // Draw tooltip for hovered slot showing the item name
+  if (hoveredSlotInfo && hoveredSlotInfo.slot) {
+    const { x: hx, y: hy, slot } = hoveredSlotInfo;
+    const label = String(slot.type);
+    ctx.save();
+    ctx.font = "12px Arial";
+    const paddingX = 6;
+    const paddingY = 4;
+    const textWidth = ctx.measureText(label).width;
+    const boxWidth = textWidth + paddingX * 2;
+    const boxHeight = 20; // fits 12px text comfortably
+    let boxX = hx + slotSize / 2 - boxWidth / 2;
+    let boxY = hy - boxHeight - 6; // above the slot
+    // If near the top edge, place below the slot
+    if (boxY < 0) boxY = hy + slotSize + 6;
+    // Clamp horizontally within canvas
+    boxX = Math.max(2, Math.min(canvas.width - boxWidth - 2, boxX));
+    // Background
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+    // Border
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+    // Text
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, boxX + boxWidth / 2, boxY + boxHeight / 2);
+    ctx.restore();
+  }
   if (draggedItem) {
-    const iconSize = 30;
-    const draggedColor = ItemTypes[draggedItem.type]?.color || "black";
-    ctx.fillStyle = draggedColor;
-    ctx.fillRect(mouseX, mouseY, iconSize, iconSize);
+    const iconSize = 32;
+    let drewImage = false;
+    const toolImage = toolImages[draggedItem.type];
+    const resourceImage = resourceImages[draggedItem.type];
+
+    if (toolImage && toolImage.complete) {
+        ctx.drawImage(toolImage, mouseX, mouseY, iconSize, iconSize);
+        drewImage = true;
+    } else if (resourceImage && resourceImage.complete) {
+        ctx.drawImage(resourceImage, mouseX, mouseY, iconSize, iconSize);
+        drewImage = true;
+    }
+
+    if (!drewImage) {
+      // Fallback to colored square if no image
+      const draggedColor = ItemTypes[draggedItem.type]?.color || "black";
+      ctx.fillStyle = draggedColor;
+      ctx.fillRect(mouseX, mouseY, iconSize, iconSize);
+    }
+    // Draw count overlay at bottom-right of the dragged icon
+    const badgeW = 18, badgeH = 14;
+    const badgeX = mouseX + iconSize - badgeW;
+    const badgeY = mouseY + iconSize - badgeH;
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
     ctx.fillStyle = "white";
     ctx.font = "12px Arial";
     ctx.textAlign = "center";
-    ctx.fillText(draggedItem.type, mouseX + iconSize / 2, mouseY + 18);
-    ctx.fillText(draggedItem.count, mouseX + iconSize / 2, mouseY + 30);
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(draggedItem.count), badgeX + badgeW / 2, badgeY + badgeH / 2);
   }
+  ctx.restore();
 }
 
 function drawCraftingUI() {
+  ctx.save();
   const craftX = canvas.width - scoreboardWidth - 110 - 10;
   let craftY = 40;
   const width = 100;
@@ -151,6 +213,7 @@ function drawCraftingUI() {
     ctx.textAlign = "left";
     craftY += height + 10;
   }
+  ctx.restore();
 }
 
 let message = "";
@@ -171,6 +234,7 @@ function drawMessage() {
     ctx.restore();
   }
 }
+
 
 const damageTexts = [];
 
@@ -200,23 +264,31 @@ function drawDamageTexts() {
   }
 }
 
-// Accurate FPS via moving average over a time window
-let fpsTimes = [];
-let fpsDisplay = 0;
-const FPS_WINDOW_MS = 1000; // 1-second window
+// Accurate FPS via EMA of frame interval, capped at 60
+let fpsDisplay = 0;           // continuously-updated EMA
+let fpsShown = 0;             // throttled value used for UI
+let __lastFpsTs = null;
+let __lastFpsShownTs = 0;
+const FPS_SMOOTH_ALPHA = 0.15; // 0..1, higher = snappier
+const FPS_SHOW_INTERVAL_MS = 500; // update UI at most twice per second
 
 function updateFPSCounter() {
   const now = performance.now();
-  fpsTimes.push(now);
-  const cutoff = now - FPS_WINDOW_MS;
-  // Drop samples older than the window
-  while (fpsTimes.length && fpsTimes[0] < cutoff) fpsTimes.shift();
-  if (fpsTimes.length >= 2) {
-    const elapsed = fpsTimes[fpsTimes.length - 1] - fpsTimes[0];
-    const frames = fpsTimes.length - 1;
-    fpsDisplay = frames > 0 && elapsed > 0 ? (frames / (elapsed / 1000)) : 0;
-  } else {
-    fpsDisplay = 0;
+  if (__lastFpsTs != null) {
+    const dt = now - __lastFpsTs;
+    if (dt > 0 && dt < 10000) { // ignore huge pauses
+      const instant = 1000 / dt;
+      // Exponential moving average for smooth display
+      fpsDisplay = fpsDisplay ? (fpsDisplay + FPS_SMOOTH_ALPHA * (instant - fpsDisplay)) : instant;
+    }
+  }
+  __lastFpsTs = now;
+  // Cap FPS at 60 for display
+  if (fpsDisplay > 60) fpsDisplay = 60;
+  // Throttle the visible FPS updates to reduce flicker
+  if (!__lastFpsShownTs || (now - __lastFpsShownTs) >= FPS_SHOW_INTERVAL_MS) {
+    fpsShown = fpsDisplay;
+    __lastFpsShownTs = now;
   }
 }
 
@@ -226,7 +298,8 @@ function drawFPSCounter() {
   ctx.font = "16px monospace";
   ctx.textAlign = "right";
   ctx.textBaseline = "top";
-  const displayText = `FPS: ${fpsDisplay.toFixed(1)} | Ping: ${ping.toFixed(1)} ms`;
+  const shown = fpsShown || fpsDisplay || 0;
+  const displayText = `FPS: ${shown.toFixed(1)} | Ping: ${ping.toFixed(1)} ms`;
   ctx.fillText(displayText, canvas.width - 10, 10);
   ctx.restore();
 }
@@ -258,12 +331,27 @@ function drawDroppedItems() {
     const screenX = item.x;
     const screenY = item.y;
     ctx.save();
-    const itemColor = ItemTypes[item.type]?.color || "brown";
-    ctx.fillStyle = itemColor;
-    ctx.beginPath();
-    ctx.arc(screenX, screenY, 10, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.closePath();
+    // Try to draw an icon for the dropped item if available
+    const iconSize = 24;
+    let drewImage = false;
+    const tImg = (typeof toolImages !== 'undefined') ? toolImages[item.type] : undefined;
+    const rImg = (typeof resourceImages !== 'undefined') ? resourceImages[item.type] : undefined;
+    if (tImg && tImg.complete) {
+      ctx.drawImage(tImg, screenX - iconSize / 2, screenY - iconSize / 2, iconSize, iconSize);
+      drewImage = true;
+    } else if (rImg && rImg.complete) {
+      ctx.drawImage(rImg, screenX - iconSize / 2, screenY - iconSize / 2, iconSize, iconSize);
+      drewImage = true;
+    }
+    if (!drewImage) {
+      const itemColor = ItemTypes[item.type]?.color || "brown";
+      ctx.fillStyle = itemColor;
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.closePath();
+    }
+    // Draw label with amount below the icon/circle
     ctx.fillStyle = "white";
     ctx.font = "10px Arial";
     ctx.textAlign = "center";
@@ -314,9 +402,11 @@ function drawLightSources() {
 
 function drawWorldBorder() {
   if (window.graphicsSettings && window.graphicsSettings.performanceMode) return;
+  ctx.save();
   ctx.strokeStyle = "red";
   ctx.lineWidth = 5;
   ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+  ctx.restore();
 }
 
 function drawButtons() {

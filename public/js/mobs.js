@@ -33,6 +33,7 @@ if (typeof socket !== "undefined" && socket) {
 }
 
 function drawPolygon(ctx, x, y, size, sides, rotation = 0) {
+  ctx.save();
   const angleStep = (Math.PI * 2) / sides;
   ctx.beginPath();
   for (let i = 0; i < sides; i++) {
@@ -45,6 +46,10 @@ function drawPolygon(ctx, x, y, size, sides, rotation = 0) {
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
+
+
+  
+  ctx.restore();
 }
 
 function drawStar(ctx, x, y, size, points = 5, innerRadiusRatio = 0.4) {
@@ -67,6 +72,7 @@ function drawStar(ctx, x, y, size, points = 5, innerRadiusRatio = 0.4) {
   ctx.restore();
 }
 function drawMob() {
+  ctx.save();
   // Force feet animation for all mobs for testing
   // Remove this line when you want real movement logic
   for (const mobList of Object.values(mobs)) {
@@ -76,10 +82,6 @@ function drawMob() {
   }
   const now = performance.now();
   // Interpolation tuning constants
-  const BASE_INTERP_EXTRA_DELAY = 20; // baseline extra delay
-  const BASE_MIN_BUFFER = 6; // baseline minimum buffer
-  const BASE_MAX_BUFFER = 40; // baseline max smoothing window
-  const BASE_VELOCITY_BLEND = 0.05; // baseline forward lead
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
       if (mob.health > 0) {
@@ -272,6 +274,29 @@ function drawMob() {
           } else {
             drawPolygon(ctx, 0, 0, mob.size * Math.SQRT2, 4, Math.PI/4); // Diamond
           }
+          // Draw angry eyes
+          const eyeSize = mob.size / 8;
+          const eyeSpacing = mob.size / 4;
+          const eyeY = -eyeSize;
+          
+          // Left eye
+          ctx.rotate(Math.PI / 2);
+          ctx.beginPath();
+          ctx.moveTo(-eyeSpacing, eyeY);
+          ctx.lineTo(-eyeSpacing + eyeSize, eyeY - eyeSize);
+          ctx.lineTo(-eyeSpacing + eyeSize, eyeY + eyeSize);
+          ctx.closePath();
+          ctx.fillStyle = "red";
+          ctx.fill();
+          
+          // Right eye
+          ctx.beginPath();
+          ctx.moveTo(eyeSpacing, eyeY);
+          ctx.lineTo(eyeSpacing - eyeSize, eyeY - eyeSize);
+          ctx.lineTo(eyeSpacing - eyeSize, eyeY + eyeSize);
+          ctx.closePath();
+          ctx.fillStyle = "red";
+          ctx.fill();
         } else if (mob.type === "special_mob") {
           ctx.save();
           ctx.translate(0, 0);
@@ -284,11 +309,35 @@ function drawMob() {
           drawStar(ctx, 0, 0, mob.size);
           ctx.restore();
         }
+        
+        
         ctx.restore();
+
         if (showData) {
-          
+          ctx.save();
           const aggroRadius = mobtype[mob.type].aggroRadius;
           const escapeRadius = mobtype[mob.type].escapeRadius;
+          // mob = the instance from your mobs list, mobtype = config from "mobType" event
+          const cfg = mobtype?.[mob.type] ?? {};
+          const prof =
+            cfg.profiles?.[mob.profile] ||
+            (cfg.profiles ? Object.values(cfg.profiles)[0] : undefined);
+
+          const mobSpeed =
+            // prefer instance field from server if present
+            mob.moveSpeed ?? mob.speed ??
+            // then profile speed (for aggressive mobs)
+            prof?.speed ??
+            // then type-level default (passive/special)
+            cfg.speed ??
+            0;
+
+          const mobDamage =
+            mob.damage ??
+            prof?.damage ??
+            cfg.damage ??
+            0;
+          const attackSpeed = mob.attackSpeed ?? prof?.attackSpeed ?? cfg.attackSpeed ?? 1;
           ctx.beginPath();
           ctx.arc(centerX, centerY, aggroRadius, 0, Math.PI * 2);
           ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
@@ -297,6 +346,7 @@ function drawMob() {
           ctx.arc(centerX, centerY, escapeRadius, 0, Math.PI * 2);
           ctx.strokeStyle = "rgba(0, 0, 255, 0.5)";
           ctx.stroke();
+          ctx.restore();
           
           if (mob.threatTable && Object.keys(mob.threatTable).length > 0) {
             const sortedThreats = Object.entries(mob.threatTable).sort(([, a], [, b]) => b - a);
@@ -307,6 +357,7 @@ function drawMob() {
               textLines = textLines.map(line => line.startsWith(targetName) ? `>${line}` : line);
             }
             const fontSize = 12;
+            ctx.save();
             ctx.font = `${fontSize}px Arial`;
             ctx.fillStyle = "white";
             ctx.strokeStyle = "black";
@@ -318,12 +369,42 @@ function drawMob() {
               ctx.fillText(line, x, y);
               y -= fontSize + 2;
             }
+            ctx.restore();
           }
+
+          ctx.save();
+          ctx.fillStyle = "white";
+          ctx.font = "12px monospace";
+          ctx.textAlign = "center";
+          let yOffset = drawY - 15;
+          const texts = [
+            `ID: ${mob.id.slice(0, 4)}`,
+            `HP: ${mob.health.toFixed(0)}/${mob.maxHealth}`,
+            `Pos: ${mob.x.toFixed(0)}, ${mob.y.toFixed(0)}`,
+            `Type: ${mob.type}${mob.profile ? ` (${mob.profile})` : ''}`,
+            `Size: ${mob.size.toFixed(0)}`,
+            `Range: ${aggroRadius?.toFixed(0) ?? 'N/A'}/${escapeRadius?.toFixed(0) ?? 'N/A'}`,
+            `Speed: ${mobSpeed?.toFixed(0) ?? 'N/A'}`,
+            `Damage: ${mobDamage?.toFixed(0) ?? 'N/A'}`,
+            `Attack Speed: ${attackSpeed?.toFixed(0) ?? 'N/A'}`
+
+          ];
+          if (mob.state) {
+            texts.push(`State: ${mob.state}`);
+          }
+          
+          for (let i = texts.length - 1; i >= 0; i--) {
+            ctx.fillText(texts[i], centerX, yOffset);
+            yOffset -= 12;
+          }
+          ctx.restore();
+          
           // collider (green outline, matches collision margin from mobdata.js)
           // In mobdata.js, collision margin is: (mob.size + other.size)/2 - overlapMargin
           // For visualizing the collider, use (mob.size/2 - overlapMargin)
           const overlapMargin = mob.size * 0.4; // Must match mobdata.js
           const colliderRadius = Math.max(1, mob.size / 2 - overlapMargin); // Prevent negative/zero radius
+          ctx.save();
           ctx.beginPath();
           ctx.arc(centerX, centerY, colliderRadius, 0, Math.PI * 2);
           ctx.strokeStyle = "rgba(0, 255, 0, 0.7)"; // Green outline for collider
@@ -355,6 +436,7 @@ function drawMob() {
           ctx.strokeStyle = "rgba(0, 128, 255, 0.7)"; // Blue outline for hit detection
           ctx.lineWidth = 2;
           ctx.stroke();
+          ctx.restore();
         }
         
 
@@ -363,12 +445,13 @@ function drawMob() {
       }
     }
   }
+  ctx.restore();
 }
 
 function drawHealthBarM(mob) {
   const config = mobtype[mob.type];
   if (!config || !mob.maxHealth) return;
-
+  ctx.save();
   const hpPercent = Math.max(mob.health / mob.maxHealth, 0);
   const barWidth = mob.size;
   const barHeight = 5;
@@ -379,6 +462,7 @@ function drawHealthBarM(mob) {
   ctx.fillRect(x, y, barWidth, barHeight);
   ctx.fillStyle = "lime";
   ctx.fillRect(x, y, barWidth * hpPercent, barHeight);
+  ctx.restore();
 }
 
 function tryHitMob() {
@@ -403,9 +487,24 @@ function tryHitMob() {
     for (const mob of list) {
       if (mob.size > 0 && mob.health > 0 &&
           isObjectInAttackCone(player, mob, attackRange, coneAngle)) {
-
-        if (!config.requiredTool.categories.includes(toolInfo.category) ||
-            toolInfo.tier < config.requiredTool.minTier) {
+        // Allow all tools to hit mobs: swords behave normally, other tools deal 1 dmg.
+        // Non-tool (hand) remains blocked by requiredTool rules.
+        const isSword = toolInfo && toolInfo.category === "sword";
+        const isTool = !!(toolInfo && toolInfo.isTool);
+        let canHit;
+        if (isSword) {
+          // Sword must still satisfy requiredTool rules
+          canHit = config.requiredTool.categories.includes(toolInfo.category) &&
+                   toolInfo.tier >= config.requiredTool.minTier;
+        } else if (isTool) {
+          // Other tools can always hit (for 1 damage)
+          canHit = true;
+        } else {
+          // Hand or non-tool: use original checks (likely blocked)
+          canHit = config.requiredTool.categories.includes(toolInfo.category) &&
+                   toolInfo.tier >= config.requiredTool.minTier;
+        }
+        if (!canHit) {
           showMessage("This tool is not effective.");
           return;
         }
@@ -421,7 +520,8 @@ function tryHitMob() {
           staminaSpent = true;
         }
 
-        const damage = toolInfo.damage;
+        // Damage: swords use their normal damage; other tools only deal 1
+        const damage = (toolInfo && toolInfo.category === "sword") ? (toolInfo.damage || 1) : 1;
         mob.health -= damage;
 
         // Calculate knockback

@@ -65,24 +65,18 @@ function hitResourceInCone() {
     for (const resource of list) {
       const rx = resource.x;
       const ry = resource.y;
-
-      // Debug visuals (optional)
-      if (typeof showData !== 'undefined' && showData) {
-        ctx.beginPath();
-        ctx.fillStyle = 'rgba(0, 255, 255, 0.92)';
-        ctx.arc(rx, ry, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
       // ✅ Only hit if resource is in cone
       if (resource.sizeX > 0 && resource.sizeY > 0 &&
           isObjectInAttackCone(player, resource, attackRange, coneAngle)) {
 
-        // ✅ Tool effectiveness check
-        if (!config.requiredTool.categories.includes(toolInfo.category) ||
-            toolInfo.tier < config.requiredTool.minTier) {
-          showMessage("This tool is not effective.");
-          return;
+        // ✅ Tool effectiveness check (skip for food: any item/hand can damage food)
+        const isFood = type === 'food';
+        if (!isFood) {
+          if (!config.requiredTool.categories.includes(toolInfo.category) ||
+              toolInfo.tier < config.requiredTool.minTier) {
+            showMessage("This tool is not effective.");
+            return;
+          }
         }
 
         // ✅ Spend stamina ONCE
@@ -97,8 +91,8 @@ function hitResourceInCone() {
           staminaSpent = true;
         }
 
-        // ✅ Apply damage to resource
-        const damage = toolInfo.damage;
+  // ✅ Apply damage to resource (food always takes 1)
+  const damage = (type === 'food') ? 1 : toolInfo.damage;
         resource.health -= damage;
         socket.emit("resourceHit", { type, id: resource.id, newHealth: resource.health });
         showDamageText(rx, ry, -damage);
@@ -120,6 +114,7 @@ function hitResourceInCone() {
 function drawHealthBarR(resource) {
   const config = resourceTypes[resource.type];
   if (!config || !resource.maxHealth) return;
+  ctx.save();
   const hpPercent = Math.max(resource.health / resource.maxHealth, 0);
   const barWidth = resource.sizeX;
   const barHeight = 5;
@@ -130,6 +125,7 @@ function drawHealthBarR(resource) {
   ctx.fillRect(x, y, barWidth, barHeight);
   ctx.fillStyle = "lime";
   ctx.fillRect(x, y, barWidth * hpPercent, barHeight);
+  ctx.restore();
 }
 
 function getAttackSpeed() {
@@ -158,16 +154,27 @@ function tryHitResource() {
 }
 
 if (typeof socket !== "undefined" && socket) {
-  socket.on("updateResourceHealth", ({ id, type, health }) => {
-    const list = getResourceArrayByType(type);
-    const resource = list.find(r => r.id === id);
-    if (resource) {
-      resource.health = health;
-      if (health <= 0) {
-        resource.sizeX = 0;
-        resource.sizeY = 0;
-        resource.respawnTimer = resource.respawnTime;
-      }
+  socket.on("updateResourceHealth", ({ id, type, health, x, y, sizeX, sizeY, maxHealth }) => {
+    if (!allResources) allResources = {};
+    if (!allResources[type]) allResources[type] = [];
+    let list = allResources[type];
+    let resource = list.find(r => r.id === id);
+    // If missing (e.g., just entered visibility), create it so the hit appears instantly
+    if (!resource) {
+      resource = { id, type, x: x ?? 0, y: y ?? 0, sizeX: sizeX ?? 0, sizeY: sizeY ?? 0, health: health ?? 0, maxHealth: maxHealth ?? health ?? 0 };
+      list.push(resource);
+    }
+    resource.health = health;
+    if (typeof x === 'number') resource.x = x;
+    if (typeof y === 'number') resource.y = y;
+    if (typeof sizeX === 'number') resource.sizeX = sizeX;
+    if (typeof sizeY === 'number') resource.sizeY = sizeY;
+    if (typeof maxHealth === 'number') resource.maxHealth = maxHealth;
+    resource.lastHitTime = performance.now();
+    if (health <= 0) {
+      resource.sizeX = 0;
+      resource.sizeY = 0;
+      resource.respawnTimer = resource.respawnTime;
     }
   });
 }
@@ -242,24 +249,28 @@ function drawResources() {
         }
         ctx.restore();
 
-        // ===== Top & Left highlight =====
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        ctx.moveTo(drawX, drawY + 2);  
-        ctx.lineTo(drawX + r.sizeX, drawY + 2);
-        ctx.moveTo(drawX + 2, drawY);  
-        ctx.lineTo(drawX + 2, drawY + r.sizeY);
-        ctx.stroke();
+  // ===== Top & Left highlight =====
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(drawX, drawY + 2);  
+  ctx.lineTo(drawX + r.sizeX, drawY + 2);
+  ctx.moveTo(drawX + 2, drawY);  
+  ctx.lineTo(drawX + 2, drawY + r.sizeY);
+  ctx.stroke();
+  ctx.restore();
 
-        // ===== Bottom & Right shadow =====
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.beginPath();
-        ctx.moveTo(drawX, drawY + r.sizeY - 2);  
-        ctx.lineTo(drawX + r.sizeX, drawY + r.sizeY - 2);
-        ctx.moveTo(drawX + r.sizeX - 2, drawY);  
-        ctx.lineTo(drawX + r.sizeX - 2, drawY + r.sizeY);
-        ctx.stroke();
+  // ===== Bottom & Right shadow =====
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+  ctx.beginPath();
+  ctx.moveTo(drawX, drawY + r.sizeY - 2);  
+  ctx.lineTo(drawX + r.sizeX, drawY + r.sizeY - 2);
+  ctx.moveTo(drawX + r.sizeX - 2, drawY);  
+  ctx.lineTo(drawX + r.sizeX - 2, drawY + r.sizeY);
+  ctx.stroke();
+  ctx.restore();
 
         // ===== Debug hitboxes =====
         if (showData) {
@@ -275,6 +286,22 @@ function drawResources() {
           } else if (r.size !== undefined) {
             ctx.strokeRect(drawX, drawY, r.size, r.size);
           }
+          
+
+          ctx.fillStyle = "white";
+          ctx.font = "12px monospace";
+          ctx.textAlign = "center";
+          let yOffset = -50;
+          const texts = [
+            `ID: ${r.id.slice(0, 4)}`,
+            `HP: ${r.health.toFixed(0)}/${r.maxHealth}`,
+            `Pos: ${r.x.toFixed(0)}, ${r.y.toFixed(0)}`,
+            `Type: ${r.type}`
+          ];
+          texts.forEach(text => {
+            ctx.fillText(text, drawX + r.sizeX / 2, drawY + yOffset);
+            yOffset += 12;
+          });
           ctx.restore();
         }
 

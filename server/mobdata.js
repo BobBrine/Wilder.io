@@ -1,4 +1,4 @@
-const WORLD_SIZE = 5000;
+const WORLD_SIZE = 1000;
 
 const GRID_CELL_SIZE = 100;
 const GRID_COLS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE); // 50
@@ -151,7 +151,7 @@ function generateSpecialAggressiveMobType(id, gameTime, difficulty) {
   attackspeed: 1.5 * attackSpeedScale, // special = fast
     color: "white",
     drop: ["pure_core", "dark_core", "mythic_core"],
-    requiredTool: { categories: ["sword"], minTier: 2 },
+    requiredTool: { categories: ["sword"], minTier: 0 },
     spawntimer: 60,
     getDropAmount: () => [
       { type: "pure_core", amount: baseDropAmount },

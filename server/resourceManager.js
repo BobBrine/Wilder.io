@@ -24,6 +24,7 @@ const {
   players,
 } = require('./playerdata');
 
+const allTools = ["hand", "sword", "axe", "pickaxe"];
 const resourceTypes = {
   food: {
     maxCount: 50,

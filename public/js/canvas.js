@@ -23,7 +23,7 @@ window.addEventListener("resize", resizeCanvas);
 
 const WORLD_SIZE = 5000;
 const backgroundImage = new Image();
-backgroundImage.src = 'grass.png'; // must be 5000x5000
+backgroundImage.src = '/images/grass.png'; // must be 5000x5000
 
 // This will draw the image once at 0,0
 backgroundImage.onload = function () {
@@ -31,6 +31,7 @@ backgroundImage.onload = function () {
 };
 
 function drawBackground() {
+  ctx.save();
   // Always paint a dark-green base so uncovered areas aren't black (alpha:false context)
   const baseColor = '#116d10'; // dark green
   // If camera isn't ready yet (during initial load), draw full-canvas base and optional image
@@ -38,12 +39,13 @@ function drawBackground() {
     ctx.fillStyle = baseColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (backgroundImage.complete) ctx.drawImage(backgroundImage, 0, 0);
+    ctx.restore();
     return;
   }
   // With camera active, fill the current viewport in world coords first
   ctx.fillStyle = baseColor;
   ctx.fillRect(camera.x, camera.y, canvas.width, canvas.height);
-  if (!backgroundImage.complete) return;
+  if (!backgroundImage.complete) { ctx.restore(); return; }
   // Only draw the visible portion of the background (viewport) in world space
   // World transform is already applied by main.js before calling drawBackground.
   // Compute source rect based on camera viewport to avoid drawing the entire 5000x5000 each frame.
@@ -58,6 +60,7 @@ function drawBackground() {
     viewX, viewY, viewW, viewH,
     viewX, viewY, viewW, viewH
   );
+  ctx.restore();
 }
 
 //button

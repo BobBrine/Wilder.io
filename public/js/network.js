@@ -1,10 +1,11 @@
 // Socket connection
 let socket = null;
-const devTest = false; // Set to true for development testing
+let devTest = false; // runtime-togglable dev flag from server
+
 // Dev mode strictly follows devTest only (no localStorage/host overrides)
-const devModeActive = !!devTest;
+const isDevMode = () => !!devTest;
 // Helpful diagnostic
-try { console.log('Dev mode check', { devTest, devModeActive, host: location.hostname }); } catch (_) {}
+try { console.log('Dev mode check', { devTest, devModeActive: isDevMode(), host: location.hostname }); } catch (_) {}
 
 // Run a callback now if DOM is ready, otherwise on DOMContentLoaded
 function onReady(cb) {
@@ -52,6 +53,7 @@ function initializeSocket(url) {
 }
 function setupSocketListeners() {
   if (!socket) return;
+    
   // Socket event handlers
   socket.on("resourceType", (data) => {  
     resourceTypes = data;
@@ -81,18 +83,10 @@ function setupSocketListeners() {
     if (nameInput) nameInput.disabled = false;
     if (nameBtn) nameBtn.disabled = false;
 
-    // Initialize graphics settings from localStorage or defaults
-    if (!window.graphicsSettings) window.graphicsSettings = {};
-    try {
-      const savedPerformanceMode = localStorage.getItem('graphics.performanceMode');
-      window.graphicsSettings.performanceMode = savedPerformanceMode ? JSON.parse(savedPerformanceMode) : false;
-      // Shadows are always inverse of performance mode
-      window.graphicsSettings.shadows = !window.graphicsSettings.performanceMode;
-    } catch (e) {
-      // Fallback to defaults if localStorage fails
-      window.graphicsSettings.performanceMode = false;
-      window.graphicsSettings.shadows = true; // Default: shadows on when performance mode off
-    }
+    window.graphicsSettings.performanceMode = false;
+    window.graphicsSettings.shadows = true;
+
+
   });
 
   // Receive server time at a modest rate for lighting/day-night effects
@@ -101,24 +95,36 @@ function setupSocketListeners() {
   });
 
   socket.on("resources", (data) => {
-    if (!allResources) {
-      allResources = data;
-    } else {
-      for (const type in data) {
-        if (!allResources[type]) allResources[type] = [];
-        data[type].forEach((serverR, i) => {
-          const existing = allResources[type][i] || {};
-          allResources[type][i] = {
-            ...serverR,
-            lastHitTime: existing.lastHitTime,
-          };
+    // Proximity-filtered snapshot: rebuild per-type arrays by id
+    if (!allResources || typeof allResources !== 'object') allResources = {};
+    const nowTypes = Object.keys(data || {});
+    const nextAll = {};
+    for (let ti = 0; ti < nowTypes.length; ti++) {
+      const type = nowTypes[ti];
+      const incoming = Array.isArray(data[type]) ? data[type] : [];
+      const existList = allResources[type] || [];
+      const existById = new Map();
+      for (let i = 0; i < existList.length; i++) {
+        const r = existList[i];
+        if (r && r.id != null) existById.set(r.id, r);
+      }
+      const nextList = [];
+      for (let i = 0; i < incoming.length; i++) {
+        const serverR = incoming[i];
+        const existing = existById.get(serverR.id) || {};
+        nextList.push({
+          ...serverR,
+          lastHitTime: existing.lastHitTime,
         });
       }
+      nextAll[type] = nextList;
     }
+    allResources = nextAll;
     resourcesLoaded = true;
   });
 
   socket.on("mobs", (data) => {
+
     if (!mobs) mobs = {};
     const nowTs = performance.now();
     for (const type in data) {
@@ -154,6 +160,7 @@ function setupSocketListeners() {
 
   // Apply delta updates for mobs to reduce payload size
   socket.on("mobsDelta", ({ add = [], update = [], remove = [] }) => {
+    // Debug: log incoming delta for mobs
     const nowTs = performance.now();
     const ensureList = (type) => { if (!mobs[type]) mobs[type] = []; return mobs[type]; };
     const indexById = (list) => {
@@ -225,6 +232,15 @@ function setupSocketListeners() {
   });
 
   socket.on('playerSelf', (playerData) => {
+  // Ensure clean inventory/hotbar on fresh join/respawn
+  try { if (inventory && typeof inventory.clear === 'function') inventory.clear(); } catch(_) {}
+  try {
+    if (window.hotbar) {
+      window.hotbar.slots = new Array(12).fill(null);
+      window.hotbar.selectedIndex = null;
+    }
+  } catch(_) {}
+  try { droppedItems = []; } catch(_) {}
   player = playerData;
   maxStamina = playerData.maxStamina;
   stamina = maxStamina;
@@ -238,6 +254,22 @@ function setupSocketListeners() {
   // Close death screen immediately on respawn
   const deathScreen = document.getElementById("deathScreen");
   if (deathScreen) deathScreen.style.display = "none";
+
+  // In dev mode, grant dev items AFTER a clean playerSelf, once per session
+  try {
+    if (isDevMode()) {
+      const giveDev = (typeof window.__devGiveItems === 'undefined') ? true : !!window.__devGiveItems;
+      if (giveDev && !window.__devItemsGranted && inventory && typeof inventory.addItem === 'function') {
+        inventory.addItem("wooden_sword", 1);
+        inventory.addItem("wooden_axe", 1);
+        inventory.addItem("food", 1000);
+        inventory.addItem("iron", 10000);
+        inventory.addItem("stone", 10000);
+        inventory.addItem("gold", 10000);
+        window.__devItemsGranted = true;
+      }
+    }
+  } catch(_) {}
   });
 
   socket.on('playerRenamed', ({ id, name }) => {
@@ -323,6 +355,8 @@ function setupSocketListeners() {
     if (playerData.id !== socket.id && otherPlayers[playerData.id]) {
       otherPlayers[playerData.id].x = playerData.x;
       otherPlayers[playerData.id].y = playerData.y;
+  if (typeof playerData.facingAngle === 'number') otherPlayers[playerData.id].facingAngle = playerData.facingAngle;
+  if ('selectedToolType' in playerData) otherPlayers[playerData.id].selectedToolType = playerData.selectedToolType;
     }
   });
 
@@ -374,21 +408,7 @@ function setupSocketListeners() {
       respawnBtn.id = "respawnBtn";
       respawnBtn.textContent = "Respawn";
       respawnBtn.style.marginTop = "20px";
-      respawnBtn.onclick = function() {
-        // Use previous name from input
-        const input = document.getElementById("playerNameInput");
-        const name = input.value.trim() || "Unknown";
-        if (!socket || socket.disconnected) {
-          showMessage("Not connected to server. Please try again.", 5);
-          backToHome();
-          return;
-        }
-  // Clear dead flag immediately to resume gameplay visuals
-  deathScreen.style.display = "none";
-  isDead = false;
-  // Reset any local movement/input state if needed
-        socket.emit("setName", name);
-      };
+  respawnBtn.onclick = function() { if (typeof window.respawnNow === 'function') window.respawnNow(); };
       deathScreen.appendChild(respawnBtn);
     } else {
       respawnBtn.style.display = "inline-block";
@@ -430,6 +450,8 @@ function setupSocketListeners() {
 // UI Navigation Functions
 // ========================
 function joinMainServer() {
+  // Ensure clean client state before joining again
+  if (typeof window.resetClientState === 'function') window.resetClientState();
   document.getElementById("homePage").style.display = "none";
   document.getElementById("serverJoin").style.display = "block";
   
@@ -522,6 +544,8 @@ function backToHome() {
     socket.disconnect();
     socket = null;
   }
+  // Full client-side reset when returning home
+  if (typeof window.resetClientState === 'function') window.resetClientState();
   document.getElementById("serverJoin").style.display = "none";
   document.getElementById("localLAN").style.display = "none";
   document.getElementById("hostPrompt").style.display = "none";
@@ -601,12 +625,16 @@ function backToMain() {
   // Hide respawn button if present
   const respawnBtn = document.getElementById("respawnBtn");
   if (respawnBtn) respawnBtn.style.display = "none";
+  // Full client-side reset like a fresh player
+  if (typeof window.resetClientState === 'function') window.resetClientState();
   document.getElementById("homePage").style.display = "block";
   document.getElementById("playerNameInput").value = "";
 }
 
 function submitName() {
   isDead = false;
+  // Force a clean slate before respawn/join
+  if (typeof window.resetClientState === 'function') window.resetClientState();
   const input = document.getElementById("playerNameInput");
   const name = input.value.trim() || "Unknown";
   if (!socket || socket.disconnected) {
@@ -678,8 +706,10 @@ function promptDropAmount(type, maxCount) {
 }
 
 // Dev testing
-if (devModeActive) {
+if (isDevMode()) {
   onReady(() => {
+  // Always start from a clean client state in dev
+  if (typeof window.resetClientState === 'function') window.resetClientState();
     // Hide all menus and show game instantly
     document.getElementById("homePage").style.display = "none";
     document.getElementById("serverJoin").style.display = "none";
@@ -696,12 +726,6 @@ if (devModeActive) {
       if (socket && socket.connected) {
         socket.emit("setName", "DevUser");
         showData = false;
-        inventory.addItem("wooden_sword", 1);
-        inventory.addItem("wooden_pickaxe", 1);
-        inventory.addItem("wooden_axe", 1);
-        inventory.addItem("wood", 100);
-        inventory.addItem("torch", 1);
-        inventory.addItem("food", 10);
         console.log('[Dev] Auto-login done');
       } else {
         setTimeout(tryLogin, 100);
@@ -744,3 +768,54 @@ if (devModeActive) {
     if (homePage) homePage.style.display = 'block';
   });
 }
+
+// Unified client-side respawn (used by death screen and settings panel)
+window.respawnNow = function respawnNow() {
+  try {
+    const input = document.getElementById('playerNameInput');
+    const name = (input && input.value.trim()) || 'Unknown';
+    if (!socket || socket.disconnected) {
+      showMessage("Not connected to server. Please try again.", 5);
+      backToHome();
+      return;
+    }
+    // Full reset of local state
+    if (typeof window.resetClientState === 'function') window.resetClientState();
+    // Emit setName to respawn on server
+    socket.emit('setName', name);
+  } catch (e) {
+    console.error('respawnNow error', e);
+  }
+};
+
+// Centralized local state reset used by Home/Main and Respawn
+window.resetClientState = function resetClientState() {
+  try {
+    // UI states
+    const deathScreen = document.getElementById('deathScreen');
+    if (deathScreen) deathScreen.style.display = 'none';
+    // player lifecycle flags
+    try { isDead = false; } catch(_) {}
+    // inventory
+    try { if (window.inventory && typeof window.inventory.clear === 'function') window.inventory.clear(); } catch(_) {}
+    // hotbar
+    try {
+      if (window.hotbar) {
+        window.hotbar.slots = new Array(12).fill(null);
+        window.hotbar.selectedIndex = null;
+      }
+    } catch(_) {}
+    // players
+    try { window.otherPlayers = {}; } catch(_) {}
+    try { window.player = null; } catch(_) {}
+    // items
+    try { window.droppedItems = []; } catch(_) {}
+    // optional: clear mobs/resources caches; these will be repopulated on join
+    try { if (typeof mobs !== 'undefined') mobs = {}; } catch(_) {}
+    try { if (typeof mobloaded !== 'undefined') mobloaded = false; } catch(_) {}
+    try { if (typeof allResources !== 'undefined') allResources = {}; } catch(_) {}
+    try { if (typeof resourcesLoaded !== 'undefined') resourcesLoaded = false; } catch(_) {}
+  } catch (e) {
+    console.warn('resetClientState partial failure', e);
+  }
+};

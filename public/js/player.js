@@ -1,6 +1,9 @@
 // Existing variables
 let otherPlayers = {};
 let player = null;
+// Slightly larger radius makes pickup feel snappier; keep in sync with server PICKUP_RADIUS
+const PICKUP_RADIUS = 32;
+let __lastPickupMsgAt = 0;
 let maxStamina = 0;
 let stamina = 0;
 let staminaRegenSpeed = 0;
@@ -14,39 +17,13 @@ const KNOCKBACK_FORCE = 350; // pixels/sec
 
 // Load player image
 const playerImage = new Image();
-playerImage.src = "/Player1.png"; // Adjust the path if needed
+playerImage.src = "/images/Player1.png"; // Adjust the path if needed
 let playerImageLoaded = false;
 playerImage.onload = () => {
   playerImageLoaded = true;
 };
 
-// Load hand image
-const handImage = new Image();
-handImage.src = "/hand.png";
-let handImageLoaded = false;
-handImage.onload = () => {
-  handImageLoaded = true;
-};
 
-// Load sword image
-const swordImage = new Image();
-swordImage.src = 'wooden_sword.png'; // Adjust path as needed
-
-// Load pickaxe image
-const wooden_pickaxe_Image = new Image();
-wooden_pickaxe_Image.src = 'wooden_pickaxe.png'; // Adjust path as needed
-let pickaxeImageLoaded = false;
-wooden_pickaxe_Image.onload = () => {
-  pickaxeImageLoaded = true;
-};
-
-// Load axe image
-const wooden_axe_Image = new Image();
-wooden_axe_Image.src = 'wooden_axe.png'; // Adjust path as needed
-let axeImageLoaded = false;
-wooden_axe_Image.onload = () => {
-  axeImageLoaded = true;
-};
 
 // New variables for attack animation
 let isAttacking = false;
@@ -67,7 +44,13 @@ function getAttackSpeed() {
 
 function sendPlayerPosition(x, y) {
   if (window.socket && window.socket.connected) {
-    window.socket.emit('move', { x, y });
+    // Include facingAngle and currently selected tool type for other clients
+    let selectedToolType = null;
+    try {
+      const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
+      selectedToolType = selected && selected.type ? selected.type : null;
+    } catch (_) {}
+    window.socket.emit('move', { x, y, facingAngle: player?.facingAngle ?? 0, selectedToolType });
   }
 }
 
@@ -138,13 +121,15 @@ function updatePlayerPosition(deltaTime) {
   if (keys["s"]) moveY += 1;
   
   const wantsToSprint = keys[" "];
+  const isMovingInput = (moveX !== 0 || moveY !== 0);
   if (moveX !== 0 && moveY !== 0) {
     const norm = Math.sqrt(2) / 2;
     moveX *= norm;
     moveY *= norm;
   }
   
-  if (wantsToSprint && stamina > 0) {
+  // Only sprint (and drain stamina) when there's movement input
+  if (wantsToSprint && isMovingInput && stamina > 0) {
     speed *= 1.5;
     stamina -= 20 * deltaTime;
     lastStaminaUseTime = 0;
@@ -243,9 +228,33 @@ function updatePlayerPosition(deltaTime) {
     droppedItems.forEach(item => {
       const dx = playerCenterX - item.x;
       const dy = playerCenterY - item.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance < 26 && item.pickupDelay <= 0 && inventory.canAddItem && inventory.canAddItem(item.type)) {
-        if (window.socket && window.socket.connected) window.socket.emit("pickupItem", item.id);
+  const distance = Math.sqrt(dx * dx + dy * dy);
+    // Ignore client-side pickupDelay (server enforces true delay)
+    const canAdd = inventory.canAddItem && inventory.canAddItem(item.type);
+  if (distance < PICKUP_RADIUS && canAdd) {
+        if (window.socket && window.socket.connected) {
+          // Ask server to pick up; include ack for diagnostics
+          window.socket.emit("pickupItem", item.id, (res) => {
+            if (typeof devModeActive !== 'undefined' && devModeActive) {
+              try { console.debug('[pickupItem ack]', { id: item.id, res }); } catch (_) {}
+            }
+            if (res && res.ok === true) {
+              // Optimistically remove from local list in case we miss server remove event
+              droppedItems = Array.isArray(droppedItems) ? droppedItems.filter(di => di && di.id !== item.id) : [];
+            } else if (res && res.ok === false && typeof showMessage === 'function') {
+              // Show a brief hint if server rejected
+              const hint = res.reason === 'delay' ? 'Wait a moment…' : (res.reason === 'range' ? 'Move closer' : 'Pickup failed');
+              const now2 = Date.now();
+              if (now2 - __lastPickupMsgAt > 900) { showMessage(hint); __lastPickupMsgAt = now2; }
+            }
+          });
+        }
+      } else if (distance < PICKUP_RADIUS && !canAdd) {
+        const now = Date.now();
+        if (typeof showMessage === 'function' && now - __lastPickupMsgAt > 1200) {
+          showMessage('Inventory full');
+          __lastPickupMsgAt = now;
+        }
       }
     });
   }
@@ -278,6 +287,7 @@ function consumeFood() {
 }
 
 function drawHungerBar(startX, hotbarY) {
+  ctx.save();
   const barWidth = totalWidth / 2.5;
   const barHeight = 10;
   const barX = startX + totalWidth - barWidth;
@@ -287,9 +297,11 @@ function drawHungerBar(startX, hotbarY) {
   const hungerRatio = player.hunger / player.maxHunger;
   ctx.fillStyle = "orange";
   ctx.fillRect(barX, barY, barWidth * hungerRatio, barHeight);
+  ctx.restore();
 }
 
 function drawHealthbar(startX, hotbarY) {
+  ctx.save();
   const barWidth = totalWidth / 2.5;
   const barHeight = 10;
   const barX = startX;
@@ -297,8 +309,9 @@ function drawHealthbar(startX, hotbarY) {
   ctx.fillStyle = "gray";
   ctx.fillRect(barX, barY, barWidth, barHeight);
   const healthRatio = player.health / player.maxHealth;
-  ctx.fillStyle = "green";
+  ctx.fillStyle = "red";
   ctx.fillRect(barX, barY, barWidth * healthRatio, barHeight);
+  ctx.restore();
 }
 
 function updatePlayerFacing(mouseX, mouseY) {
@@ -340,19 +353,19 @@ function drawPlayer() {
 
   // Draw attack cone if attacking
   if (isAttacking) {
-    ctx.save();
     const now = performance.now();
     const attackSpeed = getAttackSpeed();
     const attackProgress = Math.min((now - attackStartTime) / (attackSpeed * 1000), 1);
     const startAngle = player.facingAngle - ATTACK_ANGLE / 2;
     const currentAngle = startAngle + attackProgress * ATTACK_ANGLE;
+    ctx.save();
     ctx.beginPath();
     ctx.moveTo(centerX, centerY);
     ctx.lineTo(
-      centerX + Math.cos(startAngle) * attackRange,
-      centerY + Math.sin(startAngle) * attackRange
+      centerX + Math.cos(player.facingAngle - ATTACK_ANGLE / 2) * attackRange,
+      centerY + Math.sin(player.facingAngle - ATTACK_ANGLE / 2) * attackRange
     );
-    ctx.arc(centerX, centerY, attackRange, startAngle, currentAngle);
+    ctx.arc(centerX, centerY, attackRange, player.facingAngle - ATTACK_ANGLE / 2, player.facingAngle + ATTACK_ANGLE / 2);
     ctx.closePath();
     ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
     ctx.fill();
@@ -374,237 +387,7 @@ function drawPlayer() {
     ctx.fill();
     ctx.restore();
   }
-
-  // Draw left hand
-  if (handImageLoaded) {
-    const handScale = player.size / 32;
-    let handXOffset = player.size * 0.75;
-    let handYOffset = -player.size * 0.55;
-    let handAngle = -Math.PI / 8;
-    const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.rotate(player.facingAngle + Math.PI / 2);
-    ctx.rotate(handAngle);
-    let localX = -handXOffset;
-    let localY = handYOffset;
-    let moveBack = false;
-    if (selected && ItemTypes[selected.type] && isAttacking) {
-      moveBack = true;
-    } else if (!selected && isAttacking) {
-      if (punchHand === 'left') {
-        const now = performance.now();
-        const attackSpeed = getAttackSpeed();
-        const attackDuration = attackSpeed * 1000;
-        let attackProgress = (now - attackStartTime) / attackDuration;
-        function bezier(t, p0, p1, p2) {
-          return (1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
-        }
-        const startX = -handXOffset;
-        const startY = handYOffset;
-        const punchLength = attackRange - 10;
-        const angleOffset = Math.PI / 18;
-        const cosA = Math.cos(angleOffset);
-        const sinA = Math.sin(angleOffset);
-        let rawEndX = -player.size * 0.03;
-        let rawEndY = -punchLength;
-        let rawControlX = -handXOffset * 0.07;
-        let rawControlY = -punchLength * 0.99;
-        const endX = rawEndX * cosA - rawEndY * sinA;
-        const endY = rawEndX * sinA + rawEndY * cosA;
-        const controlX = rawControlX * cosA - rawControlY * sinA;
-        const controlY = rawControlX * sinA + rawControlY * cosA;
-        if (attackProgress <= 0.5) {
-          const t = attackProgress / 0.5;
-          localX = bezier(t, startX, controlX, endX);
-          localY = bezier(t, startY, controlY, endY);
-        } else {
-          const t = (attackProgress - 0.5) / 0.5;
-          localX = bezier(1 - t, startX, controlX, endX);
-          localY = bezier(1 - t, startY, controlY, endY);
-        }
-      } else if (punchHand === 'right') {
-        moveBack = true;
-      }
-    }
-    if (moveBack) {
-      const now = performance.now();
-      const attackSpeed = getAttackSpeed();
-      const attackDuration = attackSpeed * 1000;
-      const attackProgress = Math.min((now - attackStartTime) / attackDuration, 1);
-      const backAmount = player.size * 0.25 * Math.sin(Math.PI * attackProgress);
-      localX = -handXOffset - backAmount;
-      localY = handYOffset + backAmount * 0.5;
-    }
-    ctx.translate(localX, localY);
-    ctx.drawImage(
-      handImage,
-      -handImage.width / 2 * handScale,
-      -handImage.height / 2 * handScale,
-      handImage.width * handScale,
-      handImage.height * handScale
-    );
-    ctx.restore();
-  }
-
-  // Draw right hand with item/tool
-  if (handImageLoaded) {
-    const handScale = player.size / 32;
-    let handXOffset = player.size * 0.8;
-    let handYOffset = -player.size * 0.55;
-    let handAngle = Math.PI / 8;
-    const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.rotate(player.facingAngle + Math.PI / 2);
-    ctx.rotate(handAngle);
-    let localX = handXOffset;
-    let localY = handYOffset;
-    let animate = false;
-    let counterMove = false;
-    if (selected && isAttacking) {
-      animate = true;
-    } else if (!selected && isAttacking) {
-      if (punchHand === 'right') animate = true;
-      if (punchHand === 'left') counterMove = true;
-    }
-    if (animate) {
-      const now = performance.now();
-      const attackSpeed = getAttackSpeed();
-      const attackDuration = attackSpeed * 1000;
-      let attackProgress = (now - attackStartTime) / attackDuration;
-      function bezier(t, p0, p1, p2) {
-        return (1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
-      }
-      const startX = handXOffset;
-      const startY = handYOffset;
-      const punchLength = attackRange - 10;
-      const angleOffset = -Math.PI / 18;
-      const cosA = Math.cos(angleOffset);
-      const sinA = Math.sin(angleOffset);
-      let rawEndX = player.size * 0.03;
-      let rawEndY = -punchLength;
-      let rawControlX = handXOffset * 0.07;
-      let rawControlY = -punchLength * 0.99;
-      const endX = rawEndX * cosA - rawEndY * sinA;
-      const endY = rawEndX * sinA + rawEndY * cosA;
-      const controlX = rawControlX * cosA - rawControlY * sinA;
-      const controlY = rawControlX * sinA + rawControlY * cosA;
-      if (attackProgress <= 0.5) {
-        const t = attackProgress / 0.5;
-        localX = bezier(t, startX, controlX, endX);
-        localY = bezier(t, startY, controlY, endY);
-      } else {
-        const t = (attackProgress - 0.5) / 0.5;
-        localX = bezier(1 - t, startX, controlX, endX);
-        localY = bezier(1 - t, startY, controlY, endY);
-      }
-    } else if (counterMove) {
-      const now = performance.now();
-      const attackSpeed = getAttackSpeed();
-      const attackDuration = attackSpeed * 1000;
-      const attackProgress = Math.min((now - attackStartTime) / attackDuration, 1);
-      const backAmount = player.size * 0.25 * Math.sin(Math.PI * attackProgress);
-      localX = handXOffset + backAmount;
-      localY = handYOffset + backAmount * 0.5;
-    }
-    ctx.translate(localX, localY);
-    if (selected && ItemTypes[selected.type]) {
-      if (ItemTypes[selected.type].isTool && selected.type === 'wooden_sword' && swordImage.complete) {
-        const scale = 1.25;
-        const imgWidth = swordImage.width * scale;
-        const imgHeight = swordImage.height * scale;
-        ctx.save();
-        let swordAngle = Math.PI * 1.5 + Math.PI / 8;
-        if (isAttacking) {
-          const now = performance.now();
-          const attackSpeed = getAttackSpeed();
-          const attackDuration = attackSpeed * 1000;
-          let attackProgress = (now - attackStartTime) / attackDuration;
-          if (attackProgress > 1) attackProgress = 1;
-          swordAngle -= (Math.PI / 2) * (1 - attackProgress);
-        }
-        ctx.rotate(swordAngle);
-        const swordOffsetX = 10;
-        const swordOffsetY = 6;
-        ctx.translate(swordOffsetX, swordOffsetY);
-        ctx.drawImage(
-          swordImage,
-          -imgWidth / 2,
-          -imgHeight,
-          imgWidth,
-          imgHeight
-        );
-        ctx.restore();
-      } else if (ItemTypes[selected.type].isTool && selected.type === 'wooden_pickaxe' && pickaxeImageLoaded) {
-        const scale = 1.25;
-        const imgWidth = wooden_pickaxe_Image.width * scale;
-        const imgHeight = wooden_pickaxe_Image.height * scale;
-        ctx.save();
-        let pickaxeAngle = Math.PI * 1.5 + Math.PI / 8;
-        if (isAttacking) {
-          const now = performance.now();
-          const attackSpeed = getAttackSpeed();
-          const attackDuration = attackSpeed * 1000;
-          let attackProgress = (now - attackStartTime) / attackDuration;
-          if (attackProgress > 1) attackProgress = 1;
-          pickaxeAngle -= (Math.PI / 2) * (1 - attackProgress);
-        }
-        ctx.rotate(pickaxeAngle);
-        const pickaxeOffsetX = 10;
-        const pickaxeOffsetY = 6;
-        ctx.translate(pickaxeOffsetX, pickaxeOffsetY);
-        ctx.drawImage(
-          wooden_pickaxe_Image,
-          -imgWidth / 2,
-          -imgHeight,
-          imgWidth,
-          imgHeight
-        );
-        ctx.restore();
-        } else if (ItemTypes[selected.type].isTool && selected.type === 'wooden_axe' && axeImageLoaded) {
-          const scale = 1.25;
-          const imgWidth = wooden_axe_Image.width * scale;
-          const imgHeight = wooden_axe_Image.height * scale;
-          ctx.save();
-          let axeAngle = Math.PI * 1.5 + Math.PI / 8;
-          if (isAttacking) {
-            const now = performance.now();
-            const attackSpeed = getAttackSpeed();
-            const attackDuration = attackSpeed * 1000;
-            let attackProgress = (now - attackStartTime) / attackDuration;
-            if (attackProgress > 1) attackProgress = 1;
-            axeAngle -= (Math.PI / 2) * (1 - attackProgress);
-          }
-          ctx.rotate(axeAngle);
-          const axeOffsetX = 10;
-          const axeOffsetY = 6;
-          ctx.translate(axeOffsetX, axeOffsetY);
-          ctx.drawImage(
-            wooden_axe_Image,
-            -imgWidth / 2,
-            -imgHeight,
-            imgWidth,
-            imgHeight
-          );
-          ctx.restore();
-      } else {
-        ctx.save();
-        ctx.rotate(Math.PI / 2);
-        ctx.fillStyle = ItemTypes[selected.type].color || 'gray';
-        ctx.fillRect(-6, -24, 12, 48);
-        ctx.restore();
-      }
-    }
-    ctx.drawImage(
-      handImage,
-      -handImage.width / 2 * handScale,
-      -handImage.height / 2 * handScale,
-      handImage.width * handScale,
-      handImage.height * handScale
-    );
-    ctx.restore();
-  }
+  drawTool(centerX, centerY, attackRange);
 
   // Draw player body
   ctx.save();
@@ -633,77 +416,14 @@ function drawPlayer() {
     ctx.fill();
   }
   ctx.restore();
-
   ctx.fillStyle = "white";
   ctx.font = "14px Arial";
   ctx.textAlign = "center";
   ctx.fillText(player.name || "You", centerX, player.y - 10);
+
 }
 
-function drawTool() {
-  if (typeof hotbar === 'undefined' || typeof ItemTypes === 'undefined' || typeof ctx === 'undefined' || !player) return;
-  const selected = hotbar.slots[hotbar.selectedIndex];
-  if (!selected || !ItemTypes[selected.type] || !ItemTypes[selected.type].isTool) return;
 
-  const centerX = player.x + player.size / 2;
-  const centerY = player.y + player.size / 2;
-  const toolLength = 20;
-
-  let toolAngle = player.facingAngle;
-
-  if (isAttacking) {
-    const now = performance.now();
-    const attackSpeed = getAttackSpeed();
-    const attackProgress = Math.min((now - attackStartTime) / (attackSpeed * 1000), 1);
-    const startAngle = player.facingAngle - ATTACK_ANGLE / 2;
-    toolAngle = startAngle + attackProgress * ATTACK_ANGLE;
-  }
-
-  const handScale = player.size / 32;
-  const handXOffset = player.size * 0.95;
-  const handYOffset = -player.size * 0.55;
-  const handLocalX = -handImage.width / 2 * handScale + handXOffset;
-  const handLocalY = -handImage.height / 2 * handScale + handYOffset;
-  ctx.save();
-  ctx.translate(centerX, centerY);
-  ctx.rotate(player.facingAngle + Math.PI / 2);
-  ctx.rotate(Math.PI / 8);
-  ctx.translate(handLocalX, handLocalY);
-  ctx.rotate(toolAngle - player.facingAngle);
-  if (selected.type === 'wooden_sword' && swordImage.complete) {
-    const scale = 1.25;
-    const imgWidth = swordImage.width * scale;
-    const imgHeight = swordImage.height * scale;
-    ctx.save();
-    ctx.rotate(Math.PI * 1.5 + Math.PI / 8);
-    ctx.drawImage(
-      swordImage,
-      -imgWidth / 2,
-      -imgHeight * 0.82,
-      imgWidth,
-      imgHeight
-    );
-    ctx.restore();
-  } else if (selected.type === 'wooden_pickaxe' && pickaxeImageLoaded) {
-    const scale = 1.25;
-    const imgWidth = wooden_pickaxe_Image.width * scale;
-    const imgHeight = wooden_pickaxe_Image.height * scale;
-    ctx.save();
-    ctx.rotate(Math.PI * 1.5 + Math.PI / 8);
-    ctx.drawImage(
-      wooden_pickaxe_Image,
-      -imgWidth / 2,
-      -imgHeight * 0.82,
-      imgWidth,
-      imgHeight
-    );
-    ctx.restore();
-  } else {
-    ctx.fillStyle = ItemTypes[selected.type].color || 'gray';
-    ctx.fillRect(-2, -toolLength / 2, 4, toolLength);
-  }
-  ctx.restore();
-}
 
 function gainXP(amount) {
   if (!player) return;
@@ -720,21 +440,165 @@ function gainXP(amount) {
 function drawOtherPlayers() {
   if (typeof ctx === 'undefined' || typeof otherPlayers === 'undefined') return;
   const now = performance.now();
-  ctx.font = '14px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillStyle = 'white';
+  ctx.save();
+  
   for (const id in otherPlayers) {
     const p = otherPlayers[id];
     if (!p) continue;
     const screenX = p.x;
     const screenY = p.y;
-    ctx.fillStyle = 'green';
-    ctx.fillRect(screenX, screenY, p.size || 20, p.size || 20);
-    ctx.fillStyle = 'white';
     const centerX = screenX + (p.size || 20) / 2;
+    const centerY = screenY + (p.size || 20) / 2;
+
+    // Determine attack range from selected tool or default
+    let oAttackRange = DEFAULT_ATTACK_RANGE;
+    if (p.selectedToolType && ItemTypes[p.selectedToolType] && ItemTypes[p.selectedToolType].isTool && ItemTypes[p.selectedToolType].attackRange) {
+      oAttackRange = ItemTypes[p.selectedToolType].attackRange;
+    }
+
+    // Draw attack cone (static, like local non-attacking state)
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(
+      centerX + Math.cos((p.facingAngle ?? 0) - ATTACK_ANGLE / 2) * oAttackRange,
+      centerY + Math.sin((p.facingAngle ?? 0) - ATTACK_ANGLE / 2) * oAttackRange
+    );
+    ctx.arc(centerX, centerY, oAttackRange, (p.facingAngle ?? 0) - ATTACK_ANGLE / 2, (p.facingAngle ?? 0) + ATTACK_ANGLE / 2);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
+    ctx.fill();
+    ctx.restore();
+
+    // Draw hands and tool (no animation)
+    if (typeof handImageLoaded !== 'undefined' && handImageLoaded) {
+      const handScale = (p.size || 20) / 32;
+      // Left hand
+      (function drawLeftHand(){
+        const handXOffset = (p.size || 20) * 0.75;
+        const handYOffset = -(p.size || 20) * 0.55;
+        const handAngle = -Math.PI / 8;
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate((p.facingAngle ?? 0) + Math.PI / 2);
+        ctx.rotate(handAngle);
+        ctx.translate(-handXOffset, handYOffset);
+        try {
+          ctx.drawImage(
+            handImage,
+            -handImage.width / 2 * handScale,
+            -handImage.height / 2 * handScale,
+            handImage.width * handScale,
+            handImage.height * handScale
+          );
+        } catch (_) {}
+        ctx.restore();
+      })();
+
+      // Right hand + tool (static)
+      (function drawRightHandAndTool(){
+        const handXOffset = (p.size || 20) * 0.8;
+        const handYOffset = -(p.size || 20) * 0.55;
+        const handAngle = Math.PI / 8;
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate((p.facingAngle ?? 0) + Math.PI / 2);
+        ctx.rotate(handAngle);
+        ctx.translate(handXOffset, handYOffset);
+
+        // Draw tool or resource if equipped and image is available
+        try {
+          const hasSelection = p.selectedToolType && ItemTypes[p.selectedToolType];
+          if (hasSelection) {
+            const selType = p.selectedToolType;
+            const isTool = !!ItemTypes[selType].isTool;
+            const toolImage = (typeof toolImages !== 'undefined') ? toolImages[selType] : null;
+            const resourceImage = (typeof resourceImages !== 'undefined') ? resourceImages[selType] : null;
+
+            if (isTool && toolImage && toolImage.complete) {
+              const scale = 1;
+              const imgWidth = toolImage.width * scale;
+              const imgHeight = toolImage.height * scale;
+              ctx.save();
+              const toolAngle = Math.PI * 1.5 + Math.PI / 8;
+              ctx.rotate(toolAngle);
+              const toolOffsetX = 10;
+              const toolOffsetY = 6;
+              ctx.translate(toolOffsetX, toolOffsetY);
+              ctx.drawImage(toolImage, -imgWidth / 2, -imgHeight, imgWidth, imgHeight);
+              ctx.restore();
+            } else if (resourceImage && resourceImage.complete) {
+              // Match local resource hold offsets/orientation
+              const scale = 1;
+              const imgWidth = resourceImage.width * scale;
+              const imgHeight = resourceImage.height * scale;
+              ctx.save();
+              ctx.rotate((Math.PI * 2) - Math.PI / 8);
+              ctx.translate(0, -12);
+              ctx.drawImage(resourceImage, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
+              ctx.restore();
+            } else if (toolImage && toolImage.complete) {
+              // If a non-tool has an image (e.g., torch), show it as-is like a tool
+              const scale = 1;
+              const imgWidth = toolImage.width * scale;
+              const imgHeight = toolImage.height * scale;
+              ctx.save();
+              const toolAngle = Math.PI * 1.5 + Math.PI / 8;
+              ctx.rotate(toolAngle);
+              const toolOffsetX = 10;
+              const toolOffsetY = 6;
+              ctx.translate(toolOffsetX, toolOffsetY);
+              ctx.drawImage(toolImage, -imgWidth / 2, -imgHeight, imgWidth, imgHeight);
+              ctx.restore();
+            } else {
+              // Fallback rectangle (same as local)
+              ctx.save();
+              ctx.rotate(Math.PI / 2);
+              const color = (ItemTypes[selType] && ItemTypes[selType].color) || 'gray';
+              ctx.fillStyle = color;
+              ctx.fillRect(-6, -24, 12, 48);
+              ctx.restore();
+            }
+          }
+        } catch (_) {}
+
+        // Draw right hand on top
+        try {
+          ctx.drawImage(
+            handImage,
+            -handImage.width / 2 * handScale,
+            -handImage.height / 2 * handScale,
+            handImage.width * handScale,
+            handImage.height * handScale
+          );
+        } catch (_) {}
+        ctx.restore();
+      })();
+    }
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate((p.facingAngle ?? 0) + Math.PI / 2);
+    if (playerImageLoaded) {
+      ctx.drawImage(
+        playerImage,
+        -p.size / 2,
+        -p.size / 2,
+        p.size,
+        p.size
+      );
+    }
+    ctx.restore();
+
+    // Name (world space)
+    ctx.save();
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'white';
     ctx.fillText(p.name || 'Unnamed', centerX, screenY - 10);
+    ctx.restore();
     if (p.health < p.maxHealth) drawHealthBarP(p);
   }
+  ctx.restore();
 }
 
 function drawHealthBarP(p) {
@@ -756,6 +620,7 @@ function drawHealthBarP(p) {
 
 function drawStaminaBar() {
   if (typeof canvas === 'undefined' || typeof ctx === 'undefined') return;
+  ctx.save();
   const barWidth = canvas.width;
   const barHeight = 10;
   const barX = 0;
@@ -765,6 +630,7 @@ function drawStaminaBar() {
   const staminaRatio = stamina / maxStamina;
   ctx.fillStyle = "yellow";
   ctx.fillRect(barX, barY, barWidth * staminaRatio, barHeight);
+  ctx.restore();
 }
 
 if (typeof socket !== "undefined" && socket) {

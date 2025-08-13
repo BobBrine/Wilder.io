@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Survival IO Game</title>
+  <title>Wilder.io</title>
   <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@700&display=swap" rel="stylesheet">
+
   <style>
     body, html {
       height: 100%;
@@ -32,8 +34,13 @@
       justify-content: center;
     }
     #homePage.menu h2 {
+      font-family: 'Roboto Slab', serif;
+      font-weight: 700;
+      font-size: 2.5em;
       margin-bottom: 24px;
       width: 100%;
+      color: #e0e0e0; /* lighter color for contrast */
+      text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
     }
     #homePage.menu button {
       display: block;
@@ -65,7 +72,7 @@
   <canvas id="menuBgCanvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:0;"></canvas>
   <!-- Home Page -->
   <div id="homePage" class="menu">
-    <h2>Welcome to Survival Game Beta</h2>
+    <h2>Wilder.io BETA</h2>
     <button onclick="joinMainServer()">Join Main Server</button>
     <button onclick="showLocalLAN()">Local LAN</button>
     <button onclick="showHowToModal()">How to Play</button>
@@ -84,6 +91,10 @@
         <li>Watch your health and hunger bars!</li>
         <li>Compete with other players for survival and XP.</li>
       </ul>
+      </ul>
+      <p style="font-style: italic; color: #000000;">
+        💡 Tip: Play at <strong>67% zoom</strong> on your desktop browser for better resolution.
+      </p>
       <button onclick="closeHowToModal()" style="margin-top:16px;">Close</button>
     </div>
   </div>
@@ -144,6 +155,26 @@
     <button onclick="backToMain()">Back to Main</button>
   </div>
 
+  <!-- Settings Overlay (visual only) -->
+  <div id="settingsOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.25); pointer-events:none; z-index:900;"></div>
+
+  <!-- Settings Panel -->
+  <div id="settingsPanel" class="menu" style="display:none; z-index:1100; min-width: 360px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="margin:0;">Settings</h3>
+      <button id="settingsCloseBtn" title="Close" style="padding:6px 10px; font-size:14px;">✕</button>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <button id="settingsRespawnBtn">Respawn Player</button>
+      <button id="settingsPerformanceBtn">Performance: Toggle</button>
+      <button id="settingsDebugBtn">Debug: Toggle</button>
+      <button id="settingsGoMainBtn">Go Main</button>
+    </div>
+  </div>
+
+  <!-- Gear Icon (under scoreboard) -->
+  <div id="settingsGear" title="Settings" style="display:none; position:fixed; right:10px; top:190px; width:36px; height:36px; border-radius:8px; background:rgba(0,0,0,0.6); color:#fff; font-size:22px; line-height:36px; text-align:center; cursor:pointer; z-index:1050; user-select:none;">⚙</div>
+
   <!-- Drop Amount Prompt -->
   <div id="dropAmountPrompt" class="menu" style="display: none;">
     <h2>Drop Item</h2>
@@ -162,11 +193,13 @@
   <script src="js/resourceTypes.js"></script>
   <script src="js/mobs.js?v=2"></script>
   <script src="js/player.js"></script>
+  <script src="js/tool.js"></script>
   <script src="js/crafting&tool.js"></script>
   <script src="js/hotbar.js"></script>
   <script src="js/inventory.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/network.js?v=5"></script>
+  <script src="js/settingsPanel.js"></script>
   <script src="js/canvas.js"></script>
   <script src="js/camera.js"></script>
   <script src="js/input.js"></script>

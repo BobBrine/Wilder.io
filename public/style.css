@@ -1,6 +1,10 @@
 /* Ensure drop prompt is above menu background and menu background is always at the back */
 #dropAmountPrompt { z-index: 2000 !important; }
 #menuBgCanvas { z-index: 0 !important; }
+/* Settings panel/overlay/gear layering */
+#settingsOverlay { z-index: 900 !important; }
+#settingsPanel { z-index: 1100 !important; }
+#settingsGear { z-index: 1050 !important; }
 /* Make drop amount prompt background semi-transparent so game is visible */
 #dropAmountPrompt.menu {
   background-color: rgba(0, 0, 0, 0.4) !important;
@@ -63,6 +67,16 @@ canvas {
   background-color: #444;
   transform: scale(1.05);
 }
+
+/* Settings gear look and states */
+#settingsGear {
+  transition: transform 0.05s ease, background 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+#settingsGear:hover { 
+  background: rgba(0,0,0,0.8) !important;
+  transform: scale(1.05);
+ }
 
 #serverStatus {
   padding: 10px;

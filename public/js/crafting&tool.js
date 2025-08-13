@@ -12,6 +12,7 @@ let ItemTypes = {
   gold_axe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 10, category: 'axe', tier: 4 },
   gold_pickaxe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 10, category: 'pickaxe', tier: 4 },
   gold_sword: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 15, category: 'sword', tier: 4 },
+  torch: { isTool: true, attackRange: 50, attackSpeed: 0, damage: 1, category: 'hand', tier: 0 }
 };
 
 const recipes = [

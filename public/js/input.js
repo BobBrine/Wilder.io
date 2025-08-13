@@ -64,7 +64,22 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey) e.stopPropagation();
 }, true);
 document.addEventListener('keydown', (event) => {
-  if (document.getElementById('dropAmountPrompt').style.display === 'block' && event.key === 'Enter') submitDropAmount();
+  const prompt = document.getElementById('dropAmountPrompt');
+  if (!prompt) return;
+  if (prompt.style.display === 'block') {
+    if (event.key === 'Enter') {
+      submitDropAmount();
+      event.preventDefault();
+      event.stopPropagation();
+    } else if (event.key === 'Escape' || event.key === 'Esc') {
+      // Cancel/close drop prompt
+      prompt.style.display = 'none';
+      const input = document.getElementById('dropAmountInput');
+      if (input) input.value = '';
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
 });
 
 let draggingSlotIndex = null;
