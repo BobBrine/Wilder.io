@@ -116,7 +116,7 @@ const ItemTypes = {
 
 // Toggle cache and behavior for development
 // Set DEV_TEST=true in env to enable dev mode
-const devTest = String(process.env.DEV_TEST || '').toLowerCase() === 'true';
+const devTest = true;
 const staticOptions = devTest
   ? { maxAge: 0, etag: false, lastModified: false, index: false }
   : { maxAge: '365d', immutable: true, index: false };
@@ -126,9 +126,9 @@ app.get('*', (req, res) => {
 });
 
 // Expose dev flag to newly connected clients
-io.on('connection', (sock) => {
-  try { sock.emit('DevTest', devTest); } catch(_) {}
-});
+// io.on('connection', (sock) => {
+//   sock.emit('DevTest', devTest);
+// });
 
 spawnAllResources();
 spawnAllMob(allResources, players, gameTime);

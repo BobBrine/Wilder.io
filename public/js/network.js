@@ -59,9 +59,9 @@ function setupSocketListeners() {
     resourceTypes = data;
   });
   // Receive dev flag from server so clients don’t assume localhost
-  socket.on('DevTest', (flag) => {
-    devTest = !!flag;
-  });
+  // socket.on('DevTest', (flag) => {
+  //   devTest = !!flag;
+  // });
 
   socket.on("mobType", (data) => {  
     mobtype = data;

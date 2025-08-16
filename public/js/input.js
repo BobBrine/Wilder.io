@@ -4,7 +4,6 @@ let isMouseDown = false;
 let lastHitTime = 0;
 let holdInterval = null;
 
-
 const startHitting = () => {
   if (!holdInterval) holdInterval = setInterval(() => isMouseDown && tryHitResource(), 50);
 };
@@ -13,7 +12,6 @@ const stopHitting = () => {
   clearInterval(holdInterval);
   holdInterval = null;
 };
-
 
 // Only track movement keys in keys object, not hotbar keys
 window.addEventListener("keydown", (e) => {
@@ -85,13 +83,25 @@ document.addEventListener('keydown', (event) => {
 let draggingSlotIndex = null;
 let draggedItem = null;
 
-canvas.addEventListener("mousedown", (e) => {
-  if (e.button !== 0) return;
-  const uiElement = getUIElementAtMouse(e);
+// New function: get touch position relative to canvas
+function getTouchPosition(touch) {
   const rect = canvas.getBoundingClientRect();
-  const clickX = e.clientX - rect.left;
-  const clickY = e.clientY - rect.top;
+  return {
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+    x: touch.clientX - rect.left,
+    y: touch.clientY - rect.top
+  };
+}
 
+// Unified pointer handler for mouse and touch events
+function handlePointerEvent(e) {
+  if (e.button !== 0 && e.type !== 'touchstart') return;
+  
+  const rect = canvas.getBoundingClientRect();
+  const clickX = e.x;
+  const clickY = e.y;
+  
   // Check for button clicks
   let buttonClicked = false;
   uiButtons.forEach(button => {
@@ -110,6 +120,7 @@ canvas.addEventListener("mousedown", (e) => {
   }
 
   // Existing UI element handling
+  const uiElement = getUIElementAtMouse({ clientX: e.clientX, clientY: e.clientY });
   if (uiElement) {
     if (uiElement.type === "hotbar") {
       // Toggle hotbar selection on click (same as keyboard)
@@ -138,9 +149,37 @@ canvas.addEventListener("mousedown", (e) => {
     stopHitting();
     return;
   }
+  
   isMouseDown = true;
   tryHitResource();
   startHitting();
+}
+
+// Mouse event handler
+canvas.addEventListener("mousedown", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  handlePointerEvent({
+    clientX: e.clientX,
+    clientY: e.clientY,
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+    button: e.button
+  });
+});
+
+// Touch event handler
+canvas.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    const pos = getTouchPosition(touch);
+    handlePointerEvent({
+      clientX: pos.clientX,
+      clientY: pos.clientY,
+      x: pos.x,
+      y: pos.y,
+      button: 0
+    });
+  }
 });
 
 canvas.addEventListener("mouseup", (e) => {
@@ -184,6 +223,12 @@ canvas.addEventListener("contextmenu", (e) => {
 });
 
 canvas.addEventListener("mouseleave", () => {
+  isMouseDown = false;
+  stopHitting();
+});
+
+// Handle touch end events
+canvas.addEventListener("touchend", () => {
   isMouseDown = false;
   stopHitting();
 });

@@ -29,6 +29,7 @@
   root.id = 'mobileControls';
   root.style.position = 'fixed';
   root.style.inset = '0 0 0 0';
+  // Change 1: Make wrapper ignore pointer events
   root.style.pointerEvents = 'none';
   root.style.zIndex = '1000';
   root.style.display = 'none';
@@ -44,7 +45,8 @@
   joyWrap.style.borderRadius = '50%';
   joyWrap.style.background = 'rgba(0,0,0,0.25)';
   joyWrap.style.backdropFilter = 'blur(2px)';
-  joyWrap.style.pointerEvents = 'auto';
+  // Change 2: Make container ignore pointer events
+  joyWrap.style.pointerEvents = 'none';
   joyWrap.style.touchAction = 'none';
 
   const joyBase = document.createElement('div');
@@ -56,6 +58,8 @@
   joyBase.style.bottom = '0';
   joyBase.style.borderRadius = '50%';
   joyBase.style.border = '2px solid rgba(255,255,255,0.4)';
+  // Change 3: Make base ignore pointer events
+  joyBase.style.pointerEvents = 'none';
 
   const joyKnob = document.createElement('div');
   joyKnob.id = 'joystickKnob';
@@ -67,6 +71,8 @@
   joyKnob.style.borderRadius = '50%';
   joyKnob.style.background = 'rgba(255,255,255,0.5)';
   joyKnob.style.transform = 'translate(-50%, -50%)';
+  // Change 4: Only knob responds to pointer events
+  joyKnob.style.pointerEvents = 'auto';
 
   // Sprint button
   const sprintBtn = document.createElement('div');
@@ -102,7 +108,8 @@
   aimWrap.style.height = `${120 * state.scale}px`;
   aimWrap.style.borderRadius = '50%';
   aimWrap.style.background = 'rgba(0,0,0,0.22)';
-  aimWrap.style.pointerEvents = 'auto';
+  // Change 5: Make container ignore pointer events
+  aimWrap.style.pointerEvents = 'none';
   aimWrap.style.touchAction = 'none';
 
   const aimBase = document.createElement('div');
@@ -110,6 +117,8 @@
   aimBase.style.left = 0; aimBase.style.top = 0; aimBase.style.right = 0; aimBase.style.bottom = 0;
   aimBase.style.borderRadius = '50%';
   aimBase.style.border = '2px solid rgba(255,255,255,0.35)';
+  // Change 6: Make base ignore pointer events
+  aimBase.style.pointerEvents = 'none';
 
   const aimKnob = document.createElement('div');
   aimKnob.style.position = 'absolute';
@@ -119,6 +128,8 @@
   aimKnob.style.borderRadius = '50%';
   aimKnob.style.background = 'rgba(255,255,255,0.5)';
   aimKnob.style.transform = 'translate(-50%, -50%)';
+  // Change 7: Only knob responds to pointer events
+  aimKnob.style.pointerEvents = 'auto';
 
   joyWrap.appendChild(joyBase);
   joyWrap.appendChild(joyKnob);
@@ -230,11 +241,12 @@
   }
 
   const opts = { passive: false };
-  joyWrap.addEventListener('touchstart', onStart, opts);
-  joyWrap.addEventListener('touchmove', onMove, opts);
-  joyWrap.addEventListener('touchend', onEnd, opts);
-  joyWrap.addEventListener('touchcancel', onEnd, opts);
-  joyWrap.addEventListener('mousedown', onStart);
+  // Change 8: Only attach events to knob elements
+  joyKnob.addEventListener('touchstart', onStart, opts);
+  joyKnob.addEventListener('touchmove', onMove, opts);
+  joyKnob.addEventListener('touchend', onEnd, opts);
+  joyKnob.addEventListener('touchcancel', onEnd, opts);
+  joyKnob.addEventListener('mousedown', onStart);
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onEnd);
   // Track movement joystick globally so it keeps working if finger leaves the knob area
@@ -312,11 +324,12 @@
       aiming=false; resetAim();
     }
   }
-  aimWrap.addEventListener('touchstart', aimStart, opts);
-  aimWrap.addEventListener('touchmove', aimMove, opts);
-  aimWrap.addEventListener('touchend', aimEnd, opts);
-  aimWrap.addEventListener('touchcancel', aimEnd, opts);
-  aimWrap.addEventListener('mousedown', aimStart);
+  // Change 9: Only attach events to knob elements
+  aimKnob.addEventListener('touchstart', aimStart, opts);
+  aimKnob.addEventListener('touchmove', aimMove, opts);
+  aimKnob.addEventListener('touchend', aimEnd, opts);
+  aimKnob.addEventListener('touchcancel', aimEnd, opts);
+  aimKnob.addEventListener('mousedown', aimStart);
   window.addEventListener('mousemove', aimMove);
   window.addEventListener('mouseup', aimEnd);
   // Track aim joystick globally for robust multi-touch
