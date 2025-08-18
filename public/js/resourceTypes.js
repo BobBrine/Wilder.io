@@ -46,7 +46,7 @@ function getCenter(x, y, size) {
 function hitResourceInCone() {
   if (!player) return false;
 
-  let attackRange = 50;
+  let attackRange = DEFAULT_ATTACK_RANGE + player.playerrange;
   const coneAngle = ATTACK_ANGLE;
   const selected = hotbar.slots[hotbar.selectedIndex];
   let selectedTool = selected?.type || "hand";
@@ -55,7 +55,7 @@ function hitResourceInCone() {
     ? ItemTypes[selectedTool]
     : { category: "hand", tier: 0, damage: 1, attackRange: 50 };
 
-  if (toolInfo.attackRange) attackRange = toolInfo.attackRange;
+  if (toolInfo.attackRange) attackRange = toolInfo.attackRange + (player.playerrange);
 
   let staminaSpent = false; // ✅ track if stamina has been spent
 
@@ -128,17 +128,7 @@ function drawHealthBarR(resource) {
   ctx.restore();
 }
 
-function getAttackSpeed() {
-  const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
-  if (selected && ItemTypes[selected.type] && ItemTypes[selected.type].attackSpeed) {
-    return ItemTypes[selected.type].attackSpeed;
-  }
-  // Hand attack speed fallback
-  if (ItemTypes.hand && ItemTypes.hand.attackSpeed) {
-    return ItemTypes.hand.attackSpeed;
-  }
-  return 0.35; // fallback default
-}
+
 
 function tryHitResource() {
   const now = performance.now();

@@ -60,6 +60,25 @@
     #homePage.menu button:hover {
       background: #4e8f36;
     }
+    /* Soul Reset Button: visually matches homePage.menu button, but fixed at bottom right */
+    .home-reset-btn {
+      display: block;
+      font-size: 1.2em;
+      padding: 10px 32px;
+      border-radius: 8px;
+      border: none;
+      background: #ff3a3a;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      transition: background 0.2s;
+      font-weight: bold;
+      margin: 0;
+    }
+    .home-reset-btn:hover {
+      background: #c62828;
+      transform: scale(1.05);
+    }
   </style>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <!-- Google AdSense script -->
@@ -70,6 +89,13 @@
 
   <!-- Idle Animated Background Canvas for Main Page -->
   <canvas id="menuBgCanvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:0;"></canvas>
+
+  <!-- Soul Currency Display (top left, homepage only) -->
+  <div id="soulDisplayHome" style="position:fixed; top:16px; left:16px; z-index:2001; font-family: 'Roboto Slab', serif; font-size:22px; color:#00ff33; font-weight:bold; background:rgba(0,0,0,0.5); padding:8px 18px; border-radius:12px; display:none; pointer-events:none;">
+    <span id="soulAmountHome">Soul: 0</span><br>
+    <span id="difficultyProgressionHome" style="color:#ff3a3a; font-family: 'Roboto Slab', serif; font-size:18px; font-weight:bold; display:block; margin-top:2px;">Highest Difficulty: 0</span>
+  </div>
+
   <!-- Home Page -->
   <div id="homePage" class="menu">
     <h2>Wilder.io BETA</h2>
@@ -78,6 +104,9 @@
     <button onclick="showHowToModal()">How to Play</button>
     <button onclick="showPrivacyModal()">Privacy Policy</button>
   </div>
+
+  <!-- Soul Reset Button (bottom right, overlays canvas, only on home page) -->
+  <button id="resetSoulBtn" style="position:fixed; right:24px; bottom:24px; z-index:2002; display:none; width:260px; max-width:80vw;" class="home-reset-btn">Reset</button>
 
 
   <!-- How to Play Modal -->
@@ -195,6 +224,7 @@
   <!-- Privacy Policy Section removed: now only accessible via modal -->
 
   <!-- Scripts -->
+  <script src="js/soul.js"></script>
   <script src="js/menuBackground.js"></script>
   <script src="js/resourceTypes.js"></script>
   <script src="js/mobs.js?v=2"></script>
@@ -267,6 +297,40 @@
       try { var gc = document.getElementById('gameCanvas'); if (gc) gc.style.pointerEvents = 'auto'; } catch(_) {}
       if (origSubmitName) return origSubmitName();
     };
+    // SOUL: Show/hide and update soul display on homepage
+    function updateSoulDisplayHome() {
+      const el = document.getElementById('soulDisplayHome');
+      const soulSpan = document.getElementById('soulAmountHome');
+      const diffSpan = document.getElementById('difficultyProgressionHome');
+      const resetBtn = document.getElementById('resetSoulBtn');
+      const homeVisible = document.getElementById('homePage').style.display !== 'none';
+      if (el) {
+        el.style.display = homeVisible ? 'block' : 'none';
+        if (window.soulCurrency && soulSpan) {
+          soulSpan.textContent = 'Soul: ' + window.soulCurrency.get();
+        }
+        if (diffSpan) {
+          let prog = 0;
+          if (typeof window.difficultyProgression !== 'undefined') prog = window.difficultyProgression;
+          else prog = Number(localStorage.getItem('difficulty.progression') || '0');
+          diffSpan.textContent = 'Highest Difficulty: ' + prog;
+        }
+      }
+      if (resetBtn) {
+        resetBtn.style.display = homeVisible ? 'block' : 'none';
+      }
+    }
+    window.addEventListener('DOMContentLoaded', updateSoulDisplayHome);
+    window.addEventListener('soulChanged', updateSoulDisplayHome);
+   window.addEventListener('difficultyProgressionChanged', updateSoulDisplayHome);
+    setInterval(updateSoulDisplayHome, 500);
+    // Also update on navigation
+    [window.backToHome, window.showLocalLAN, window.joinMainServer].forEach(fn => {
+      if (typeof fn === 'function') {
+        const orig = fn;
+        fn = function() { orig.apply(this, arguments); updateSoulDisplayHome(); };
+      }
+    });
   </script>
 </body>
 </html>

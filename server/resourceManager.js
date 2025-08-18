@@ -24,25 +24,23 @@ const {
   players,
 } = require('./playerdata');
 
-const allTools = ["hand", "sword", "axe", "pickaxe"];
 const resourceTypes = {
   food: {
     maxCount: 50,
     sizeX: 32,
     sizeY: 32,
-    get health() { return Math.floor(Math.random() * (30 - 15 + 1)) + 15; },
+    get health() { return Math.floor(Math.random() * (25 - 15 + 1)) + 15; },
     color: "red",
     drop: "food",
     requiredTool: { categories: ["hand"], minTier: 0 },
-    spawntimer: 10,
-    getDropAmount(health) { return health <= 22.5 ? Math.floor(Math.random() * 3) + 3 : Math.floor(Math.random() * 4) + 5; }
+    spawntimer: 8, // faster regen for early game
+    getDropAmount(health) { return health <= 20 ? Math.floor(Math.random() * 3) + 3 : Math.floor(Math.random() * 4) + 4; }
   },
+
   wood: {
-    maxCount: 100,
-    // sizeX: 64,
-    // sizeY:64,
+    maxCount: 80,
     get sizeX() {
-      const min = 64;
+      const min = 48;
       const maxArea = 8192;
       const x = Math.floor(Math.random() * ((maxArea / min) - min + 1)) + min;
       return x;
@@ -52,45 +50,48 @@ const resourceTypes = {
       const x = this.sizeX;
       return Math.floor(maxArea / x);
     },
-    get health() { return Math.floor(Math.random() * (40 - 20 + 1)) + 20; },
+    get health() { return Math.floor(Math.random() * (35 - 20 + 1)) + 20; },
     color: "green",
     drop: "wood",
     requiredTool: { categories: ["hand", "axe"], minTier: 0 },
     spawntimer: 10,
-    getDropAmount(health) { return health <= 30 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
+    getDropAmount(health) { return health <= 28 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 5; }
   },
+
   stone: {
     maxCount: 50,
     sizeX: 64,
     sizeY: 64,
-    get health() { return Math.floor(Math.random() * (60 - 30 + 1)) + 30; },
+    get health() { return Math.floor(Math.random() * (50 - 30 + 1)) + 30; },
     color: "darkgray",
     drop: "stone",
     requiredTool: { categories: ["pickaxe"], minTier: 1 },
-    spawntimer: 10,
-    getDropAmount(health) { return health <= 45 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
+    spawntimer: 12,
+    getDropAmount(health) { return health <= 40 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 5; }
   },
+
   iron: {
     maxCount: 25,
     sizeX: 64,
     sizeY: 64,
-    get health() { return Math.floor(Math.random() * (80 - 40 + 1)) + 40; },
+    get health() { return Math.floor(Math.random() * (70 - 45 + 1)) + 45; },
     color: "white",
     drop: "iron",
     requiredTool: { categories: ["pickaxe"], minTier: 2 },
-    spawntimer: 10,
-    getDropAmount(health) { return health <= 60 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
+    spawntimer: 14,
+    getDropAmount(health) { return health <= 55 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 6; }
   },
+
   gold: {
-    maxCount: 10,
+    maxCount: 15,
     sizeX: 32,
     sizeY: 32,
-    get health() { return Math.floor(Math.random() * (100 - 50 + 1)) + 50; },
+    get health() { return Math.floor(Math.random() * (90 - 60 + 1)) + 60; },
     color: "gold",
     drop: "gold",
     requiredTool: { categories: ["pickaxe"], minTier: 3 },
-    spawntimer: 10,
-    getDropAmount(health) { return health <= 75 ? Math.floor(Math.random() * 3) + 5 : Math.floor(Math.random() * 4) + 7; }
+    spawntimer: 16,
+    getDropAmount(health) { return health <= 75 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 5; }
   }
 };
 

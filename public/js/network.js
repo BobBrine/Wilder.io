@@ -2,6 +2,11 @@
 let socket = null;
 let devTest = false; // will be set by server after connect
 
+// Difficulty progression (highest ever reached)
+let difficultyProgression = Number(localStorage.getItem('difficulty.progression') || '0');
+window.difficultyProgression = difficultyProgression;
+let difficulty = null;
+
 // Dev mode strictly follows devTest only (no localStorage/host overrides)
 const isDevMode = () => !!devTest;
 // Helpful diagnostic
@@ -62,6 +67,7 @@ function setupSocketListeners() {
   // socket.on('DevTest', (flag) => {
   //   devTest = !!flag;
   // });
+  
 
   socket.on("mobType", (data) => {  
     mobtype = data;
@@ -94,8 +100,18 @@ function setupSocketListeners() {
   });
 
   // Receive server time at a modest rate for lighting/day-night effects
-  socket.on('gameTime', (serverTime) => {
+  socket.on('gameTime', ({ serverTime, day, difficulty: serverDifficulty }) => {
     gameTime = serverTime;
+    Day = day; // Make sure 'Day' variable exists in client scope
+    difficulty = serverDifficulty; // Make sure 'difficulty' variable exists in client scope
+    if (typeof serverDifficulty === 'number') {
+      const newMax = Math.max(serverDifficulty, window.difficultyProgression);
+      if (newMax !== window.difficultyProgression) {
+        window.difficultyProgression = newMax;
+        localStorage.setItem('difficulty.progression', String(newMax));
+        window.dispatchEvent(new CustomEvent('difficultyProgressionChanged'));
+      }
+    }
   });
 
   socket.on("resources", (data) => {
@@ -119,6 +135,7 @@ function setupSocketListeners() {
         nextList.push({
           ...serverR,
           lastHitTime: existing.lastHitTime,
+          hitAnim: existing.hitAnim
         });
       }
       nextAll[type] = nextList;
@@ -267,9 +284,16 @@ function setupSocketListeners() {
         inventory.addItem("wooden_sword", 1);
         inventory.addItem("wooden_axe", 1);
         inventory.addItem("food", 1000);
-        inventory.addItem("iron", 10000);
+        inventory.addItem("wood", 10000);
         inventory.addItem("stone", 10000);
         inventory.addItem("gold", 10000);
+        inventory.addItem("health_potion", 100);
+        inventory.addItem("strength_potion", 100);
+        inventory.addItem("mythic_potion", 1000);
+        inventory.addItem("pure_core", 100);
+        inventory.addItem("dark_core", 100);
+        inventory.addItem("mythic_core", 1000);
+        // window.soulCurrency.add(100);
         window.__devItemsGranted = true;
       }
     }
@@ -346,6 +370,14 @@ function setupSocketListeners() {
   socket.on("droppedItems", (items) => {
     droppedItems = items || [];
   });
+  
+  socket.on('updatePlayerStats', (stats) => {
+    if (player) Object.assign(player, stats);
+  });
+
+  socket.on('GainSoul', (amount) => {
+    window.soulCurrency.add(amount);
+  });
 
   // Low-latency item appear: merge single new item between snapshots
   socket.on("newDroppedItem", (item) => {
@@ -372,6 +404,10 @@ function setupSocketListeners() {
     if (inventory.addItem(item, amount)) {
       showMessage(`+${amount} ${item}`);
     }
+  });
+
+  socket.on('showMessage', (text) => {
+    showMessage(text, 2); // 2 seconds duration
   });
 
   socket.on("gainXP", (amount) => {
@@ -658,13 +694,25 @@ function submitName() {
 // Game Functions
 // ========================
 let gameTime = 0;
-const CYCLE_LENGTH = 180;
-const DAY_LENGTH = 180;
+const CYCLE_LENGTH = 300;
+const DAY_LENGTH = 300;
+let lastDayIncrement = false;
 
-if (socket) {
-  socket.on('gameTime', (serverTime) => {
-    gameTime = serverTime;
-  });
+let Day = 0;
+
+
+function calculateDayNightCycle() {
+  if (player && gameTime >= DAY_LENGTH) {
+    if (!(window.graphicsSettings && window.graphicsSettings.performanceMode)) {
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+      drawLightSources();
+    }
+  }
+  
 }
 
 
@@ -824,6 +872,7 @@ window.resetClientState = function resetClientState() {
     try { if (typeof mobloaded !== 'undefined') mobloaded = false; } catch(_) {}
     try { if (typeof allResources !== 'undefined') allResources = {}; } catch(_) {}
     try { if (typeof resourcesLoaded !== 'undefined') resourcesLoaded = false; } catch(_) {}
+
   } catch (e) {
     console.warn('resetClientState partial failure', e);
   }

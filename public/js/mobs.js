@@ -52,25 +52,22 @@ function drawPolygon(ctx, x, y, size, sides, rotation = 0) {
   ctx.restore();
 }
 
-function drawStar(ctx, x, y, size, points = 5, innerRadiusRatio = 0.4) {
+function drawCrystal(ctx, x, y, size) {
   ctx.save();
-  const outerRadius = size / 2;
-  const innerRadius = outerRadius * innerRadiusRatio;
+  ctx.fillStyle = "lightblue";
   ctx.strokeStyle = "yellow";
   ctx.beginPath();
-  for (let i = 0; i < points * 2; i++) {
-    const angle = (i / (points * 2)) * Math.PI * 2;
-    const radius = i % 2 === 0 ? outerRadius : innerRadius;
-    const px = Math.round(x + Math.cos(angle) * radius);
-    const py = Math.round(y + Math.sin(angle) * radius);
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
+  ctx.moveTo(x, y - size / 2);
+  ctx.lineTo(x + size / 3, y);
+  ctx.lineTo(x, y + size / 2);
+  ctx.lineTo(x - size / 3, y);
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
   ctx.restore();
 }
+
+
 function drawMob() {
   ctx.save();
   // Force feet animation for all mobs for testing
@@ -306,7 +303,7 @@ function drawMob() {
           ctx.fillStyle = gradient;
           ctx.strokeStyle = "yellow";
           ctx.lineWidth = 3;
-          drawStar(ctx, 0, 0, mob.size);
+          drawCrystal(ctx, 0, 0, mob.size);
           ctx.restore();
         }
         
@@ -325,7 +322,7 @@ function drawMob() {
 
           const mobSpeed =
             // prefer instance field from server if present
-            mob.moveSpeed ?? mob.speed ??
+            mob.speed ??
             // then profile speed (for aggressive mobs)
             prof?.speed ??
             // then type-level default (passive/special)
@@ -337,7 +334,7 @@ function drawMob() {
             prof?.damage ??
             cfg.damage ??
             0;
-          const attackSpeed = mob.attackSpeed ?? prof?.attackSpeed ?? cfg.attackSpeed ?? 1;
+          const attackSpeed = mob.attackspeed ?? prof?.attackspeed ?? cfg.attackspeed;
           ctx.beginPath();
           ctx.arc(centerX, centerY, aggroRadius, 0, Math.PI * 2);
           ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
@@ -386,7 +383,7 @@ function drawMob() {
             `Range: ${aggroRadius?.toFixed(0) ?? 'N/A'}/${escapeRadius?.toFixed(0) ?? 'N/A'}`,
             `Speed: ${mobSpeed?.toFixed(0) ?? 'N/A'}`,
             `Damage: ${mobDamage?.toFixed(0) ?? 'N/A'}`,
-            `Attack Speed: ${attackSpeed?.toFixed(0) ?? 'N/A'}`
+            `Attack Speed: ${attackSpeed ?? 'N/A'}`
 
           ];
           if (mob.state) {
@@ -468,7 +465,7 @@ function drawHealthBarM(mob) {
 function tryHitMob() {
   if (!player) return;
 
-  let attackRange = 50;
+  let attackRange = DEFAULT_ATTACK_RANGE + player.playerrange;
   const coneAngle = ATTACK_ANGLE;
   const selected = hotbar.slots[hotbar.selectedIndex];
   let selectedTool = selected?.type || "hand";
@@ -477,7 +474,7 @@ function tryHitMob() {
     ? ItemTypes[selectedTool]
     : { category: "hand", tier: 0, damage: 1, attackRange: 50 };
 
-  if (toolInfo.attackRange) attackRange = toolInfo.attackRange;
+  if (toolInfo.attackRange) attackRange = toolInfo.attackRange + (player.playerrange);
 
   let staminaSpent = false;
 
@@ -521,7 +518,7 @@ function tryHitMob() {
         }
 
         // Damage: swords use their normal damage; other tools only deal 1
-        const damage = (toolInfo && toolInfo.category === "sword") ? (toolInfo.damage || 1) : 1;
+        const damage = (toolInfo && toolInfo.category === "sword") ? (toolInfo.damage || 1) + player.playerdamage : player.playerdamage;
         mob.health -= damage;
 
         // Calculate knockback
@@ -529,7 +526,9 @@ function tryHitMob() {
         const dy = (mob.y + mob.size/2) - (player.y + player.size/2);
         const len = Math.hypot(dx, dy) || 1;
         const nx = dx / len, ny = dy / len;
-  const knockbackDistance = (toolInfo && toolInfo.isTool) ? 60 : 40;
+  const baseKnockback = (toolInfo && toolInfo.isTool) ? 60 : 40;
+  const knockbackDistance = baseKnockback + (player.playerknockback || 0);
+
   const knockbackDuration = 0.2; // match player knockback duration for consistency
 
         // Visual effects

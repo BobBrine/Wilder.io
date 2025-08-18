@@ -2,30 +2,71 @@ const scoreboardWidth = 200;
 
 function drawHUD() {
   ctx.save();
+  let yOffsetUI = 16;
+  // SOUL: Draw soul currency at top left (gameplay)
+  if (typeof window.soulCurrency === 'object') {
+    ctx.save();
+    ctx.font = '22px Arial';
+    ctx.fillStyle = '#00ff22ff';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Soul: ' + window.soulCurrency.get(), 10, yOffsetUI);
+    yOffsetUI += 24;
+    ctx.fillStyle = '#ffffffff';
+    ctx.fillText('Difficulty: ' + difficulty, 10, yOffsetUI);
+    yOffsetUI += 24;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('Day: ' + Math.floor(Day), 10, yOffsetUI);
+    yOffsetUI += 24;
+    
+
+    ctx.restore();
+  }
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
   ctx.textAlign = "left";
-  // Null checks for player, inventory
-  if (player) {
-    ctx.fillText(`HP: ${Math.floor(player.health)} / ${player.maxHealth}, Stamina: ${Math.floor(stamina)}, Hunger: ${Math.floor(hunger)}`, 10, 20);
-    ctx.fillText(`Level: ${player.level}`, 10, 40);
-    ctx.fillText(`XP: ${player.xp} / ${player.xpToNextLevel}`, 10, 60);
-  }
-  const isDevUI = (typeof devModeActive !== 'undefined' ? devModeActive : (typeof devTest !== 'undefined' && devTest));
-  if (isDevUI && inventory && inventory.items) {
-    let yOffset = 80;
-    for (const [item, count] of Object.entries(inventory.items)) {
-      ctx.fillText(`${item[0].toUpperCase() + item.slice(1)}: ${count}`, 10, yOffset);
-      yOffset += 20;
+  
+
+  if (showData) {
+    if (player) {
+      yOffsetUI += 20;
+      ctx.fillText('Gametime: ' + Math.floor(gameTime), 10, yOffsetUI);
+      yOffsetUI += 20;
+      ctx.fillText(`HP: ${Math.floor(player.health)} / ${player.maxHealth}, Stamina: ${Math.floor(stamina)}, Hunger: ${Math.floor(hunger)}`, 10, yOffsetUI);
+      yOffsetUI += 20;
+      ctx.fillText(`Level: ${player.level}`, 10, yOffsetUI);
+      yOffsetUI += 20;
+      ctx.fillText(`XP: ${player.xp} / ${player.xpToNextLevel}`, 10, yOffsetUI);
+      yOffsetUI += 20;
+      ctx.fillText('player speed: ' + Math.floor(player.speed), 10, yOffsetUI);
+      yOffsetUI += 20;
+      ctx.fillText('player damage: ' + Math.floor(player.playerdamage), 10, yOffsetUI);
+      yOffsetUI += 20;
+      ctx.fillText(
+        'player attack speed: ' + player.playerattackspeed.toFixed(2) + 
+        (player.playerattackspeed >= 0.45 ? ' (MAX)' : ''),
+        10, yOffsetUI
+      );
+      yOffsetUI += 20;
+
+      ctx.fillText(
+        'player attack range: ' + Math.floor(player.playerrange) + 
+        (player.playerrange >= 130 ? ' (MAX)' : ''),
+        10, yOffsetUI
+      );
+      yOffsetUI += 20;
+      ctx.fillText('player knockback: ' + Math.floor(player.playerknockback), 10, yOffsetUI);
+
+      
     }
-    uiButtons = [];
-    if (uiButtons.length === 0) {
-      createButton(10, canvas.height - 50, "DEBUG", () => {
-        // toggle showing mob data
-        showData = !showData;
-      });
-    }
+    
+    // for (const [item, count] of Object.entries(inventory.items)) {
+    //   ctx.fillText(`${item[0].toUpperCase() + item.slice(1)}: ${count}`, 10, yOffsetUI);
+    //   yOffsetUI += 20;
+    // }
+ 
   }
+  
   // Scoreboard improvements
   const scoreboardX = canvas.width - scoreboardWidth - 10;
   const scoreboardY = 40;
@@ -196,23 +237,109 @@ function drawHotbar() {
 
 function drawCraftingUI() {
   ctx.save();
-  const craftX = canvas.width - scoreboardWidth - 110 - 10;
-  let craftY = 40;
-  const width = 100;
-  const height = 30;
-  for (const recipe of recipes) {
-    if (!canCraft(recipe)) continue;
-    ctx.fillStyle = "darkgreen";
-    ctx.fillRect(craftX, craftY, width, height);
-    ctx.strokeStyle = "white";
-    ctx.strokeRect(craftX, craftY, width, height);
-    ctx.fillStyle = "white";
-    ctx.font = "14px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(`${recipe.name}`, craftX + width / 2, craftY + 20);
-    ctx.textAlign = "left";
-    craftY += height + 10;
+  const gridCols = 4;
+  const gridRows = 4;
+  const cellSize = 32; // Match image size (icon 32px, padding)
+  const cellPadding = 10;
+  const gridWidth = gridCols * cellSize + (gridCols - 1) * cellPadding;
+  const gridHeight = gridRows * cellSize + (gridRows - 1) * cellPadding;
+  // Position: bottom right, above hotbar, with some margin
+  const gridX = canvas.width - scoreboardWidth - gridWidth - 20;
+  const gridY =  gridHeight - slotSize - 75;
+
+  // Only show up to 16 craftable recipes
+  const craftable = recipes.filter(r => canCraft(r)).slice(0, 16);
+  // Right-to-left, top-to-bottom stacking
+  let hoveredCell = null;
+  for (let i = 0; i < craftable.length; i++) {
+    const row = Math.floor(i / gridCols);
+    const col = gridCols - 1 - (i % gridCols); // right-to-left
+    const x = gridX + col * (cellSize + cellPadding);
+    const y = gridY + row * (cellSize + cellPadding);
+    
+    // Draw cell background
+    ctx.save();
+    ctx.fillStyle = "rgba(30,60,30,0.85)";
+    ctx.fillRect(x, y, cellSize, cellSize);
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, cellSize, cellSize);
+    ctx.restore();
+    
+    // Draw item image (tool or resource)
+    const outType = craftable[i].output.type;
+    let img = toolImages[outType] || resourceImages[outType];
+    if (img && img.complete) {
+      const iconSize = cellSize - cellSize * 0.25;
+      ctx.drawImage(img, x + (cellSize - iconSize)/2, y + (cellSize - iconSize)/2, iconSize, iconSize);
+    } else {
+      // fallback: colored square
+      ctx.save();
+      ctx.fillStyle = '#888';
+      ctx.fillRect(x+8, y+8, cellSize-16, cellSize-16);
+      ctx.restore();
+    }
+    
+    // Draw count if >1
+    if (craftable[i].output.count > 1) {
+      ctx.save();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 14px Arial";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "bottom";
+      ctx.fillText("x"+craftable[i].output.count, x+cellSize-4, y+cellSize-4);
+      ctx.restore();
+    }
+    
+    // Mouse hover detection
+    if (mouseX >= x && mouseX <= x+cellSize && mouseY >= y && mouseY <= y+cellSize) {
+      hoveredCell = { x, y, recipe: craftable[i], cellSize };
+      // Highlight border
+      ctx.save();
+      ctx.strokeStyle = "yellow";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x, y, cellSize, cellSize);
+      ctx.restore();
+    }
   }
+  
+  // Tooltip for hovered recipe
+  if (hoveredCell) {
+    const {x, y, recipe, cellSize} = hoveredCell;
+    // Build recipe text
+    let lines = [recipe.name];
+    lines.push('Requires:');
+    for (const [key, val] of Object.entries(recipe.cost)) {
+      lines.push(`- ${key}: ${val}`);
+    }
+    
+    // Tooltip box size
+    ctx.save();
+    ctx.font = "13px Arial";
+    const paddingX = 10, paddingY = 6;
+    const textW = Math.max(...lines.map(l => ctx.measureText(l).width));
+    const boxW = textW + paddingX*2;
+    const boxH = lines.length * 18 + paddingY*2;
+    let boxX = x - boxW - 8; // left of the cell
+    let boxY = y;
+    if (boxX < 0) boxX = x + cellSize + 8; // if too far left, put to the right
+    if (boxY + boxH > canvas.height) boxY = canvas.height - boxH - 4;
+    
+    ctx.fillStyle = "rgba(0,0,0,0.85)";
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    for (let i=0; i<lines.length; i++) {
+      ctx.fillText(lines[i], boxX+paddingX, boxY+paddingY + i*18);
+    }
+    ctx.restore();
+  }
+  
   ctx.restore();
 }
 
@@ -453,9 +580,9 @@ function ensurePerformanceToggle() {
   };
   if (idx === -1) {
     if (typeof createButton === 'function') {
-      createButton(10, canvas.height - 100, label, () => {
-        applyPerf(!pmOn);
-      });
+      // createButton(10, canvas.height - 100, label, () => {
+      //   applyPerf(!pmOn);
+      // });
     } else {
       uiButtons.unshift({
         x: 10, y: 50, width: 160, height: 32,

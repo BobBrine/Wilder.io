@@ -27,12 +27,12 @@ function getRandomPositionInCell(col, row, size) {
 }
 
 const crypto = require("crypto");
-const CYCLE_LENGTH = 180; // 20 minutes in seconds
+const CYCLE_LENGTH = 300;//180; // 20 minutes in seconds
 
 // Constants
 const passiveColors = ["green", "lightblue", "pink"];
 const aggressiveColors = [ "#560202ff", "#000000", "#505050ff" ];
-const DAY_LENGTH = 120; // 15 minutes of day, 5 minutes of night
+const DAY_LENGTH = 300;//120; // 15 minutes of day, 5 minutes of night
 
 // Helper function to generate random numbers within a range
 function randomBetween(min, max) {
@@ -42,17 +42,14 @@ function randomBetween(min, max) {
 // Function to generate a passive mob type with fixed, difficulty-scaled stats
 function generatePassiveMobType(id, difficulty) {
   const baseTurnSpeed = Math.PI;
-  const turnSpeed = baseTurnSpeed * (1 + 0.1 * (difficulty - 1));
-  const dropAmount = 1 * difficulty; // Drops one "pure core"
-
-  // Use midpoint of previous ranges as base, then scale with difficulty
-  const fixedHealth = 100 * (1 + 0.5 * (difficulty - 1)); // avg of 50..150
-  const fixedSize = 30 * (1 + 0.2 * (difficulty - 1));   // avg of 20..40
-  const fixedSpeed = 50 * (1 + 0.2 * (difficulty - 1));  // avg of 30..70
-
+  const turnSpeed = baseTurnSpeed * (1 + 0.05 * (difficulty - 1)); // slower scaling
+  const dropAmount = 1 * difficulty;
+  const fixedHealth = 80 * (1 + 0.3 * (difficulty - 1)); // easier early game
+  const fixedSpeed = 40 * (1 + 0.1 * (difficulty - 1));
+  
   return {
-    maxCount: 20,
-    size: fixedSize,
+    maxCount: 15,  // slightly more mobs at higher difficulty
+    size: 30,
     health: fixedHealth,
     speed: fixedSpeed,
     color: () => passiveColors[Math.floor(Math.random() * passiveColors.length)],
@@ -66,60 +63,58 @@ function generatePassiveMobType(id, difficulty) {
   };
 }
 
-// Function to generate an aggressive mob type with profiles (fixed stats)
-function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 20) {
-  const baseTurnSpeed = Math.PI * 2;
-  const turnSpeed = baseTurnSpeed * (1 + 0.1 * (difficulty - 1));
-  const baseAggroRadius = 100;
-  const baseEscapeRadius = 225;
-  const aggroRadius = baseAggroRadius * (1 + 0.2 * (difficulty - 1));
-  const escapeRadius = baseEscapeRadius * (1 + 0.2 * (difficulty - 1));
-  const baseDropAmount = 1 * difficulty;
-  const attackSpeedScale = 1 + 0.2 * (difficulty - 1);
 
+// Function to generate an aggressive mob type with profiles (fixed stats)
+function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 15) {
+  const baseTurnSpeed = Math.PI * 2;
+  const turnSpeed = baseTurnSpeed * (1 + 0.05 * (difficulty - 1));
+  const aggroRadius = 100 * (1 + 0.1 * (difficulty - 1));
+  const escapeRadius = 225 * (1 + 0.1 * (difficulty - 1));
+  const attackSpeedScale = 1 + 0.1 * (difficulty - 1);
+  
   return {
-    maxCount: (gameTime) => (gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1), // *1.4
+    maxCount: totalMaxCount + difficulty, // moderate increase
     profiles: {
       tank: {
-        count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.2),
-        health: 250 * (1 + 0.5 * (difficulty - 1)), // avg of 200..300
-        size: 50 * (1 + 0.2 * (difficulty - 1)),   // avg of 40..60
-        speed: 30 * (1 + 0.2 * (difficulty - 1)),  // avg of 20..40
-        damage: 20 * (1 + 0.3 * (difficulty - 1)), // avg of 15..25
-  attackspeed: 0.7 * attackSpeedScale, // slow
+        count: Math.floor(totalMaxCount * 0.2),
+        health: 250 * (1 + 0.3 * (difficulty - 1)),
+        size: 50,
+        speed: 60 * (1 + 0.1 * (difficulty - 1)),
+        damage: 20 * (1 + 0.2 * (difficulty - 1)),
+        attackspeed: 0.7 * attackSpeedScale,
       },
       speedster: {
-        count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.2),
-        health: 75 * (1 + 0.5 * (difficulty - 1)),  // avg of 50..100
-        size: 20 * (1 + 0.2 * (difficulty - 1)),    // avg of 15..25
-        speed: 100 * (1 + 0.2 * (difficulty - 1)),  // avg of 80..120
-        damage: 7.5 * (1 + 0.3 * (difficulty - 1)), // avg of 5..10
-  attackspeed: 1.5 * attackSpeedScale, // fast
+        count: Math.floor(totalMaxCount * 0.2),
+        health: 75 * (1 + 0.3 * (difficulty - 1)),
+        size: 20,
+        speed: 180 * (1 + 0.15 * (difficulty - 1)),
+        damage: 8 * (1 + 0.2 * (difficulty - 1)),
+        attackspeed: 1.5 * attackSpeedScale,
       },
       longRange: {
-        count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.2),
-        health: 115 * (1 + 0.5 * (difficulty - 1)), // avg of 80..150
-        size: 25 * (1 + 0.2 * (difficulty - 1)),    // avg of 20..30
-        speed: 75 * (1 + 0.2 * (difficulty - 1)),   // avg of 60..90
-        damage: 10 * (1 + 0.3 * (difficulty - 1)),  // avg of 8..12
+        count: Math.floor(totalMaxCount * 0.2),
+        health: 115 * (1 + 0.3 * (difficulty - 1)),
+        size: 25,
+        speed: 90 * (1 + 0.1 * (difficulty - 1)),
+        damage: 10 * (1 + 0.15 * (difficulty - 1)),
         aggroRadius: aggroRadius * 1.5,
         escapeRadius: escapeRadius * 1.5,
-  attackspeed: 1 * attackSpeedScale, // normal = 1
+        attackspeed: 1 * attackSpeedScale,
       },
       balanced: {
-        count: (gameTime) => Math.floor((gameTime < DAY_LENGTH ? totalMaxCount : totalMaxCount * 1.4) * 0.4),
-        health: 150 * (1 + 0.5 * (difficulty - 1)), // avg of 100..200
-        size: 30 * (1 + 0.2 * (difficulty - 1)),    // avg of 25..35
-        speed: 65 * (1 + 0.2 * (difficulty - 1)),   // avg of 50..80
-  damage: 12.5 * (1 + 0.3 * (difficulty - 1)),// avg of 10..15
-  attackspeed: 1 * attackSpeedScale, // normal = 1
+        count: Math.floor(totalMaxCount * 0.4),
+        health: 150 * (1 + 0.3 * (difficulty - 1)),
+        size: 30,
+        speed: 100 * (1 + 0.1 * (difficulty - 1)),
+        damage: 12 * (1 + 0.15 * (difficulty - 1)),
+        attackspeed: 1 * attackSpeedScale,
       },
     },
     color: () => aggressiveColors[Math.floor(Math.random() * aggressiveColors.length)],
     drop: "dark_core",
     requiredTool: { categories: ["hand", "sword"], minTier: 0 },
-    spawntimer: 10,
-    getDropAmount: () => baseDropAmount,
+    spawntimer: 30,
+    getDropAmount: () => 1 * difficulty,
     behavior: 'wander',
     isAggressive: true,
     aggroRadius,
@@ -128,44 +123,38 @@ function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 20)
   };
 }
 
+
 // Function to generate a special aggressive mob
 function generateSpecialAggressiveMobType(id, gameTime, difficulty) {
-  const baseTurnSpeed = Math.PI * 2;
-  const turnSpeed = baseTurnSpeed * (1 + 0.1 * (difficulty - 1));
-  const aggroRadius = 200 * (1 + 0.2 * (difficulty - 1));
-  const escapeRadius = 400 * (1 + 0.2 * (difficulty - 1));
-  const baseDropAmount = 3 * difficulty;
-  const attackSpeedScale = 1 + 0.2 * (difficulty - 1);
-
-  // Fixed values based on previous midpoints
-  const fixedHealth = 500 * (1 + 0.5 * (difficulty - 1)); // avg of 400..600
-  const fixedSize = 30 * (1 + 0.2 * (difficulty - 1));    // avg of 25..35
-  const fixedSpeed = 100 * (1 + 0.2 * (difficulty - 1));  // avg of 80..120
-  const fixedDamage = 30 * (1 + 0.3 * (difficulty - 1));  // avg of 25..35
+  const turnSpeed = Math.PI * 2 * (1 + 0.05 * (difficulty - 1));
+  const aggroRadius = 200 * (1 + 0.1 * (difficulty - 1));
+  const escapeRadius = 400 * (1 + 0.1 * (difficulty - 1));
+  const attackSpeedScale = 1 + 0.1 * (difficulty - 1);
 
   return {
     maxCount: 1,
-    size: fixedSize,
-    health: fixedHealth,
-    speed: fixedSpeed,
-  attackspeed: 1.5 * attackSpeedScale, // special = fast
+    size: 30,
+    health: 500 * (1 + 0.3 * (difficulty - 1)),
+    speed: 200 * (1 + 0.1 * (difficulty - 1)),
+    attackspeed: 1.5 * attackSpeedScale,
     color: "white",
     drop: ["pure_core", "dark_core", "mythic_core"],
     requiredTool: { categories: ["sword"], minTier: 0 },
     spawntimer: 60,
     getDropAmount: () => [
-      { type: "pure_core", amount: baseDropAmount },
-      { type: "dark_core", amount: baseDropAmount },
+      { type: "pure_core", amount: 3 * difficulty },
+      { type: "dark_core", amount: 3 * difficulty },
       { type: "mythic_core", amount: 1 },
     ],
     behavior: 'wander',
     isAggressive: true,
     aggroRadius,
     escapeRadius,
-    damage: fixedDamage,
+    damage: 30 * (1 + 0.2 * (difficulty - 1)),
     turnSpeed,
   };
 }
+
 
 // Generate mob types and update mobtype object
 function initializeMobTypes(gameTime, difficulty) {

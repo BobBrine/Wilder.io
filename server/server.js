@@ -1,3 +1,4 @@
+
 const express = require('express');
 const os = require('os');
 const http = require('http');
@@ -14,7 +15,7 @@ const io = socketIO(server, {
 const PORT = process.env.PORT || 3000;
 // Performance tuning constants (override with environment variables to tune without code changes)
 // You can push further by setting env: TICK_MS=20 (50 FPS) or 16 (60 FPS) if CPU allows
-const TICK_MS = Number(process.env.TICK_MS) || 25; // default ~40 FPS
+const TICK_MS = Number(process.env.TICK_MS) || 33; // default ~30 FPS
 const MOB_VIS_RADIUS = Number(process.env.MOB_VIS_RADIUS) || 1400; // Per-client mob visibility radius (world pixels)
 const RESOURCE_VIS_RADIUS = Number(process.env.RESOURCE_VIS_RADIUS) || 1400; // Per-client resource visibility radius
 // Spatial grid cell size for mob lookup (tune based on typical mob density)
@@ -40,7 +41,8 @@ const {
   isOverlappingAny
 } = require('./resourceManager');
 
-const {
+let {
+  difficulty,
   pond,
   mobs,
   mobtype,
@@ -65,6 +67,7 @@ let nextItemId = 0;
 let lastUpdate = Date.now();
 let lastStaticUpdate = Date.now();
 const WORLD_SIZE = 5000;
+let checkplayer = false;
 // Tick timing stats (ms)
 let __tickStats = { count: 0, sum: 0, min: Infinity, max: 0 };
 // Cache last sent mob snapshots per client (to emit only on change)
@@ -87,30 +90,168 @@ const lastResourcesEmitAt = new Map(); // sid -> timestamp
 const lastPlayersDeltaMap = new Map(); // sid -> Map(id, obj)
 const lastPlayersDeltaAt = new Map(); // sid -> timestamp
 const ItemTypes = {
-  // Resources
-  wood: { name: "Wood", color: "green", attackSpeed: 0.35 },
-  stone: { name: "Stone", color: "darkgray", attackSpeed: 0.35 },
-  iron: { name: "Iron", color: "white", attackSpeed: 0.35 },
-  gold: { name: "Gold", color: "gold", attackSpeed: 0.35 },
-  food: { name: "Food", color: "red", attackSpeed: 0.35 },
-  pure_core: { name: "Pure Core", color: "pink", attackSpeed: 0.35 },
-  dark_core: { name: "Dark Core", color: "white", attackSpeed: 0.35 },
-  mythic_core: { name: "Mythic Core", color: "yellow", attackSpeed: 0.35 },
-  torch: { name: "Torch", color: "yellow", attackSpeed: 0.35 },
-  // Tools
-  wooden_axe: { name: "Wooden Axe", color: "sienna", isTool: true, category: "axe", tier: 1, damage: 5, attackRange: 50, attackSpeed: 0.3 },
-  stone_axe: { name: "Stone Axe", color: "darkgray", isTool: true, category: "axe", tier: 2, damage: 10, attackRange: 50, attackSpeed: 0.3 },
-  iron_axe: { name: "Iron Axe", color: "white", isTool: true, category: "axe", tier: 3, damage: 20, attackRange: 50, attackSpeed: 0.3 },
-  gold_axe: { name: "Gold Axe", color: "gold", isTool: true, category: "axe", tier: 4, damage: 40, attackRange: 50, attackSpeed: 0.3 },
-  wooden_pickaxe: { name: "Wooden Pickaxe", color: "sienna", isTool: true, category: "pickaxe", tier: 1, damage: 5, attackRange: 50, attackSpeed: 0.3 },
-  stone_pickaxe: { name: "Stone Pickaxe", color: "darkgray", isTool: true, category: "pickaxe", tier: 2, damage: 10, attackRange: 50, attackSpeed: 0.3 },
-  iron_pickaxe: { name: "Iron Pickaxe", color: "white", isTool: true, category: "pickaxe", tier: 3, damage: 20, attackRange: 50, attackSpeed: 0.3 },
-  gold_pickaxe: { name: "Gold Pickaxe", color: "gold", isTool: true, category: "pickaxe", tier: 4, damage: 40, attackRange: 50, attackSpeed: 0.3 },
-  wooden_sword: { name: "Wooden Sword", color: "sienna", isTool: true, category: "sword", tier: 1, damage: 5, attackRange: 50, attackSpeed: 0.3 },
-  stone_sword: { name: "Stone Sword", color: "darkgray", isTool: true, category: "sword", tier: 2, damage: 10, attackRange: 50, attackSpeed: 0.3 },
-  iron_sword: { name: "Iron Sword", color: "white", isTool: true, category: "sword", tier: 3, damage: 20, attackRange: 50, attackSpeed: 0.3 },
-  gold_sword: { name: "Gold Sword", color: "gold", isTool: true, category: "sword", tier: 4, damage: 40, attackRange: 50, attackSpeed: 0.3 },
-  hand: { name: "Hand", color: "peachpuff", attackSpeed: 0.35 },
+  // Basic hand
+  hand: {
+    name: "Hand",
+    color: "peachpuff",
+    isTool: true,
+    attackRange: 50,
+    attackSpeed: 0.5,
+    damage: 1,
+    category: 'hand',
+    tier: 0
+  },
+
+  // Axes
+  wooden_axe: {
+    name: "Wooden Axe",
+    color: "sienna",
+    isTool: true,
+    category: "axe",
+    tier: 1,
+    damage: 3,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  stone_axe: {
+    name: "Stone Axe",
+    color: "darkgray",
+    isTool: true,
+    category: "axe",
+    tier: 2,
+    damage: 5,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  iron_axe: {
+    name: "Iron Axe",
+    color: "white",
+    isTool: true,
+    category: "axe",
+    tier: 3,
+    damage: 7,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  gold_axe: {
+    name: "Gold Axe",
+    color: "gold",
+    isTool: true,
+    category: "axe",
+    tier: 4,
+    damage: 10,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+
+  // Pickaxes
+  wooden_pickaxe: {
+    name: "Wooden Pickaxe",
+    color: "sienna",
+    isTool: true,
+    category: "pickaxe",
+    tier: 1,
+    damage: 3,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  stone_pickaxe: {
+    name: "Stone Pickaxe",
+    color: "darkgray",
+    isTool: true,
+    category: "pickaxe",
+    tier: 2,
+    damage: 5,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  iron_pickaxe: {
+    name: "Iron Pickaxe",
+    color: "white",
+    isTool: true,
+    category: "pickaxe",
+    tier: 3,
+    damage: 7,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  gold_pickaxe: {
+    name: "Gold Pickaxe",
+    color: "gold",
+    isTool: true,
+    category: "pickaxe",
+    tier: 4,
+    damage: 10,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+
+  // Swords
+  wooden_sword: {
+    name: "Wooden Sword",
+    color: "sienna",
+    isTool: true,
+    category: "sword",
+    tier: 1,
+    damage: 10,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  stone_sword: {
+    name: "Stone Sword",
+    color: "darkgray",
+    isTool: true,
+    category: "sword",
+    tier: 2,
+    damage: 15,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  iron_sword: {
+    name: "Iron Sword",
+    color: "white",
+    isTool: true,
+    category: "sword",
+    tier: 3,
+    damage: 20,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  gold_sword: {
+    name: "Gold Sword",
+    color: "gold",
+    isTool: true,
+    category: "sword",
+    tier: 4,
+    damage: 25,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+
+  // Special Items
+  torch: {
+    name: "Torch",
+    color: "yellow",
+    isTool: true,
+    attackRange: 50,
+    attackSpeed: 0,
+    damage: 1,
+    category: 'hand',
+    tier: 0
+  },
+
+  // Consumables
+  wood: { name: "Wood", color: "green", attackSpeed: 0.5 },
+  stone: { name: "Stone", color: "darkgray", attackSpeed: 0.5 },
+  iron: { name: "Iron", color: "white", attackSpeed: 0.5 },
+  gold: { name: "Gold", color: "gold", attackSpeed: 0.5 },
+  food: { name: "Food", color: "red", attackSpeed: 0.5 },
+  pure_core: { name: "Pure Core", color: "pink", attackSpeed: 0.5 },
+  dark_core: { name: "Dark Core", color: "white", attackSpeed: 0.5 },
+  mythic_core: { name: "Mythic Core", color: "yellow", attackSpeed: 0.5 },
+  health_potion: { name: "Health Potion", color: "red", attackSpeed: 0.5 },
+  strength_potion: { name: "Strength Potion", color: "orange", attackSpeed: 0.5 },
+  mythic_potion: { name: "Mythic Potion", color: "purple", attackSpeed: 0.5 },
 };
 
 
@@ -263,6 +404,7 @@ function gatherItemsNear(x, y, r) {
 
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
+  
   // Send initial static data only to the connecting client
   socket.emit("resourceType", resourceTypes);
   socket.emit("mobType", mobtype);
@@ -280,6 +422,7 @@ io.on('connection', (socket) => {
   socket.emit('currentPlayers', players);
     socket.emit('playerSelf', players[socket.id]);
   socket.broadcast.emit('newPlayer', players[socket.id]);
+
     // On respawn, proactively send essential world data again
     try {
       socket.emit("resourceType", resourceTypes);
@@ -398,6 +541,7 @@ io.on('connection', (socket) => {
   // Inside io.on('connection', (socket) => {...})
   socket.on('playerhit', ({ targetId, newHealth }) => handlePlayerHit(socket, targetId, newHealth));
   socket.on('consumeFood', ({ amount }) => handleConsumeFood(socket, amount));
+  socket.on("consumePotion", ({type}) => handleConsumePotion(socket, type));
   socket.on('disconnect', () => handleDisconnect(socket));
 
     // Remove socket reference from player on disconnect
@@ -439,43 +583,64 @@ function emitToNearbyReliable(eventName, payload, x, y, radius) {
   }
 }
 
+let day = 0;
 let lastGameTimeEmitAt = 0;
+let lastDayIncrement = false;
+let lastDifficultyIncreaseDay = 0;
+
 function maybeEmitGameTime() {
   const nowMs = Date.now();
   if (nowMs - lastGameTimeEmitAt >= GAME_TIME_MIN_MS) {
     lastGameTimeEmitAt = nowMs;
-    io.compress(false).volatile.emit("gameTime", gameTime);
+    io.compress(false).volatile.emit("gameTime", { serverTime: gameTime, day, difficulty });
   }
 }
 
 //update contiunous
+
 setInterval(() => {
-  const t0 = Date.now();
-  const now = t0;
-  const deltaTime = (now - lastUpdate) / 1000;
-  lastUpdate = now;
-  updatePlayers(deltaTime, now);
+  const { playerCount} = getCounts();
+  if (playerCount > 0) {
+    const t0 = Date.now();
+    const now = t0;
+    const deltaTime = (now - lastUpdate) / 1000;
+    lastUpdate = now;
+    if (gameTime >= CYCLE_LENGTH - 1 && !lastDayIncrement) {
+      day++;
+      lastDayIncrement = true;
+      // Increase difficulty every 7 days
+      if (day % 7 === 0 && day > 0 && lastDifficultyIncreaseDay !== day) {
+        difficulty++;
+        io.emit("GainSoul", 1);
+        lastDifficultyIncreaseDay = day;
+        console.log(`Difficulty increased to ${difficulty} on day ${day}`);
+      }
+    }
+    if (gameTime < 9) {
+      lastDayIncrement = false;
+    }
+    gameTime = (gameTime + deltaTime) % CYCLE_LENGTH;
+    maybeEmitGameTime();
+    updatePlayers(deltaTime, now);
 
-  gameTime = (gameTime + deltaTime) % CYCLE_LENGTH;
-
-  // Update mobs BEFORE broadcasting so clients get freshest positions (reduces ~1 tick latency)
-  updateMobs(allResources, players, deltaTime);
-  // Rebuild spatial grid for fast per-client mob queries
-  rebuildMobGrid();
-  // Rebuild spatial grid for items
-  rebuildItemGrid();
-  // Rebuild spatial grid for resources
-  rebuildResourceGrid();
-  emitVisibleMobsPerClient();
-  emitVisibleResourcesPerClient();
-  emitVisibleDroppedItemsPerClient();
-  maybeEmitGameTime();
-  // Record tick duration stats
-  const dtMs = Date.now() - t0;
-  __tickStats.count++;
-  __tickStats.sum += dtMs;
-  if (dtMs < __tickStats.min) __tickStats.min = dtMs;
-  if (dtMs > __tickStats.max) __tickStats.max = dtMs;
+    // Update mobs BEFORE broadcasting so clients get freshest positions (reduces ~1 tick latency)
+    updateMobs(allResources, players, deltaTime);
+    // Rebuild spatial grid for fast per-client mob queries
+    rebuildMobGrid();
+    // Rebuild spatial grid for items
+    rebuildItemGrid();
+    // Rebuild spatial grid for resources
+    rebuildResourceGrid();
+    emitVisibleMobsPerClient();
+    emitVisibleResourcesPerClient();
+    emitVisibleDroppedItemsPerClient();
+    // Record tick duration stats
+    const dtMs = Date.now() - t0;
+    __tickStats.count++;
+    __tickStats.sum += dtMs;
+    if (dtMs < __tickStats.min) __tickStats.min = dtMs;
+    if (dtMs > __tickStats.max) __tickStats.max = dtMs;
+  }
 }, TICK_MS);
 
 // Static update loop (every 10s)
@@ -483,6 +648,7 @@ setInterval(() => {
   const now = Date.now();
   const deltaTime = (now - lastStaticUpdate) / 1000; // in seconds
   lastStaticUpdate = now;
+  
 
   updateResourceRespawns(deltaTime);
   updateMobRespawns(deltaTime, allResources, players, gameTime);
@@ -549,14 +715,19 @@ function createNewPlayer(id, name) {
     y,
     size,
     color: "rgba(0, 0, 0, 0)",
-    speed: 200,
+    speed: 175,
     facingAngle: 0,
     level: 1,
     xp: 0,
     xpToNextLevel: 10,
     health: 100,
     maxHealth: 100,
-    healthRegen: 10,
+    playerdamage: 1,
+    playerattackspeed: 0.15,
+    playerrange: 0,
+    playerknockback: 0,
+
+    healthRegen: 1,
     lastDamageTime: null,
     isDead: false,
     maxStamina: 100,
@@ -847,6 +1018,66 @@ function handleConsumeFood(socket, amount) {
   p.hunger = Math.min(p.maxHunger, p.hunger + 20 * amount);
 }
 
+function handleConsumePotion(socket, type) {
+  const p = players[socket.id];
+  if (!p || p.isDead || !ItemTypes[type] || !type.endsWith("_potion")) return;
+  let updatedStats = {};
+  switch (type) {
+    case "health_potion":
+      p.maxHealth += 10;
+      updatedStats = { maxHealth: p.maxHealth };
+      break;
+    case "strength_potion":
+      p.playerdamage += 5;
+      updatedStats = { playerdamage: p.playerdamage };
+      break;
+    case "mythic_potion":
+      let options = [];
+
+      // Attack speed (only if below max)
+      if (p.playerattackspeed < 0.45) {
+        options.push("attackSpeed");
+      }
+
+      // Range (only if below max 130)
+      if (p.playerrange < 130) {
+        options.push("range");
+      }
+
+      // Knockback (always available, unless you want a cap too)
+      options.push("knockback");
+
+      options.push("speed");
+
+      // Pick random from available options
+      const randChoice = options[Math.floor(Math.random() * options.length)];
+
+      // Apply upgrade
+      if (randChoice === "attackSpeed") {
+        p.playerattackspeed = Math.min(0.45, p.playerattackspeed + 0.01);
+        updatedStats = { playerattackspeed: p.playerattackspeed };
+        socket.emit('showMessage', 'Gain Attack Speed Boost!');
+      } else if (randChoice === "range") {
+        p.playerrange = Math.min(130, p.playerrange + 5);
+        updatedStats = { playerrange: p.playerrange };
+        socket.emit('showMessage', 'Gain Range Boost!');
+      } else if (randChoice === "knockback") {
+        p.playerknockback += 5;
+        updatedStats = { playerknockback: p.playerknockback };
+        socket.emit('showMessage', 'Gain Knockback Boost!');
+      } else if (randChoice === "speed") {
+        p.speed += 5;
+        updatedStats = { speed: p.speed };
+        socket.emit('showMessage', 'Gain Player Speed Boost!');
+      }
+      break;
+
+  }
+  if (Object.keys(updatedStats).length > 0) {
+    socket.emit('updatePlayerStats', updatedStats);
+  }
+}
+
 function handleDisconnect(socket) {
   console.log(`Player disconnected: ${socket.id}`);
   // Clear cached mob snapshot for this client
@@ -864,6 +1095,10 @@ function handleDisconnect(socket) {
     mobList.forEach(mob => delete mob.threatTable?.[socket.id]);
   }
   io.emit('playerDisconnected', socket.id);
+  // If no players remain, reset game state
+  if (Object.keys(players).length === 0) {
+    resetGameState();
+  }
 }
 
 function updatePlayers(deltaTime, now) {
@@ -885,7 +1120,7 @@ function updatePlayers(deltaTime, now) {
       const timeSinceLastDepletion = (now - p.lastHungerDepletion) / 1000;
       if (timeSinceLastDepletion >= 5) {
         if (p.hunger > 0) {
-          p.hunger = Math.max(0, p.hunger - 5); // Deplete 10 hunger every 5 seconds
+          p.hunger = Math.max(0, p.hunger - 5); // Deplete 5 hunger every 5 seconds
           p.lastHungerDepletion = now;
         }
       }
@@ -1042,8 +1277,38 @@ if (STATS_LOG_MS > 0) {
       `tick(ms) avg:${avg.toFixed(2)} min:${(__tickStats.min===Infinity?0:__tickStats.min).toFixed(0)} max:${__tickStats.max.toFixed(0)} | ` +
       `mem MB rss:${(rss/1048576).toFixed(1)} heap:${(heapUsed/1048576).toFixed(1)}/${(heapTotal/1048576).toFixed(1)} ext:${(external/1048576).toFixed(1)}`
     );
+    console.log("difficulty: " + difficulty);
     // Reset tick window every print to keep stats recent
     __tickStats = { count: 0, sum: 0, min: Infinity, max: 0 };
+
+    if (playerCount > 0 && checkplayer) { // if player greater then 0
+        spawnAllMob(allResources, players, gameTime);
+        checkplayer = false;
+        gameTime = 0;
+        day = 0;
+        difficulty = 1;
+    }
   }, STATS_LOG_MS);
+}
+
+// Reset game state when no players are connected
+function resetGameState() {
+  // Set difficulty to 1
+  
+  if (typeof global.difficulty !== 'undefined') {
+    global.difficulty = 1;
+  } else if (typeof difficulty !== 'undefined') {
+    difficulty = 1;
+  }
+  // Remove all mobs
+  for (const type in mobs) {
+    mobs[type].forEach(mob => {
+        mob.health = 0;
+        mob.size = 0; 
+      });
+  }
+  const { mobCount } = getCounts();
+  checkplayer = true;
+  console.log(`Game state reset: difficulty set to 1, all mobs removed. Mob count: ${mobCount}`);
 }
 

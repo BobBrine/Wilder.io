@@ -33,13 +33,14 @@ let attackStartTime = 0;
 function getAttackSpeed() {
   const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
   if (selected && ItemTypes[selected.type] && ItemTypes[selected.type].attackSpeed) {
-    return ItemTypes[selected.type].attackSpeed;
+
+    return Math.max(0.05, ItemTypes[selected.type].attackSpeed - player.playerattackspeed);
   }
   // Hand attack speed fallback
   if (ItemTypes.hand && ItemTypes.hand.attackSpeed) {
-    return ItemTypes.hand.attackSpeed;
+    return (Math.max(0.05, ItemTypes.hand.attackSpeed - player.playerattackspeed));
   }
-  return 0.35; // fallback default
+  return (player.playerattackspeed); // fallback default
 }
 
 function sendPlayerPosition(x, y) {
@@ -299,6 +300,19 @@ function consumeFood() {
   }
 }
 
+function consumePotion(type) {
+  if (!player || isDead || typeof hotbar === 'undefined' || typeof inventory === 'undefined') return;
+  const selected = hotbar.slots[hotbar.selectedIndex];
+  if (selected?.type === type && inventory.hasItem && inventory.hasItem(type, 1)) {
+    inventory.removeItem(type, 1);
+    if (window.socket && window.socket.connected) window.socket.emit("consumePotion", { type });
+    if (typeof showMessage === 'function') showMessage(`Consumed ${ItemTypes[type].name}!`);
+  } else {
+    if (typeof showMessage === 'function') showMessage("No potion selected!");
+  }
+}
+1
+
 function drawHungerBar(startX, hotbarY) {
   ctx.save();
   const barWidth = totalWidth / 2.5;
@@ -359,7 +373,7 @@ function drawPlayer() {
   ctx.shadowOffsetY = 3;
 
   // Determine attack range from selected tool or default
-  let attackRange = DEFAULT_ATTACK_RANGE;
+  let attackRange = DEFAULT_ATTACK_RANGE + player.playerrange;
   const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
   // Debug: log hotbar and selected slot
   if (window._debugHotbarSlots !== JSON.stringify(hotbar.slots) || window._debugSelectedIndex !== hotbar.selectedIndex) {
@@ -367,7 +381,7 @@ function drawPlayer() {
     window._debugSelectedIndex = hotbar.selectedIndex;
   }
   if (selected && ItemTypes[selected.type] && ItemTypes[selected.type].isTool && ItemTypes[selected.type].attackRange) {
-    attackRange = ItemTypes[selected.type].attackRange;
+    attackRange = ItemTypes[selected.type].attackRange + (player.playerrange);
   }
   // Debug: log attackRange to verify cone length changes
   if (window._debugAttackRange !== attackRange) {
@@ -476,7 +490,7 @@ function drawOtherPlayers() {
     // Determine attack range from selected tool or default
     let oAttackRange = DEFAULT_ATTACK_RANGE;
     if (p.selectedToolType && ItemTypes[p.selectedToolType] && ItemTypes[p.selectedToolType].isTool && ItemTypes[p.selectedToolType].attackRange) {
-      oAttackRange = ItemTypes[p.selectedToolType].attackRange;
+      oAttackRange = ItemTypes[p.selectedToolType].attackRange + (p.playerrange || 0);
     }
 
     // Draw attack cone (static, like local non-attacking state)
@@ -861,6 +875,7 @@ function isEdgeIntersectingArc(edgeStart, edgeEnd, cx, cy, radius, facingAngle, 
 
 window.sendPlayerPosition = sendPlayerPosition;
 window.consumeFood = consumeFood;
+window.consumePotion = consumePotion;
 window.tryAttack = tryAttack;
 window.applyKnockbackFromMob = applyKnockbackFromMob;
 

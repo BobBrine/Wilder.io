@@ -149,7 +149,14 @@ function handlePointerEvent(e) {
     stopHitting();
     return;
   }
-  
+
+  if (selected?.type.endsWith("_potion")) {
+    consumePotion(selected.type);
+    isMouseDown = false;
+    stopHitting();
+    return;
+  }
+    
   isMouseDown = true;
   tryHitResource();
   startHitting();
@@ -240,23 +247,38 @@ function getUIElementAtMouse(e) {
   const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
   const startX = (canvas.width - totalWidth) / 2;
   const hotbarY = canvas.height - slotSize - 20;
+  
+  // Hotbar slots
   for (let i = 0; i < hotbar.slots.length; i++) {
     const x = startX + i * (slotSize + padding);
     if (mouseX >= x && mouseX <= x + slotSize && mouseY >= hotbarY && mouseY <= hotbarY + slotSize) {
       return { type: "hotbar", index: i };
     }
   }
-  const craftX = canvas.width - scoreboardWidth - 110 - 10;
-  let craftY = 40;
-  const craftWidth = 100;
-  const craftHeight = 30;
-  for (const recipe of recipes) {
-    if (canCraft(recipe)) {
-      if (mouseX >= craftX && mouseX <= craftX + craftWidth && mouseY >= craftY && mouseY <= craftY + craftHeight) {
-        return { type: "crafting", recipe };
-      }
-      craftY += craftHeight + 10;
+  
+  // Crafting grid (4x4)
+  const gridCols = 4;
+  const gridRows = 4;
+  const cellSize = 32; // Match image size (icon 32px, padding)
+  const cellPadding = 10;
+  const gridWidth = gridCols * cellSize + (gridCols - 1) * cellPadding;
+  const gridHeight = gridRows * cellSize + (gridRows - 1) * cellPadding;
+  // Position: bottom right, above hotbar, with some margin
+  const gridX = canvas.width - scoreboardWidth - gridWidth - 20;
+  const gridY =  gridHeight - slotSize - 75;
+
+  const craftable = recipes.filter(r => canCraft(r)).slice(0, 16);
+  for (let i = 0; i < craftable.length; i++) {
+    const row = Math.floor(i / gridCols);
+    const col = gridCols - 1 - (i % gridCols); // right-to-left
+    const x = gridX + col * (cellSize + cellPadding);
+    const y = gridY + row * (cellSize + cellPadding);
+    
+    if (mouseX >= x && mouseX <= x + cellSize && 
+        mouseY >= y && mouseY <= y + cellSize) {
+      return { type: "crafting", recipe: craftable[i] };
     }
   }
+  
   return null;
 }

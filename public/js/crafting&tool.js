@@ -1,19 +1,4 @@
-let ItemTypes = {
-  hand: { isTool: true, attackRange: 50, attackSpeed: 0.35, damage: 1, category: 'hand', tier: 0 },
-  wooden_axe: { isTool: true, attackRange: 70, attackSpeed: 0.05, damage: 3, category: 'axe', tier: 1 },
-  wooden_pickaxe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 3, category: 'pickaxe', tier: 1 },
-  wooden_sword: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 99999999, category: 'sword', tier: 1 },
-  stone_axe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 5, category: 'axe', tier: 2 },
-  stone_pickaxe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 5, category: 'pickaxe', tier: 2 },
-  stone_sword: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 7, category: 'sword', tier: 2 },
-  iron_axe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 7, category: 'axe', tier: 3 },
-  iron_pickaxe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 7, category: 'pickaxe', tier: 3 },
-  iron_sword: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 10, category: 'sword', tier: 3 },
-  gold_axe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 10, category: 'axe', tier: 4 },
-  gold_pickaxe: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 10, category: 'pickaxe', tier: 4 },
-  gold_sword: { isTool: true, attackRange: 70, attackSpeed: 0.35, damage: 15, category: 'sword', tier: 4 },
-  torch: { isTool: true, attackRange: 50, attackSpeed: 0, damage: 1, category: 'hand', tier: 0 }
-};
+let ItemTypes = {};
 
 const recipes = [
   { name: "Torch", cost: { wood: 5 }, output: { type: "torch", count: 1 } },
@@ -28,13 +13,23 @@ const recipes = [
   { name: "Iron Pick", cost: { wood: 36, iron: 20, stone_pickaxe: 1 }, output: { type: "iron_pickaxe", count: 1 } },
   { name: "Gold Axe", cost: { wood: 50, gold: 15, iron_axe: 1 }, output: { type: "gold_axe", count: 1 } },
   { name: "Gold Sword", cost: { wood: 50, gold: 20, iron_sword: 1 }, output: { type: "gold_sword", count: 1 } },
-  { name: "Gold Pick", cost: { wood: 50, gold: 20, iron_pickaxe: 1 }, output: { type: "gold_pickaxe", count: 1 } }
+  { name: "Gold Pick", cost: { wood: 50, gold: 20, iron_pickaxe: 1 }, output: { type: "gold_pickaxe", count: 1 } },
+  { name: "Health Potion", cost: { pure_core: 10 }, output: { type: "health_potion", count: 1 } },
+  { name: "Strength Potion", cost: { dark_core: 10 }, output: { type: "strength_potion", count: 1 } },
+  { name: "Mythic Potion", cost: { mythic_core: 1, pure_core: 5, dark_core: 5, soul: 1 }, output: { type: "mythic_potion", count: 1 } }
 ];
 
 function canCraft(recipe) {
   const required = recipe.cost;
-  return Object.keys(required).every(key => inventory.hasItem(key, required[key]));
+  return Object.keys(required).every(key => {
+    if (key === 'soul') {
+      return window.soulCurrency.get() >= required[key];
+    } else {
+      return inventory.hasItem(key, required[key]);
+    }
+  });
 }
+
 
 function craftItem(recipe) {
   if (!canCraft(recipe)) {
@@ -47,7 +42,11 @@ function craftItem(recipe) {
     return false;
   }
   for (const [key, amount] of Object.entries(recipe.cost)) {
-    inventory.removeItem(key, amount);
+    if (key === 'soul') {
+      window.soulCurrency.set(window.soulCurrency.get() - amount);
+    } else {
+      inventory.removeItem(key, amount);
+    }
   }
   inventory.addItem(output.type, output.count);
   showMessage(`Crafted ${output.count} ${output.type}!`);

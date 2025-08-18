@@ -1,3 +1,10 @@
+// Load core images
+const pureCoreImage = new Image();
+pureCoreImage.src = '/images/pure_core.png';
+const darkCoreImage = new Image();
+darkCoreImage.src = '/images/dark_core.png';
+const mythicCoreImage = new Image();
+mythicCoreImage.src = '/images/mythic_core.png';
 // Load hand image
 const handImage = new Image();
 handImage.src = "/images/hand.png";
@@ -87,13 +94,25 @@ const toolImages = {
   'torch': torchImage,
 };
 
+const healthPotionImage = new Image();
+healthPotionImage.src = '/images/health_potion.png';
+const strengthPotionImage = new Image();
+strengthPotionImage.src = '/images/attack_potion.png';
+const mythicPotionImage = new Image();
+mythicPotionImage.src = '/images/Raindom_potion.png';
+
 const resourceImages = {
-    'wood': woodImage,
-    'stone': stoneImage,
-    'iron': ironImage,
-    'gold': goldImage,
-    'food': foodImage,
-    
+  'wood': woodImage,
+  'stone': stoneImage,
+  'iron': ironImage,
+  'gold': goldImage,
+  'food': foodImage,
+  'pure_core': pureCoreImage,
+  'dark_core': darkCoreImage,
+  'mythic_core': mythicCoreImage,
+  'health_potion': healthPotionImage,
+  'strength_potion': strengthPotionImage,
+  'mythic_potion': mythicPotionImage,
 };
 
 function drawTool(centerX, centerY, attackRange) {
