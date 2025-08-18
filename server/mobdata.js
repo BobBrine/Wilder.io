@@ -65,7 +65,7 @@ function generatePassiveMobType(id, difficulty) {
 
 
 // Function to generate an aggressive mob type with profiles (fixed stats)
-function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 15) {
+function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 5) {
   const baseTurnSpeed = Math.PI * 2;
   const turnSpeed = baseTurnSpeed * (1 + 0.05 * (difficulty - 1));
   const aggroRadius = 100 * (1 + 0.1 * (difficulty - 1));
