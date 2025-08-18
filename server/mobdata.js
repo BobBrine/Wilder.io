@@ -27,12 +27,12 @@ function getRandomPositionInCell(col, row, size) {
 }
 
 const crypto = require("crypto");
-const CYCLE_LENGTH = 300;//180; // 20 minutes in seconds
+const CYCLE_LENGTH = 180;//180; // 20 minutes in seconds
 
 // Constants
 const passiveColors = ["green", "lightblue", "pink"];
 const aggressiveColors = [ "#560202ff", "#000000", "#505050ff" ];
-const DAY_LENGTH = 300;//120; // 15 minutes of day, 5 minutes of night
+const DAY_LENGTH = 180;//120; // 15 minutes of day, 5 minutes of night
 
 // Helper function to generate random numbers within a range
 function randomBetween(min, max) {

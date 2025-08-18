@@ -694,8 +694,8 @@ function submitName() {
 // Game Functions
 // ========================
 let gameTime = 0;
-const CYCLE_LENGTH = 300;
-const DAY_LENGTH = 300;
+const CYCLE_LENGTH = 180;
+const DAY_LENGTH = 180;
 let lastDayIncrement = false;
 
 let Day = 0;
