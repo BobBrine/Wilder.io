@@ -33,6 +33,16 @@
       align-items: center;
       justify-content: center;
     }
+    #homePage.menu input, 
+    #homePage.menu select {
+      background: rgba(255, 255, 255, 0.9);
+      color: #333;
+      border: none;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 1.1em;
+      margin-bottom: 12px;
+    }
     #homePage.menu h2 {
       font-family: 'Roboto Slab', serif;
       font-weight: 700;
@@ -54,8 +64,8 @@
       cursor: pointer;
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
       transition: background 0.2s;
-      width: 80%;
-      max-width: 260px;
+      width: 100%;
+      max-width: 400px;
     }
     #homePage.menu button:hover {
       background: #4e8f36;
@@ -98,11 +108,29 @@
 
   <!-- Home Page -->
   <div id="homePage" class="menu">
-    <h2>Wilder.io BETA</h2>
-    <button onclick="joinMainServer()">Join Main Server</button>
-    <button onclick="showLocalLAN()">Local LAN</button>
-    <button onclick="showHowToModal()">How to Play</button>
-    <button onclick="showPrivacyModal()">Privacy Policy</button>
+    <h2>Wilder.io</h2>
+    
+    <!-- Content Wrapper for Consistent Width -->
+    <div style="display: flex; flex-direction: column; width: 100%; max-width: 400px; margin: 0 auto;">
+      <!-- Player Name Input with improved layout -->
+      <div style="display: flex; margin-bottom: 12px;">
+        <input id="playerNameInputHome" type="text" placeholder="Enter your name" />
+        <button onclick="playNow()" 
+                style="margin-left: 8px; margin-top: 0px; padding: 14px 48px; width: 160px; border-radius: 8px; border: none; 
+                      background: #6bbf4e; color: white; cursor: pointer; font-size: 1.1em;">
+          Play
+        </button>
+      </div>
+      
+      <!-- Server Selection -->
+      <select id="serverSelect" style="width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 1.1em; height: 46px; margin-bottom: 12px;">
+        <option value="https://survival-io-md0m.onrender.com">Main Server (Render)</option>
+        <option value="https://70fbf268-5e7f-48d3-bb25-2ba3aaae13e5-00-kgtz2yaascf1.picard.replit.dev/">Replit Server</option>
+      </select>
+    
+      <button onclick="showHowToModal()">How to Play</button>
+      <button onclick="showPrivacyModal()">Privacy Policy</button>
+    </div>
   </div>
 
   <!-- Soul Reset Button (bottom right, overlays canvas, only on home page) -->
@@ -146,37 +174,10 @@
     <button onclick="backToHome()">Back</button>
   </div>
 
-  <!-- Local LAN Page -->
-  <div id="localLAN" class="menu" style="display: none;">
-    <h2>Local LAN Play</h2>
-    <button onclick="showHostPrompt()">Host</button>
-    <button onclick="showJoinLocalPrompt()">Join Local</button>
-    <button onclick="backToHome()">Back</button>
-  </div>
 
-  <!-- Host Prompt -->
-  <div id="hostPrompt" class="menu" style="display: none;">
-    <h2>Host Game</h2>
-    <input id="hostIPInput" type="text" autocomplete="off" placeholder="Enter your IP (e.g., 192.168.1.100)">
-    <!-- If you cannot type numbers, try switching your keyboard/IME or use a different browser. -->
-    <button onclick="submitHostIP()">Host Game</button>
-    <button onclick="backToLocalLAN()">Back</button>
-  </div>
 
-  <!-- Join Local Prompt -->
-  <div id="joinLocalPrompt" class="menu" style="display: none;">
-    <h2>Join Local Game</h2>
-    <input id="joinIPInput" type="text" autocomplete="off" placeholder="Enter host IP (e.g., 192.168.1.100)">
-    <button onclick="submitJoinIP()">Join Game</button>
-    <button onclick="backToLocalLAN()">Back</button>
-  </div>
 
-  <!-- Name Entry -->
-  <div id="nameEntry" class="menu" style="display: none;">
-    <h2>Enter Your Name</h2>
-    <input id="playerNameInput" type="text" placeholder="Your name" />
-    <button onclick="submitName()">Join</button>
-  </div>
+  
 
   <!-- Death Screen -->
   <div id="deathScreen" class="menu" style="display: none;">
@@ -223,24 +224,34 @@
 
   <!-- Privacy Policy Section removed: now only accessible via modal -->
 
-  <!-- Scripts -->
-  <script src="js/soul.js?v=1.0"></script>
-  <script src="js/menuBackground.js?v=1.0"></script>
-  <script src="js/resourceTypes.js?v=1.0"></script>
-  <script src="js/mobs.js?v=2.1"></script> <!-- Increment version -->
-  <script src="js/player.js?v=1.0"></script>
-  <script src="js/tool.js?v=1.0"></script>
-  <script src="js/crafting&tool.js?v=1.0"></script>
-  <script src="js/hotbar.js?v=1.0"></script>
-  <script src="js/inventory.js?v=1.0"></script>
-  <script src="js/ui.js?v=1.0"></script>
-  <script src="js/network.js?v=5.1"></script> <!-- Increment version -->
-  <script src="js/settingsPanel.js?v=1.0"></script>
-  <script src="js/canvas.js?v=1.0"></script>
-  <script src="js/camera.js?v=1.0"></script>
-  <script src="js/mobileControls.js?v=1.0"></script>
-  <script src="js/input.js?v=1.0"></script>
-  <script src="js/main.js?v=1.0"></script>
+  <script>
+    const version = "1.1.1";
+    const scripts = [
+      "js/soul.js",
+      "js/menuBackground.js",
+      "js/resourceTypes.js",
+      "js/mobs.js",
+      "js/player.js",
+      "js/tool.js",
+      "js/crafting&tool.js",
+      "js/hotbar.js",
+      "js/inventory.js",
+      "js/ui.js",
+      "js/network.js",
+      "js/settingsPanel.js",
+      "js/canvas.js",
+      "js/camera.js",
+      "js/mobileControls.js",
+      "js/input.js",
+      "js/main.js"
+    ];
+
+    scripts.forEach(src => {
+      const script = document.createElement("script");
+      script.src = `${src}?v=${version}`;
+      document.head.appendChild(script);
+    });
+  </script>
 
   <script>
     // Show siteContent only on home page
@@ -260,23 +271,20 @@
     function closePrivacyModal() {
       document.getElementById('privacyModal').style.display = 'none';
     }
-    // Patch joinMainServer and showLocalLAN to hide siteContent
-  const origJoinMainServer = window.joinMainServer;
-    window.joinMainServer = function() {
+
+    const origPlayNow = window.playNow;
+    window.playNow = function() {
       showSiteContent(false);
       try {
         const mode = (window.controlsSettings && window.controlsSettings.getMode && window.controlsSettings.getMode()) || (localStorage.getItem('controls.mode') || 'pc');
         window.mobileControls && window.mobileControls.setVisible(mode === 'mobile');
-    // Enable game canvas interactions during gameplay
-    var gc = document.getElementById('gameCanvas'); if (gc) gc.style.pointerEvents = 'auto';
+        // Enable game canvas interactions during gameplay
+        var gc = document.getElementById('gameCanvas'); 
+        if (gc) gc.style.pointerEvents = 'auto';
       } catch (_) {}
-      if (origJoinMainServer) origJoinMainServer();
+      if (origPlayNow) origPlayNow();
     };
-    const origShowLocalLAN = window.showLocalLAN;
-    window.showLocalLAN = function() {
-      showSiteContent(false);
-      if (origShowLocalLAN) origShowLocalLAN();
-    };
+
     // Patch backToHome to always show siteContent
     const origBackToHome = window.backToHome;
     window.backToHome = function() {
@@ -325,7 +333,7 @@
    window.addEventListener('difficultyProgressionChanged', updateSoulDisplayHome);
     setInterval(updateSoulDisplayHome, 500);
     // Also update on navigation
-    [window.backToHome, window.showLocalLAN, window.joinMainServer].forEach(fn => {
+    [window.backToHome, window.playNow].forEach(fn => { // Changed to playNow
       if (typeof fn === 'function') {
         const orig = fn;
         fn = function() { orig.apply(this, arguments); updateSoulDisplayHome(); };

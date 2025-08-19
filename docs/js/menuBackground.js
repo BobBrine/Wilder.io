@@ -14,7 +14,7 @@
 
   // Load grass texture
   const grassImg = new Image();
-  grassImg.src = '/images/grass.png';
+  grassImg.src = 'images/grass.png';
 
   // Animation state
   let offsetX = 0;

@@ -1,13 +1,13 @@
 // Load core images
 const pureCoreImage = new Image();
-pureCoreImage.src = '/images/pure_core.png';
+pureCoreImage.src = 'images/pure_core.png';
 const darkCoreImage = new Image();
-darkCoreImage.src = '/images/dark_core.png';
+darkCoreImage.src = 'images/dark_core.png';
 const mythicCoreImage = new Image();
-mythicCoreImage.src = '/images/mythic_core.png';
+mythicCoreImage.src = 'images/mythic_core.png';
 // Load hand image
 const handImage = new Image();
-handImage.src = "/images/hand.png";
+handImage.src = "images/hand.png";
 let handImageLoaded = false;
 handImage.onload = () => {
   handImageLoaded = true;
@@ -15,37 +15,37 @@ handImage.onload = () => {
 
 // Load sword image
 const swordImage = new Image();
-swordImage.src = '/images/wooden_sword.png'; // Adjust path as needed
+swordImage.src = 'images/wooden_sword.png'; // Adjust path as needed
 const stone_sword_Image = new Image();
-stone_sword_Image.src = '/images/stone_sword.png';
+stone_sword_Image.src = 'images/stone_sword.png';
 const iron_sword_Image = new Image();
-iron_sword_Image.src = '/images/iron_sword.png';
+iron_sword_Image.src = 'images/iron_sword.png';
 const gold_sword_Image = new Image();
-gold_sword_Image.src = '/images/gold_sword.png';
+gold_sword_Image.src = 'images/gold_sword.png';
 
 // Load pickaxe image
 const wooden_pickaxe_Image = new Image();
-wooden_pickaxe_Image.src = '/images/wooden_pickaxe.png'; // Adjust path as needed
+wooden_pickaxe_Image.src = 'images/wooden_pickaxe.png'; // Adjust path as needed
 const stone_pickaxe_Image = new Image();
-stone_pickaxe_Image.src = '/images/stone_pickaxe.png';
+stone_pickaxe_Image.src = 'images/stone_pickaxe.png';
 const iron_pickaxe_Image = new Image();
-iron_pickaxe_Image.src = '/images/iron_pickaxe.png';
+iron_pickaxe_Image.src = 'images/iron_pickaxe.png';
 const gold_pickaxe_Image = new Image();
-gold_pickaxe_Image.src = '/images/gold_pickaxe.png';
+gold_pickaxe_Image.src = 'images/gold_pickaxe.png';
 
 // Load axe image
 const wooden_axe_Image = new Image();
-wooden_axe_Image.src = '/images/wooden_axe.png'; // Adjust path as needed
+wooden_axe_Image.src = 'images/wooden_axe.png'; // Adjust path as needed
 const stone_axe_Image = new Image();
-stone_axe_Image.src = '/images/stone_axe.png';
+stone_axe_Image.src = 'images/stone_axe.png';
 const iron_axe_Image = new Image();
-iron_axe_Image.src = '/images/iron_axe.png';
+iron_axe_Image.src = 'images/iron_axe.png';
 const gold_axe_Image = new Image();
-gold_axe_Image.src = '/images/gold_axe.png';
+gold_axe_Image.src = 'images/gold_axe.png';
 
 // Load wood image
 const woodImage = new Image();
-woodImage.src = '/images/wood.png'; // Adjust path as needed
+woodImage.src = 'images/wood.png'; // Adjust path as needed
 let woodImageLoaded = false;
 woodImage.onload = () => {
     woodImageLoaded = true;
@@ -53,30 +53,30 @@ woodImage.onload = () => {
 
 // Load food image
 const foodImage = new Image();
-foodImage.src = '/images/food.png';
+foodImage.src = 'images/food.png';
 let foodImageLoaded = false;
 foodImage.onload = () => {
     foodImageLoaded = true;
 };
 
 const torchImage = new Image();
-torchImage.src = '/images/torch.png';
+torchImage.src = 'images/torch.png';
 let torchImageLoaded = false;
 torchImage.onload = () => {
     torchImageLoaded = true;
 };
 
 const stoneImage = new Image();
-stoneImage.src = '/images/stone.png';
+stoneImage.src = 'images/stone.png';
 let stoneImageLoaded = false;
 stoneImage.onload = () => {
     stoneImageLoaded = true;
 };
 
 const ironImage = new Image();
-ironImage.src = '/images/iron.png';
+ironImage.src = 'images/iron.png';
 const goldImage = new Image();
-goldImage.src = '/images/gold.png';
+goldImage.src = 'images/gold.png';
 
 const toolImages = {
   'wooden_sword': swordImage,
@@ -95,11 +95,11 @@ const toolImages = {
 };
 
 const healthPotionImage = new Image();
-healthPotionImage.src = '/images/health_potion.png';
+healthPotionImage.src = 'images/health_potion.png';
 const strengthPotionImage = new Image();
-strengthPotionImage.src = '/images/attack_potion.png';
+strengthPotionImage.src = 'images/attack_potion.png';
 const mythicPotionImage = new Image();
-mythicPotionImage.src = '/images/Raindom_potion.png';
+mythicPotionImage.src = 'images/Raindom_potion.png';
 
 const resourceImages = {
   'wood': woodImage,

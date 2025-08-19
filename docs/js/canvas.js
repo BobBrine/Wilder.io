@@ -23,7 +23,7 @@ window.addEventListener("resize", resizeCanvas);
 
 const WORLD_SIZE = 5000;
 const backgroundImage = new Image();
-backgroundImage.src = '/images/grass.png'; // must be 5000x5000
+backgroundImage.src = 'images/grass.png'; // must be 5000x5000
 
 // This will draw the image once at 0,0
 backgroundImage.onload = function () {

@@ -17,7 +17,7 @@ const KNOCKBACK_FORCE = 350; // pixels/sec
 
 // Load player image
 const playerImage = new Image();
-playerImage.src = "/images/Player1.png"; // Adjust the path if needed
+playerImage.src = "images/Player1.png"; // Adjust the path if needed
 let playerImageLoaded = false;
 playerImage.onload = () => {
   playerImageLoaded = true;

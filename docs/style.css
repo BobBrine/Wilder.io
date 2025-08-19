@@ -115,3 +115,18 @@ canvas {
   animation: spin 1s ease-in-out infinite;
   margin-right: 10px;
 }
+
+#playerNameInputHome {
+  background: rgba(255, 255, 255, 0.9);
+  color: #333;
+}
+
+#serverSelect {
+  background: rgba(255, 255, 255, 0.9);
+  color: #333;
+}
+
+#serverSelect option {
+  background: #333;
+  color: #fff;
+}

@@ -261,9 +261,9 @@ const devTest = false;
 const staticOptions = devTest
   ? { maxAge: 0, etag: false, lastModified: false, index: false }
   : { maxAge: '365d', immutable: true, index: false };
-app.use(express.static(path.join(__dirname, '..', 'public'), staticOptions));
+app.use(express.static(path.join(__dirname, '..', 'docs'), staticOptions));
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, '..', 'docs', 'index.html'));
 });
 
 // Expose dev flag to newly connected clients
