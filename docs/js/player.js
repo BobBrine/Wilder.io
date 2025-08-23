@@ -255,6 +255,7 @@ function updatePlayerPosition(deltaTime) {
             if (res && res.ok === true) {
               // Optimistically remove from local list in case we miss server remove event
               droppedItems = Array.isArray(droppedItems) ? droppedItems.filter(di => di && di.id !== item.id) : [];
+              
             } else if (res && res.ok === false && typeof showMessage === 'function') {
               // Show a brief hint if server rejected
               const hint = res.reason === 'delay' ? 'Wait a moment…' : (res.reason === 'range' ? 'Move closer' : 'Pickup failed');
@@ -290,11 +291,12 @@ function consumeFood() {
   if (!player || isDead || typeof hotbar === 'undefined' || typeof inventory === 'undefined') return;
   const selected = hotbar.slots[hotbar.selectedIndex];
   if (selected?.type === "food" && inventory.hasItem && inventory.hasItem("food", 1) && player.hunger < player.maxHunger) {
+    playConsume();
     inventory.removeItem("food", 1);
     if (window.socket && window.socket.connected) window.socket.emit("consumeFood", { amount: 1 });
     if (typeof showMessage === 'function') showMessage("Ate food, hunger restored!");
   } else if (selected?.type === "food" && player.hunger >= player.maxHunger) {
-    if (typeof showMessage === 'function') showMessage("You are not hungry!");
+    if (typeof showMessage === 'function') playCancel(); showMessage("You are not hungry!");
   } else {
     if (typeof showMessage === 'function') showMessage("No food selected!");
   }
@@ -304,6 +306,7 @@ function consumePotion(type) {
   if (!player || isDead || typeof hotbar === 'undefined' || typeof inventory === 'undefined') return;
   const selected = hotbar.slots[hotbar.selectedIndex];
   if (selected?.type === type && inventory.hasItem && inventory.hasItem(type, 1)) {
+    playConsume();
     inventory.removeItem(type, 1);
     if (window.socket && window.socket.connected) window.socket.emit("consumePotion", { type });
     if (typeof showMessage === 'function') showMessage(`Consumed ${ItemTypes[type].name}!`);
@@ -311,7 +314,7 @@ function consumePotion(type) {
     if (typeof showMessage === 'function') showMessage("No potion selected!");
   }
 }
-1
+
 
 function drawHungerBar(startX, hotbarY) {
   ctx.save();

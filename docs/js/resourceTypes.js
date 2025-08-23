@@ -94,6 +94,7 @@ function hitResourceInCone() {
   // ✅ Apply damage to resource (food always takes 1)
   const damage = (type === 'food') ? 1 : toolInfo.damage;
         resource.health -= damage;
+        playChopTree();
         socket.emit("resourceHit", { type, id: resource.id, newHealth: resource.health });
         showDamageText(rx, ry, -damage);
         triggerResourceHitAnimation(resource, player);

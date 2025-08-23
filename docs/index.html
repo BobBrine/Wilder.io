@@ -198,7 +198,14 @@
       <button id="settingsRespawnBtn">Respawn Player</button>
       <button id="settingsPerformanceBtn">Performance: Toggle</button>
       <button id="settingsDebugBtn">Debug: Toggle</button>
-  <button id="settingsControlsModeBtn">Controls: PC</button>
+      <button id="settingsControlsModeBtn">Controls: PC</button>
+      <!-- Add sound controls here -->
+      <button id="settingsSoundBtn">Sound: On</button>
+      <div id="settingsVolumeRow" style="display:flex; gap:8px; align-items:center;">
+        <label for="settingsVolumeSlider" style="flex:0 0 130px; text-align:left;">Volume</label>
+        <input id="settingsVolumeSlider" type="range" min="0" max="100" step="5" value="100" style="flex:1;" />
+        <span id="settingsVolumeValue" style="min-width:46px; text-align:right;">100%</span>
+      </div>
       <div id="settingsJoystickRow" style="display:none; gap:8px; align-items:center;">
         <label for="settingsJoystickScale" style="flex:0 0 130px; text-align:left;">Joystick Size</label>
         <input id="settingsJoystickScale" type="range" min="0.6" max="1.6" step="0.05" value="1.0" style="flex:1;" />
@@ -225,7 +232,33 @@
   <!-- Privacy Policy Section removed: now only accessible via modal -->
 
   <script>
-    const version = "1.1.1";
+    // Add event listener for Reset Soul button
+    document.addEventListener('DOMContentLoaded', function() {
+      var resetBtn = document.getElementById('resetSoulBtn');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+          // Reset soul currency
+          if (window.soulCurrency && typeof window.soulCurrency.set === 'function') {
+            window.soulCurrency.set(0);
+          } else {
+            localStorage.setItem('soulCurrency', '0');
+          }
+          // Reset highest difficulty
+          window.difficultyProgression = 0;
+          localStorage.setItem('difficulty.progression', '0');
+          // Dispatch events to update UI
+          window.dispatchEvent(new CustomEvent('soulChanged'));
+          window.dispatchEvent(new CustomEvent('difficultyProgressionChanged'));
+          // Optionally, show a message
+          if (typeof window.showMessage === 'function') {
+            window.showMessage('Progress reset!', 2);
+          } else {
+            alert('Progress reset!');
+          }
+        });
+      }
+    });
+    const version = "1.1.2";
     const scripts = [
       "js/soul.js",
       "js/menuBackground.js",
@@ -236,6 +269,7 @@
       "js/crafting&tool.js",
       "js/hotbar.js",
       "js/inventory.js",
+      "js/sound.js",
       "js/ui.js",
       "js/network.js",
       "js/settingsPanel.js",
@@ -252,7 +286,45 @@
       document.head.appendChild(script);
     });
   </script>
-
+  <script>
+    // Add event listener to play select sound on all button clicks
+    document.addEventListener('DOMContentLoaded', function() {
+      // Function to play select sound
+      function playButtonSound() {
+        if (typeof playSelect === 'function') {
+          playSelect();
+        }
+      }
+      
+      // Add event listeners to all existing buttons
+      document.querySelectorAll('button').forEach(button => {
+        button.addEventListener('click', playButtonSound);
+      });
+      
+      // Use MutationObserver to handle dynamically created buttons
+      const observer = new MutationObserver(mutations => {
+        mutations.forEach(mutation => {
+          mutation.addedNodes.forEach(node => {
+            if (node.nodeType === 1) { // Element node
+              if (node.tagName === 'BUTTON') {
+                node.addEventListener('click', playButtonSound);
+              }
+              // Check for buttons inside added nodes
+              node.querySelectorAll('button').forEach(button => {
+                button.addEventListener('click', playButtonSound);
+              });
+            }
+          });
+        });
+      });
+      
+      // Start observing the document for changes
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    });
+  </script>
   <script>
     // Show siteContent only on home page
     function showSiteContent(show) {

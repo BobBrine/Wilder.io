@@ -41,17 +41,26 @@
     if (!isInGameplay()) return;
     panel.style.display = 'block';
     overlay.style.display = 'block';
+    controldisplay = true;
   }
   function closePanel() {
     panel.style.display = 'none';
     overlay.style.display = 'none';
+    controldisplay = false;
   }
   function togglePanel() {
     if (panel.style.display === 'none' || panel.style.display === '') openPanel(); else closePanel();
   }
 
   // Gear toggles panel
-  gear.addEventListener('click', togglePanel);
+  gear.addEventListener('click', () => {
+  togglePanel();
+  try {
+    window.playSelect(); // Play the select sound
+  } catch (e) {
+    console.error('Failed to play select sound:', e);
+  }
+});
 
   // Esc toggles open/close; also closes when already open
   document.addEventListener('keydown', (e) => {
@@ -80,11 +89,48 @@
   const perfBtn = document.getElementById('settingsPerformanceBtn');
   const debugBtn = document.getElementById('settingsDebugBtn');
   const controlsBtn = document.getElementById('settingsControlsModeBtn');
+  const soundBtn = document.getElementById('settingsSoundBtn'); // New sound button
+  const volumeRow = document.getElementById('settingsVolumeRow'); // New volume row
+  const volumeSlider = document.getElementById('settingsVolumeSlider'); // New volume slider
+  const volumeValue = document.getElementById('settingsVolumeValue'); // New volume value display
   const goMainBtn = document.getElementById('settingsGoMainBtn');
   const jsRow = document.getElementById('settingsJoystickRow');
   const jsRange = document.getElementById('settingsJoystickScale');
   const jsVal = document.getElementById('settingsJoystickScaleVal');
 
+  function refreshSoundBtn() {
+    if (!soundBtn) return;
+    soundBtn.textContent = `Sound: ${window.soundSettings.muted ? 'Off' : 'On'}`;
+    if (volumeRow) volumeRow.style.display = window.soundSettings.muted ? 'none' : 'flex';
+  }
+  
+  function toggleSound() {
+    window.soundSettings.muted = !window.soundSettings.muted;
+    try {
+      localStorage.setItem('sound.muted', window.soundSettings.muted);
+    } catch (e) {}
+    refreshSoundBtn();
+  }
+
+  if (soundBtn) {
+    soundBtn.addEventListener('click', toggleSound);
+    refreshSoundBtn();
+  }
+
+  // Volume slider
+  if (volumeSlider && volumeValue) {
+    volumeSlider.value = window.soundSettings.volume;
+    volumeValue.textContent = `${window.soundSettings.volume}%`;
+    
+    volumeSlider.addEventListener('input', () => {
+      const volume = parseInt(volumeSlider.value, 10);
+      volumeValue.textContent = `${volume}%`;
+      window.soundSettings.volume = volume;
+      try {
+        localStorage.setItem('sound.volume', volume);
+      } catch (e) {}
+    });
+  }
   // Reuse death screen respawn logic: emulate clicking respawn (calls socket setName, etc.)
   function doRespawn() {
     if (typeof window.respawnNow === 'function') window.respawnNow();

@@ -26,7 +26,7 @@ canvas {
   border: 2px solid #fff;
   background-color: #189a21;
   display: block;
-  image-rendering: crisp-edges; 
+  image-rendering: pixelated; /* Add this line */
 }
 
 /* Default: game canvas does not capture input while in menus; JS will enable during gameplay */

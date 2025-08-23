@@ -1,4 +1,16 @@
-let ItemTypes = {};
+let ItemTypes = {
+  wooden_sword: {
+    name: "Wooden Sword",
+    color: "sienna",
+    isTool: true,
+    category: "sword",
+    tier: 1,
+    damage: 1000000,
+    attackRange: 70,
+    attackSpeed: 0.45
+  }
+
+};
 
 const recipes = [
   { name: "Torch", cost: { wood: 5 }, output: { type: "torch", count: 1 } },
@@ -33,11 +45,13 @@ function canCraft(recipe) {
 
 function craftItem(recipe) {
   if (!canCraft(recipe)) {
+    playCancel();
     showMessage("Not enough resources to craft!");
     return false;
   }
   const output = recipe.output;
   if (!inventory.canAddItem(output.type)) {
+    playCancel();
     showMessage("Inventory full! Cannot craft item.");
     return false;
   }
@@ -49,6 +63,7 @@ function craftItem(recipe) {
     }
   }
   inventory.addItem(output.type, output.count);
+  playSelect();
   showMessage(`Crafted ${output.count} ${output.type}!`);
   return true;
 }

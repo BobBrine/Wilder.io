@@ -251,7 +251,7 @@ function setupSocketListeners() {
     otherPlayers = players;
     delete otherPlayers[socket.id];
   });
-
+  
   socket.on('playerSelf', (playerData) => {
   // Ensure clean inventory/hotbar on fresh join/respawn
   try { if (inventory && typeof inventory.clear === 'function') inventory.clear(); } catch(_) {}
@@ -368,7 +368,22 @@ function setupSocketListeners() {
 
   // Receive per-client, proximity-filtered dropped items snapshot
   socket.on("droppedItems", (items) => {
-    droppedItems = items || [];
+    // Merge incoming items with existing droppedItems to avoid losing instant drops
+    if (!Array.isArray(items)) items = [];
+    if (!Array.isArray(droppedItems)) droppedItems = [];
+    // Build a map of current items by id
+    const itemMap = new Map(droppedItems.map(it => [it.id, it]));
+    // Add or update items from the new snapshot
+    for (const it of items) {
+      itemMap.set(it.id, it);
+    }
+    // Remove items not present in the new snapshot
+    for (const id of Array.from(itemMap.keys())) {
+      if (!items.some(it => it.id === id)) {
+        itemMap.delete(id);
+      }
+    }
+    droppedItems = Array.from(itemMap.values());
   });
   
   socket.on('updatePlayerStats', (stats) => {
@@ -422,6 +437,7 @@ function setupSocketListeners() {
 
   socket.on("addItem", ({ type, amount }) => {
     if (inventory.addItem(type, amount)) {
+      playPopClaim();
       showMessage(`Picked up ${amount} ${type}`);
     }
   });
@@ -433,12 +449,15 @@ function setupSocketListeners() {
 
   socket.on('playerDied', () => {
     isDead = true;
-  player = null;
-  otherPlayers = {};
-  // Keep resources/mobs flags so the loop doesn't stall during respawn
-    if (inventory && typeof inventory.clear === "function") {
-      inventory.clear();
+    console.log("Player has died");
+    for (const [item, count] of Object.entries(inventory.items)) {
+      dropItem(item, count, player);
     }
+    inventory.clear();
+    //I want a delay here
+    player = null;
+    otherPlayers = {};
+  // Keep resources/mobs flags so the loop doesn't stall during respawn
     const deathScreen = document.getElementById("deathScreen");
     deathScreen.style.display = "block";
     // Add Respawn button if not already present
@@ -466,6 +485,7 @@ function setupSocketListeners() {
 
     // Listen for knockback event from server
     socket.on('playerKnockback', ({ mobX, mobY, mobId }) => {
+      playPlayerHurt();
       // Create a minimal mob object for knockback direction
       if (window.applyKnockbackFromMob) {
         window.applyKnockbackFromMob({ x: mobX, y: mobY });
@@ -558,13 +578,20 @@ function backToHome() {
   }
   // Full client-side reset when returning home
   if (typeof window.resetClientState === 'function') window.resetClientState();
-  document.getElementById("serverJoin").style.display = "none";
-  document.getElementById("localLAN").style.display = "none";
-  document.getElementById("hostPrompt").style.display = "none";
-  document.getElementById("joinLocalPrompt").style.display = "none";
-  document.getElementById("nameEntry").style.display = "none";
-  document.getElementById("deathScreen").style.display = "none";
-  document.getElementById("homePage").style.display = "block";
+  const serverJoin = document.getElementById("serverJoin");
+  if (serverJoin) serverJoin.style.display = "none";
+  const localLAN = document.getElementById("localLAN");
+  if (localLAN) localLAN.style.display = "none";
+  const hostPrompt = document.getElementById("hostPrompt");
+  if (hostPrompt) hostPrompt.style.display = "none";
+  const joinLocalPrompt = document.getElementById("joinLocalPrompt");
+  if (joinLocalPrompt) joinLocalPrompt.style.display = "none";
+  const nameEntry = document.getElementById("nameEntry");
+  if (nameEntry) nameEntry.style.display = "none";
+  const deathScreen = document.getElementById("deathScreen");
+  if (deathScreen) deathScreen.style.display = "none";
+  const homePage = document.getElementById("homePage");
+  if (homePage) homePage.style.display = "block";
 }
 
 
@@ -601,14 +628,18 @@ function backToMain() {
     socket.disconnect();
     socket = null;
   }
-  document.getElementById("deathScreen").style.display = "none";
+  const deathScreen = document.getElementById("deathScreen");
+  if (deathScreen) deathScreen.style.display = "none";
   // Hide respawn button if present
   const respawnBtn = document.getElementById("respawnBtn");
   if (respawnBtn) respawnBtn.style.display = "none";
   // Full client-side reset like a fresh player
   if (typeof window.resetClientState === 'function') window.resetClientState();
-  document.getElementById("homePage").style.display = "block";
-  document.getElementById("playerNameInput").value = "";
+  const homePage = document.getElementById("homePage");
+  if (homePage) homePage.style.display = "block";
+  // Use correct input ID for home page
+  const nameInput = document.getElementById("playerNameInputHome");
+  if (nameInput) nameInput.value = "";
 }
 
 function submitName() {
@@ -634,8 +665,8 @@ function submitName() {
 // Game Functions
 // ========================
 let gameTime = 0;
-const CYCLE_LENGTH = 180;
-const DAY_LENGTH = 180;
+const CYCLE_LENGTH = 120;
+const DAY_LENGTH = 120;
 let lastDayIncrement = false;
 
 let Day = 0;
@@ -657,12 +688,25 @@ function calculateDayNightCycle() {
 
 
 
-function dropItem(type, amount) {
-  if (inventory.removeItem(type, amount)) {
-    socket.emit("dropItem", { type, amount, x: player.x + player.size / 2, y: player.y + player.size / 2 });
-    showMessage(`You dropped ${amount} ${type}`);
+function dropItem(type, amount, entity, dropbyplayer=false) {
+  if (dropbyplayer) {
+    // Player-specific drop logic
+    if (inventory.removeItem(type, amount)) {
+      socket.emit("dropItem", { type, amount, x: entity.x + entity.size / 2, y: entity.y + entity.size / 2 });
+      showMessage(`You dropped ${amount} ${type}`);
+    } else {
+      showMessage("Failed to drop item");
+    }
   } else {
-    showMessage("Failed to drop item");
+    const offsetX = (Math.random() - 0.5) * 60;
+    const offsetY = (Math.random() - 0.5) * 60;
+
+    socket.emit("dropItem", {
+      type,
+      amount,
+      x: entity.x + entity.size / 2 + offsetX,
+      y: entity.y + entity.size / 2 + offsetY
+    });
   }
 }
 
@@ -674,13 +718,13 @@ function submitDropAmount() {
     document.getElementById("dropAmountPrompt").style.display = "none";
     return;
   }
-  dropItem(currentDropType, amount);
+  dropItem(currentDropType, amount, player, true);
   document.getElementById("dropAmountPrompt").style.display = "none";
   document.getElementById("dropAmountInput").value = "";
 }
 
 function dropAll() {
-  dropItem(currentDropType, currentMaxCount);
+  dropItem(currentDropType, currentMaxCount, player, true);
   document.getElementById("dropAmountPrompt").style.display = "none";
   document.getElementById("dropAmountInput").value = "";
 }
@@ -702,15 +746,22 @@ if (isDevMode()) {
   onReady(() => {
     // Always start from a clean client state in dev
     if (typeof window.resetClientState === 'function') window.resetClientState();
-    // Hide all menus and show game instantly
-    document.getElementById("homePage").style.display = "none";
-    document.getElementById("serverJoin").style.display = "none";
-    // Remove these old UI elements:
-    // document.getElementById("localLAN").style.display = "none";
-    // document.getElementById("hostPrompt").style.display = "none";
-    // document.getElementById("joinLocalPrompt").style.display = "none";
-    document.getElementById("nameEntry").style.display = "none";
-    document.getElementById("deathScreen").style.display = "none";
+    // Hide all menus and show game instantly (with null checks)
+    const homePage = document.getElementById("homePage");
+    if (homePage) homePage.style.display = "none";
+    const serverJoin = document.getElementById("serverJoin");
+    if (serverJoin) serverJoin.style.display = "none";
+    // Remove these old UI elements (with null checks):
+    // const localLAN = document.getElementById("localLAN");
+    // if (localLAN) localLAN.style.display = "none";
+    // const hostPrompt = document.getElementById("hostPrompt");
+    // if (hostPrompt) hostPrompt.style.display = "none";
+    // const joinLocalPrompt = document.getElementById("joinLocalPrompt");
+    // if (joinLocalPrompt) joinLocalPrompt.style.display = "none";
+    const nameEntry = document.getElementById("nameEntry");
+    if (nameEntry) nameEntry.style.display = "none";
+    const deathScreen = document.getElementById("deathScreen");
+    if (deathScreen) deathScreen.style.display = "none";
     
     console.log('[Dev] Auto-connect initializing...');
     // In dev mode, connect to the same host the page was served from

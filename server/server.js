@@ -272,7 +272,6 @@ app.get('*', (req, res) => {
 // });
 
 spawnAllResources();
-spawnAllMob(allResources, players, gameTime);
 
 // Simple spatial grid for mobs (rebuilt each tick)
 // Map key: "cx,cy" -> Array of { type, ref }
@@ -404,7 +403,7 @@ function gatherItemsNear(x, y, r) {
 
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
-  
+  emitVisibleDroppedItemsPerClient();
   // Send initial static data only to the connecting client
   socket.emit("resourceType", resourceTypes);
   socket.emit("mobType", mobtype);
@@ -607,7 +606,6 @@ setInterval(() => {
     lastUpdate = now;
     if (gameTime >= CYCLE_LENGTH - 1 && !lastDayIncrement) {
       day++;
-      lastDayIncrement = true;
       // Increase difficulty every 7 days
       if (day % 7 === 0 && day > 0 && lastDifficultyIncreaseDay !== day) {
         difficulty++;
@@ -615,8 +613,9 @@ setInterval(() => {
         lastDifficultyIncreaseDay = day;
         console.log(`Difficulty increased to ${difficulty} on day ${day}`);
       }
+      lastDayIncrement = true;
     }
-    if (gameTime < 9) {
+    if (gameTime < CYCLE_LENGTH - 1) {
       lastDayIncrement = false;
     }
     gameTime = (gameTime + deltaTime) % CYCLE_LENGTH;
@@ -640,21 +639,23 @@ setInterval(() => {
     __tickStats.sum += dtMs;
     if (dtMs < __tickStats.min) __tickStats.min = dtMs;
     if (dtMs > __tickStats.max) __tickStats.max = dtMs;
-  }
+  } 
 }, TICK_MS);
 
 // Static update loop (every 10s)
 setInterval(() => {
-  const now = Date.now();
-  const deltaTime = (now - lastStaticUpdate) / 1000; // in seconds
-  lastStaticUpdate = now;
-  
+  const { playerCount} = getCounts();
+  if (playerCount > 0) {
+    const now = Date.now();
+    const deltaTime = (now - lastStaticUpdate) / 1000; // in seconds
+    lastStaticUpdate = now;
+    
 
-  updateResourceRespawns(deltaTime);
-  updateMobRespawns(deltaTime, allResources, players, gameTime);
-  // No global broadcast of resources; proximity-filtered snapshots are sent per client more frequently.
+    spawnAllResources();
+    updateMobRespawns(deltaTime, allResources, players, gameTime);
+    // No global broadcast of resources; proximity-filtered snapshots are sent per client more frequently.
 
-
+  }
 }, 10000);
 
 server.listen(PORT, '0.0.0.0', () => {
@@ -858,6 +859,7 @@ function emitVisibleDroppedItemsPerClient() {
         lastItemsSnapshot.set(sid, snapshot);
         lastItemsEmitAt.set(sid, nowMs);
         sock.compress(false).volatile.emit("droppedItems", visible);
+        io.emit("droppedItems", visible);
       }
     }
   }
@@ -907,7 +909,9 @@ function emitVisibleResourcesPerClient() {
 function handleHit(socket, collection, type, id, newHealth, configTypes, isMob = false, knockback = null) {
   const list = collection[type];
   if (!list) return;
-  const entity = list?.find(e => e.id === id);
+  const entityIndex = list.findIndex(e => e.id === id);
+  if (entityIndex === -1) return;
+  const entity = list[entityIndex];
   if (!entity) return;
   const attacker = players[socket.id];
   const dist = Math.hypot(attacker.x - entity.x, attacker.y - entity.y);
@@ -962,17 +966,9 @@ function handleHit(socket, collection, type, id, newHealth, configTypes, isMob =
     } else {
       entity.sizeX = 0; // For resources or other entities
       entity.sizeY = 0;
+      entity.size = 0;
     }
-    
-    entity.respawnTimer = entity.respawnTime;
-    const drops = config.getDropAmount();
-    if (Array.isArray(drops)) {
-      drops.forEach(drop => {
-        socket.emit("itemDrop", { item: drop.type, amount: drop.amount });
-      });
-    } else {
-      socket.emit("itemDrop", { item: config.drop, amount: drops });
-    }
+    list.splice(entityIndex, 1);
     socket.emit("gainXP", 3);
   }
 }
@@ -991,6 +987,7 @@ function handlePlayerHit(socket, targetId, newHealth) {
   if (target.health <= 0) {
     target.isDead = true;
     io.emit('playerDisconnected', targetId);
+    // Immediately update dropped items for all clients after player death
   }
 }
 
@@ -998,7 +995,9 @@ function handleDropItem(socket, type, amount, x, y) {
   const item = { id: nextItemId++, type, amount, x, y, despawnTimer: 60, pickupDelay: 1 };
   droppedItems.push(item);
   // Notify only nearby clients about newly dropped item
-  emitToNearby("newDroppedItem", item, x, y, MOB_VIS_RADIUS);
+  // Always notify the player who caused the drop, in case they are outside the radius
+  socket.emit("newDroppedItem", item);
+  emitToNearbyReliable("newDroppedItem", item, x, y, MOB_VIS_RADIUS);
 }
 
 function handlePickupItem(socket, itemId) {
@@ -1008,7 +1007,8 @@ function handlePickupItem(socket, itemId) {
   if (distance > 26 || item.pickupDelay > 0) return;
   droppedItems = droppedItems.filter(i => i.id !== itemId);
   // Notify only nearby clients about item removal
-  emitToNearby("removeDroppedItem", itemId, item.x, item.y, MOB_VIS_RADIUS);
+  // socket.emit("removeDroppedItem", itemId, item.x, item.y, MOB_VIS_RADIUS);
+  emitToNearbyReliable("removeDroppedItem", item.id, item.x, item.y, MOB_VIS_RADIUS);
   socket.emit("addItem", { type: item.type, amount: item.amount });
 }
 
@@ -1024,11 +1024,12 @@ function handleConsumePotion(socket, type) {
   let updatedStats = {};
   switch (type) {
     case "health_potion":
-      p.maxHealth += 10;
-      updatedStats = { maxHealth: p.maxHealth };
+      p.maxHealth += 25;
+      p.health += 25;
+      updatedStats = { maxHealth: p.maxHealth, health: p.health };
       break;
     case "strength_potion":
-      p.playerdamage += 5;
+      p.playerdamage += 10;
       updatedStats = { playerdamage: p.playerdamage };
       break;
     case "mythic_potion":
@@ -1054,21 +1055,21 @@ function handleConsumePotion(socket, type) {
 
       // Apply upgrade
       if (randChoice === "attackSpeed") {
-        p.playerattackspeed = Math.min(0.45, p.playerattackspeed + 0.01);
+        p.playerattackspeed = Math.min(0.45, p.playerattackspeed + 0.1);
         updatedStats = { playerattackspeed: p.playerattackspeed };
-        socket.emit('showMessage', 'Gain Attack Speed Boost!');
+        socket.emit('showMessage', 'Gain Attack Speed Boost! (+0.1)');
       } else if (randChoice === "range") {
-        p.playerrange = Math.min(130, p.playerrange + 5);
+        p.playerrange = Math.min(130, p.playerrange + 50);
         updatedStats = { playerrange: p.playerrange };
-        socket.emit('showMessage', 'Gain Range Boost!');
+        socket.emit('showMessage', 'Gain Range Boost! (+50)');
       } else if (randChoice === "knockback") {
-        p.playerknockback += 5;
+        p.playerknockback += 50;
         updatedStats = { playerknockback: p.playerknockback };
-        socket.emit('showMessage', 'Gain Knockback Boost!');
+        socket.emit('showMessage', 'Gain Knockback Boost! (+50)');
       } else if (randChoice === "speed") {
-        p.speed += 5;
+        p.speed += 50;
         updatedStats = { speed: p.speed };
-        socket.emit('showMessage', 'Gain Player Speed Boost!');
+        socket.emit('showMessage', 'Gain Player Speed Boost! (50)');
       }
       break;
 
@@ -1113,20 +1114,43 @@ function updatePlayers(deltaTime, now) {
         }
       }
     }
-    // Hunger depletion every 5 seconds
+    // Hunger depletion every 10 seconds
     if (p.health > 0) {
       
       if (!p.lastHungerDepletion) p.lastHungerDepletion = now; // Initialize timer
       const timeSinceLastDepletion = (now - p.lastHungerDepletion) / 1000;
-      if (timeSinceLastDepletion >= 5) {
+      if (timeSinceLastDepletion >= 10) {
         if (p.hunger > 0) {
-          p.hunger = Math.max(0, p.hunger - 5); // Deplete 5 hunger every 5 seconds
+          p.hunger = Math.max(0, p.hunger - 5); // Deplete 5 hunger every 10 seconds
           p.lastHungerDepletion = now;
+          if (p.hunger <= 25) {
+            socket.emit('showMessage', 'You are starving!');
+          }
         }
       }
       // Lose health if hunger is 0
       if (p.hunger <= 0) {
-        p.health = Math.max(0, p.health - 1 * deltaTime); // 1 health per second
+        socket.emit('showMessage', 'You are starving!');
+        p.health = Math.max(0, p.health - 1 * deltaTime); // lose 1 health per second
+
+        // Track when to flash
+        if (!p.lastFlash || Date.now() - p.lastFlash >= 2000) {
+          p.lastFlash = Date.now();
+
+          if (!p.originalColor) {
+            p.originalColor = p.color || "defaultColor";
+          }
+
+          p.color = "rgba(255, 0, 0, 0.5)";
+          setTimeout(() => {
+            p.color = p.originalColor;
+          }, 100);
+          io.emit('playerKnockback', {
+              mobX: p.x,  // could be null or same as player, since no real knockback
+              mobY: p.y,
+              mobId: null // no mob here
+            });
+        }
       }
     }
 
@@ -1218,7 +1242,7 @@ function updatePlayers(deltaTime, now) {
     item.despawnTimer -= deltaTime;
     if (item.despawnTimer <= 0) {
   // Limit removal broadcast to nearby clients
-  emitToNearby("removeDroppedItem", item.id, item.x, item.y, MOB_VIS_RADIUS);
+      emitToNearbyReliable("removeDroppedItem", item.id, item.x, item.y, MOB_VIS_RADIUS);
       return false;
     }
     return true;
@@ -1269,8 +1293,17 @@ if (STATS_LOG_MS > 0) {
     const { playerCount, mobCount, itemCount } = getCounts();
     const resStats = getResourceStats();
     const perTypeShort = Object.entries(resStats.perType || {})
-      .map(([t, v]) => `${t}:${v.active}`)
-      .join(',');
+    .map(([t, v]) => `${t}:${v.active}`)
+    .join(',');
+    if (playerCount > 0 && checkplayer) { // if player greater then 0
+        updateMobRespawns(0, allResources, players, gameTime);
+        checkplayer = false;
+        gameTime = 0;
+        day = 0;
+        difficulty = 1;
+    } 
+    
+    console.log(`(${Object.entries(mobs).map(([type, list]) => `${type}: ${list.filter(r => r.size > 0).length}`).join(', ')})`);
     console.log(
       `📊 Stats | players:${playerCount} mobs:${mobCount} items:${itemCount} ` +
       `res a/d:${resStats.totalActive}/${resStats.totalDead} [${perTypeShort}] ` +
@@ -1281,13 +1314,6 @@ if (STATS_LOG_MS > 0) {
     // Reset tick window every print to keep stats recent
     __tickStats = { count: 0, sum: 0, min: Infinity, max: 0 };
 
-    if (playerCount > 0 && checkplayer) { // if player greater then 0
-        spawnAllMob(allResources, players, gameTime);
-        checkplayer = false;
-        gameTime = 0;
-        day = 0;
-        difficulty = 1;
-    }
   }, STATS_LOG_MS);
 }
 
@@ -1302,13 +1328,11 @@ function resetGameState() {
   }
   // Remove all mobs
   for (const type in mobs) {
-    mobs[type].forEach(mob => {
-        mob.health = 0;
-        mob.size = 0; 
-      });
+    mobs[type] = [];
   }
   const { mobCount } = getCounts();
   checkplayer = true;
   console.log(`Game state reset: difficulty set to 1, all mobs removed. Mob count: ${mobCount}`);
+  console.log(`(${Object.entries(mobs).map(([type, list]) => `${type}: ${list.filter(r => r.size > 0).length}`).join(', ')})`);
 }
 

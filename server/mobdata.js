@@ -27,12 +27,12 @@ function getRandomPositionInCell(col, row, size) {
 }
 
 const crypto = require("crypto");
-const CYCLE_LENGTH = 180;//180; // 20 minutes in seconds
+const CYCLE_LENGTH = 120;//180; // 20 minutes in seconds
 
 // Constants
 const passiveColors = ["green", "lightblue", "pink"];
 const aggressiveColors = [ "#560202ff", "#000000", "#505050ff" ];
-const DAY_LENGTH = 180;//120; // 15 minutes of day, 5 minutes of night
+const DAY_LENGTH = 120;//120; // 15 minutes of day, 5 minutes of night
 
 // Helper function to generate random numbers within a range
 function randomBetween(min, max) {
@@ -48,7 +48,7 @@ function generatePassiveMobType(id, difficulty) {
   const fixedSpeed = 40 * (1 + 0.1 * (difficulty - 1));
   
   return {
-    maxCount: 15,  // slightly more mobs at higher difficulty
+    maxCount: 11,  // slightly more mobs at higher difficulty
     size: 30,
     health: fixedHealth,
     speed: fixedSpeed,
@@ -56,7 +56,7 @@ function generatePassiveMobType(id, difficulty) {
     drop: "pure_core",
     requiredTool: { categories: ["hand", "sword"], minTier: 0 },
     spawntimer: 10,
-    getDropAmount: () => dropAmount,
+    getDropAmount: dropAmount,
     behavior: 'wander',
     damage: 0,
     turnSpeed,
@@ -65,48 +65,80 @@ function generatePassiveMobType(id, difficulty) {
 
 
 // Function to generate an aggressive mob type with profiles (fixed stats)
-function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 5) {
+function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 28) {
   const baseTurnSpeed = Math.PI * 2;
   const turnSpeed = baseTurnSpeed * (1 + 0.05 * (difficulty - 1));
   const aggroRadius = 100 * (1 + 0.1 * (difficulty - 1));
-  const escapeRadius = 225 * (1 + 0.1 * (difficulty - 1));
+  const escapeRadius = 600 * (1 + 0.1 * (difficulty - 1));
   const attackSpeedScale = 1 + 0.1 * (difficulty - 1);
-  
+  let dropAmount = 1 * difficulty;
+  // Use let instead of const for count variables since they may be modified
+  let balancedCount = Math.max(1, Math.floor(totalMaxCount * 0.4));
+  let speedsterCount = Math.max(1, Math.floor(totalMaxCount * 0.2));
+  let tankCount = Math.max(1, Math.floor(totalMaxCount * 0.2));
+  let longRangeCount = Math.max(1, Math.floor(totalMaxCount * 0.2));
+
+  // Adjust counts to sum exactly to totalMaxCount
+  const sumProfileCounts = balancedCount + speedsterCount + tankCount + longRangeCount;
+  const countDifference = totalMaxCount - sumProfileCounts;
+
+  // Distribute the difference to maintain ratios as closely as possible
+  if (countDifference !== 0) {
+    // Define adjustment order (based on priority or largest remainder)
+    const adjustOrder = [
+      { key: 'balanced', count: balancedCount, ratio: 0.4 },
+      { key: 'speedster', count: speedsterCount, ratio: 0.2 },
+      { key: 'tank', count: tankCount, ratio: 0.2 },
+      { key: 'longRange', count: longRangeCount, ratio: 0.2 }
+    ].sort((a, b) => (b.count + countDifference * b.ratio) - (a.count + countDifference * a.ratio));
+
+    // Apply adjustment
+    for (let i = 0; i < Math.abs(countDifference); i++) {
+      const adjustType = adjustOrder[i % adjustOrder.length].key;
+      switch (adjustType) {
+        case 'balanced': balancedCount += Math.sign(countDifference); break;
+        case 'speedster': speedsterCount += Math.sign(countDifference); break;
+        case 'tank': tankCount += Math.sign(countDifference); break;
+        case 'longRange': longRangeCount += Math.sign(countDifference); break;
+      }
+    }
+  }
+
   return {
-    maxCount: totalMaxCount + difficulty, // moderate increase
+    maxCount: totalMaxCount, // Use the exact totalMaxCount
     profiles: {
       tank: {
-        count: Math.floor(totalMaxCount * 0.2),
+        count: tankCount,
         health: 250 * (1 + 0.3 * (difficulty - 1)),
         size: 50,
         speed: 60 * (1 + 0.1 * (difficulty - 1)),
-        damage: 20 * (1 + 0.2 * (difficulty - 1)),
+        damage: 40 * (1 + 0.2 * (difficulty - 1)),
         attackspeed: 0.7 * attackSpeedScale,
       },
       speedster: {
-        count: Math.floor(totalMaxCount * 0.2),
+        count: speedsterCount,
         health: 75 * (1 + 0.3 * (difficulty - 1)),
         size: 20,
         speed: 180 * (1 + 0.15 * (difficulty - 1)),
-        damage: 8 * (1 + 0.2 * (difficulty - 1)),
+        damage: 20 * (1 + 0.2 * (difficulty - 1)),
         attackspeed: 1.5 * attackSpeedScale,
       },
       longRange: {
-        count: Math.floor(totalMaxCount * 0.2),
+        count: longRangeCount,
         health: 115 * (1 + 0.3 * (difficulty - 1)),
         size: 25,
         speed: 90 * (1 + 0.1 * (difficulty - 1)),
-        damage: 10 * (1 + 0.15 * (difficulty - 1)),
+        damage: 30 * (1 + 0.15 * (difficulty - 1)),
         aggroRadius: aggroRadius * 1.5,
         escapeRadius: escapeRadius * 1.5,
         attackspeed: 1 * attackSpeedScale,
       },
       balanced: {
-        count: Math.floor(totalMaxCount * 0.4),
+        count: balancedCount,
         health: 150 * (1 + 0.3 * (difficulty - 1)),
         size: 30,
         speed: 100 * (1 + 0.1 * (difficulty - 1)),
-        damage: 12 * (1 + 0.15 * (difficulty - 1)),
+        damage: 30 * (1 + 0.15 * (difficulty - 1)),
         attackspeed: 1 * attackSpeedScale,
       },
     },
@@ -114,7 +146,7 @@ function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 5) 
     drop: "dark_core",
     requiredTool: { categories: ["hand", "sword"], minTier: 0 },
     spawntimer: 30,
-    getDropAmount: () => 1 * difficulty,
+    getDropAmount: dropAmount,
     behavior: 'wander',
     isAggressive: true,
     aggroRadius,
@@ -130,6 +162,7 @@ function generateSpecialAggressiveMobType(id, gameTime, difficulty) {
   const aggroRadius = 200 * (1 + 0.1 * (difficulty - 1));
   const escapeRadius = 400 * (1 + 0.1 * (difficulty - 1));
   const attackSpeedScale = 1 + 0.1 * (difficulty - 1);
+  const dropAmount = 1 * difficulty;
 
   return {
     maxCount: 1,
@@ -141,10 +174,10 @@ function generateSpecialAggressiveMobType(id, gameTime, difficulty) {
     drop: ["pure_core", "dark_core", "mythic_core"],
     requiredTool: { categories: ["sword"], minTier: 0 },
     spawntimer: 60,
-    getDropAmount: () => [
-      { type: "pure_core", amount: 3 * difficulty },
-      { type: "dark_core", amount: 3 * difficulty },
-      { type: "mythic_core", amount: 1 },
+    getDropAmount: [
+      { type: "pure_core", amount: 3 * dropAmount },
+      { type: "dark_core", amount: 3 * dropAmount },
+      { type: "mythic_core", amount: 1 * dropAmount },
     ],
     behavior: 'wander',
     isAggressive: true,
@@ -173,7 +206,8 @@ function createMobSpawner(type, targetArray, isOverlapping, gameTime) {
 
   const maxCount = typeof config.maxCount === 'function' ? config.maxCount(gameTime) : config.maxCount;
   let activeCount = targetArray.filter(r => r.size > 0).length;
-
+  // For aggressive mobs, don't block spawning based on total count; handle per-profile below
+  if (type !== "aggressive_mob") return; // Don't spawn if max count reached for non-aggressive
   let profiles = {};
   if (type === "aggressive_mob") {
     profiles = config.profiles;
@@ -192,7 +226,7 @@ function createMobSpawner(type, targetArray, isOverlapping, gameTime) {
 
   for (const [profileName, profile] of Object.entries(profiles)) {
   const profileMaxCount = typeof profile.count === 'function' ? profile.count(gameTime) : (typeof config.maxCount === 'function' ? config.maxCount(gameTime) : config.maxCount || 1);
-    let profileActiveCount = targetArray.filter(r => r.size > 0 && r.profile === profileName).length;
+  let profileActiveCount = targetArray.filter(r => r.size > 0 && r.profile === profileName).length; 
 
     while (profileActiveCount < profileMaxCount) {
       const health = profile.health;
@@ -256,45 +290,41 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
 
     let profiles = {};
     if (type === "aggressive_mob") {
-
-  // Knockback mob: Prevent mob from entering resources
-  function applyKnockbackToMob(mob, knockbackVX, knockbackVY, duration, allResources) {
-    if (!mob || mob.health <= 0) return;
-    // Calculate new position after knockback
-    const newX = mob.x + knockbackVX * duration;
-    const newY = mob.y + knockbackVY * duration;
-    const mobSize = mob.size || 0;
-    // Use isOverlappingAny from resourceManager
-    const { isOverlappingAny } = require('./resourceManager');
-    // Prevent mob from entering resources
-    if (!isOverlappingAny(allResources, newX, newY, mobSize, mobSize)) {
-      mob.x = newX;
-      mob.y = newY;
+    profiles = config.profiles;
     } else {
-      // Optionally, slide along the edge or cancel knockback
-      // For now, just cancel knockback if overlap
-      // You can implement sliding logic if needed
-    }
-  }
-      profiles = config.profiles;
-    } else {
-      profiles.default = {
-        count: () => maxCount,
-        health: config.health,
-        size: config.size,
-        speed: config.speed,
-        damage: config.damage || 0,
-        aggroRadius: config.aggroRadius || 0,
-        escapeRadius: config.escapeRadius || 0,
-  attackspeed: config.attackspeed || 1,
-      };
+        profiles = {
+            default: {
+                count: maxCount,
+                health: config.health,
+                size: config.size,
+                speed: config.speed,
+                damage: config.damage || 0,
+                aggroRadius: config.aggroRadius || 0,
+                escapeRadius: config.escapeRadius || 0,
+                attackspeed: config.attackspeed || 1,
+            }
+        };
     }
 
     for (const r of mobList) {
       if (r.size === 0 && r.respawnTimer > 0) {
         r.respawnTimer -= deltaTime;
         if (r.respawnTimer <= 0) {
-          const profile = profiles[r.profile || "default"];
+          // Ensure aggressive mobs always have a valid profile
+          let profileKey = r.profile || "default";
+          if (type === "aggressive_mob") {
+              // For aggressive mobs, ensure we have a valid profile
+              if (!r.profile || !profiles[r.profile]) {
+                  const profileNames = Object.keys(profiles);
+                  profileKey = profileNames[Math.floor(Math.random() * profileNames.length)];
+                  r.profile = profileKey;
+              }
+          }
+          const profile = profiles[profileKey];
+          if (!profile) {
+            console.warn(`Cannot respawn mob of type ${type}: missing profile '${profileKey}'`);
+            continue;
+          }
           const health = profile.health;
           const size = profile.size;
           const damage = profile.damage ? profile.damage : 0;
@@ -349,14 +379,21 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
           }
         }
       }
+      // If mob is dead (health <= 0) and not already in respawn, mark for respawn
+      if (r.health <= 0 && r.size > 0) {
+        r.size = 0;
+        r.respawnTimer = r.respawnTime || (mobtype[r.type]?.spawntimer || 10);
+      }
     }
 
     const totalInstances = mobList.length;
     if (totalInstances < maxCount) {
       const toSpawn = maxCount - totalInstances;
       for (const [profileName, profile] of Object.entries(profiles)) {
-        const profileMaxCount = profile.count(gameTime);
-        const profileCurrentCount = mobList.filter(r => r.profile === profileName).length;
+        const profileMaxCount = typeof profile.count === 'function'
+          ? profile.count(gameTime)
+          : (typeof profile.count === 'number' ? profile.count : 1);
+        const profileCurrentCount = mobList.filter(r => r.profile === profileName && r.size > 0).length;
         const profileToSpawn = Math.min(profileMaxCount - profileCurrentCount, toSpawn);
         for (let i = 0; i < profileToSpawn; i++) {
           const health = profile.health;
@@ -518,6 +555,7 @@ function isMobPosBlockedForServer(newX, newY, size, allResources, playersObj, mo
 function updateMobs(allResources, players, deltaTime) {
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
+      if (mob.size === 0) continue;
       const config = mobtype[mob.type];
       const mobSize = mob.size;
 
@@ -869,7 +907,7 @@ function updateMobs(allResources, players, deltaTime) {
               targetPlayer.color = targetPlayer.originalColor;
             }, 100);
 
-            if (targetPlayer.health < 0) targetPlayer.health = 0;
+            if (targetPlayer.health <= 0) targetPlayer.health = 0;
             // Damage cooldown scales with mob attackspeed (higher attackspeed => shorter cooldown)
             const atk = mob.attackspeed || 1;
             mob.damageCooldown = Math.max(0.1, 1 / atk);

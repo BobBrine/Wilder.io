@@ -520,7 +520,7 @@ function tryHitMob() {
         // Damage: swords use their normal damage; other tools only deal 1
         const damage = (toolInfo && toolInfo.category === "sword") ? (toolInfo.damage || 1) + player.playerdamage : player.playerdamage;
         mob.health -= damage;
-
+        playEnemyHit(); // Play hit sound
         // Calculate knockback
         const dx = (mob.x + mob.size/2) - (player.x + player.size/2);
         const dy = (mob.y + mob.size/2) - (player.y + player.size/2);
@@ -552,6 +552,19 @@ function tryHitMob() {
             duration: knockbackDuration,  // Seconds
           }
         });
+        if (mob.health <= 0) {
+          const drops = mobtype[mob.type].drop;
+          const dropAmounts = mobtype[mob.type].getDropAmount;
+          if (Array.isArray(drops) && Array.isArray(dropAmounts)) {
+            for (let i = 0; i < drops.length; i++) {
+              const dropType = drops[i];
+              const amountObj = dropAmounts[i];
+              dropItem(dropType, amountObj.amount, mob);
+            }
+          } else {
+            dropItem(drops, dropAmounts, mob);
+          }
+        }
       }
     }
   }

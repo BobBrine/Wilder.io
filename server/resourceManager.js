@@ -194,6 +194,7 @@ function updateResourceRespawns(deltaTime) {
           r.maxHealth = newHealth;
           r.respawnTimer = 0;
         }
+        console.log(`Respawned ${r.type} at (${newX}, ${newY}) with size (${newSizeX}, ${newSizeY})`);
       }
     }
   }
