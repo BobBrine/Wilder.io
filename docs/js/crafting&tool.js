@@ -1,14 +1,5 @@
 let ItemTypes = {
-  wooden_sword: {
-    name: "Wooden Sword",
-    color: "sienna",
-    isTool: true,
-    category: "sword",
-    tier: 1,
-    damage: 1000000,
-    attackRange: 70,
-    attackSpeed: 0.45
-  }
+
 
 };
 
