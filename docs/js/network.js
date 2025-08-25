@@ -58,7 +58,48 @@ function initializeSocket(url) {
 }
 function setupSocketListeners() {
   if (!socket) return;
+  
+  socket.on('initialBlocks', (blocks) => {
+    placedBlocks = blocks.map(b => ({
+      ...b,
+      worldX: b.gridX * GRID_SIZE,
+      worldY: b.gridY * GRID_SIZE,
+      // Ensure health is preserved
+      health: b.health,
+      maxHealth: b.maxHealth
+    }));
+  });
+
+  socket.on('blockPlaced', (block) => {
+    placedBlocks.push({
+      ...block,
+      worldX: block.gridX * GRID_SIZE,
+      worldY: block.gridY * GRID_SIZE,
+      // Ensure health is preserved
+      health: block.health,
+      maxHealth: block.maxHealth
+    });
+  });
+
+  // Add blockHealthUpdate event handler
+  socket.on('blockHealthUpdate', (data) => {
+    const { gridX, gridY, health, maxHealth } = data;
+    const block = placedBlocks.find(b => 
+      b.gridX === gridX && b.gridY === gridY
+    );
     
+    if (block) {
+      block.health = health;
+      block.maxHealth = maxHealth;
+      block.lastHitTime = performance.now(); // For health bar display
+    }
+  });
+
+  socket.on('blockBroken', (blockData) => {
+    placedBlocks = placedBlocks.filter(b => 
+      !(b.gridX === blockData.gridX && b.gridY === blockData.gridY)
+    );
+  });
   // Socket event handlers
   socket.on("resourceType", (data) => {  
     resourceTypes = data;
@@ -95,7 +136,7 @@ function setupSocketListeners() {
 
     window.graphicsSettings.performanceMode = false;
     window.graphicsSettings.shadows = true;
-
+    
 
   });
 
@@ -281,8 +322,19 @@ function setupSocketListeners() {
     if (isDevMode()) {
       const giveDev = (typeof window.__devGiveItems === 'undefined') ? true : !!window.__devGiveItems;
       if (giveDev && !window.__devItemsGranted && inventory && typeof inventory.addItem === 'function') {
+        ItemTypes = {wooden_sword: {
+          name: "Wooden Sword",
+          color: "saddlebrown",
+          isTool: true,
+          category: "sword",
+          tier: 1,
+          damage: 10000,
+    
+        }};
+
         inventory.addItem("wooden_sword", 1);
         inventory.addItem("wooden_axe", 1);
+        inventory.addItem("crafting_table", 1);
         inventory.addItem("food", 1000);
         inventory.addItem("wood", 10000);
         inventory.addItem("stone", 10000);
@@ -290,10 +342,7 @@ function setupSocketListeners() {
         inventory.addItem("health_potion", 100);
         inventory.addItem("strength_potion", 100);
         inventory.addItem("mythic_potion", 1000);
-        inventory.addItem("pure_core", 100);
-        inventory.addItem("dark_core", 100);
-        inventory.addItem("mythic_core", 1000);
-        // window.soulCurrency.add(100);
+       
         window.__devItemsGranted = true;
       }
     }
@@ -450,6 +499,7 @@ function setupSocketListeners() {
   socket.on('playerDied', () => {
     isDead = true;
     console.log("Player has died");
+    playDeath();
     for (const [item, count] of Object.entries(inventory.items)) {
       dropItem(item, count, player);
     }
@@ -729,16 +779,26 @@ function dropAll() {
   document.getElementById("dropAmountInput").value = "";
 }
 
+// Update the promptDropAmount function
 function promptDropAmount(type, maxCount) {
   currentDropType = type;
   currentMaxCount = maxCount;
-  const dropPrompt = document.getElementById("dropAmountPrompt");
+  const dropPrompt = document.getElementById('dropAmountPrompt');
   const input = document.getElementById("dropAmountInput");
   input.placeholder = `Amount to drop (1-${maxCount})`;
   input.max = maxCount;
   input.value = "1";
   dropPrompt.style.display = "block";
   input.focus();
+  
+  // Add escape handler specifically for the drop prompt
+  const escapeHandler = function(e) {
+    if (e.key === 'Escape') {
+      closeDropPrompt();
+      document.removeEventListener('keydown', escapeHandler);
+    }
+  };
+  document.addEventListener('keydown', escapeHandler);
 }
 
 // Dev testing
@@ -856,3 +916,9 @@ window.resetClientState = function resetClientState() {
     console.warn('resetClientState partial failure', e);
   }
 };
+
+function closeDropPrompt() {
+  const dropPrompt = document.getElementById('dropAmountPrompt');
+  if (dropPrompt) dropPrompt.style.display = 'none';
+}
+

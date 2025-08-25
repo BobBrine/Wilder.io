@@ -6,6 +6,10 @@
 /* Settings panel/overlay/gear layering */
 #settingsOverlay { z-index: 900 !important; }
 #settingsPanel { z-index: 1100 !important; }
+#settingsPanel, 
+#settingsPanel * {
+  font-family: 'VT323', monospace !important;
+}
 #settingsGear { z-index: 1050 !important; }
 /* Make drop amount prompt background semi-transparent so game is visible */
 #dropAmountPrompt.menu {
@@ -13,6 +17,7 @@
   border: 2px solid rgba(255,255,255,0.7) !important;
 }
 body {
+  font-family: 'VT323', monospace;
   margin: 0;
   background-color: #1e1e1e;
   display: flex;
@@ -26,7 +31,8 @@ canvas {
   border: 2px solid #fff;
   background-color: #189a21;
   display: block;
-  image-rendering: pixelated; /* Add this line */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges; 
 }
 
 /* Default: game canvas does not capture input while in menus; JS will enable during gameplay */
@@ -39,6 +45,7 @@ canvas {
 #aimWrap { touch-action: none; }
 
 .menu {
+  font-family: 'VT323', monospace;
   position: absolute;
   top: 50%;
   left: 50%;
@@ -64,6 +71,7 @@ canvas {
 }
 
 .menu button {
+  font-family: 'VT323', monospace;
   padding: 12px 20px;
   font-size: 16px;
   background-color: #333;

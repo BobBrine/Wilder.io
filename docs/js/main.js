@@ -43,6 +43,7 @@ function update() {
   staminaRegen(deltaTime);
   updateCamera();
   updatePlayerFacing(mouseX, mouseY);
+  
   // Mobile: auto-attack while right aim joystick is held
   try {
     const mode = (window.controlsSettings && window.controlsSettings.getMode && window.controlsSettings.getMode()) || 'pc';
@@ -57,9 +58,18 @@ function update() {
   // Apply world transform
   ctx.setTransform(1, 0, 0, 1, -camera.x, -camera.y);
   drawBackground();
+  
   if (typeof drawPlayer === 'function') drawPlayer();
   if (typeof drawOtherPlayers === 'function') drawOtherPlayers();
   if (typeof draw === 'function') draw();
+  if (typeof drawPlacedBlocks === 'function') drawPlacedBlocks(ctx);
+  if (typeof drawPlacementEffects === 'function') drawPlacementEffects();
+  if (hotbar && hotbar.selectedIndex !== null && hotbar.slots[hotbar.selectedIndex]) {
+    const selectedType = hotbar.slots[hotbar.selectedIndex].type;
+    if (typeof drawBlockPlacementPreview === 'function') {
+      drawBlockPlacementPreview(ctx, player, selectedType);
+    }
+  }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.restore();
 

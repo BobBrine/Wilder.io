@@ -63,11 +63,54 @@
 });
 
   // Esc toggles open/close; also closes when already open
-  document.addEventListener('keydown', (e) => {
+  document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-      // If any blocking menu (death screen, prompts) is open, close panel
-      if (!isInGameplay()) { closePanel(); return; }
-      togglePanel();
+      // Check if modals are open first
+      const howToModal = document.getElementById('howToModal');
+      const privacyModal = document.getElementById('privacyModal');
+      
+      if (howToModal && howToModal.style.display === 'flex') {
+        closeHowToModal();
+        return;
+      }
+      
+      if (privacyModal && privacyModal.style.display === 'flex') {
+        closePrivacyModal();
+        return;
+      }
+
+      // Check if drop prompt is open
+      const dropPrompt = document.getElementById('dropAmountPrompt');
+      if (dropPrompt && dropPrompt.style.display !== 'none') {
+        dropPrompt.style.display = 'none';
+        return;
+      }
+
+      // Check if settings panel is open
+      const settingsPanel = document.getElementById('settingsPanel');
+      if (settingsPanel && settingsPanel.style.display !== 'none') {
+        if (window.__settingsPanel && typeof window.__settingsPanel.close === 'function') {
+          window.__settingsPanel.close();
+        }
+        return;
+      }
+
+      // Check if we're in gameplay (socket connected and no menus visible)
+      if (window.socket && window.socket.connected && 
+          document.getElementById('homePage').style.display === 'none' &&
+          document.getElementById('deathScreen').style.display === 'none' &&
+          document.getElementById('serverJoin').style.display === 'none') {
+        if (window.__settingsPanel && typeof window.__settingsPanel.open === 'function') {
+          window.__settingsPanel.open();
+        }
+        return;
+      }
+
+      // If we're in a menu, go back to home
+      if (document.getElementById('serverJoin').style.display !== 'none' ||
+          document.getElementById('deathScreen').style.display !== 'none') {
+        backToHome();
+      }
     }
   });
 
@@ -244,3 +287,4 @@
   });
   obs.observe(document.body, { attributes:true, subtree:true, attributeFilter:['style'] });
 })();
+

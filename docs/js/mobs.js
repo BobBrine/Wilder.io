@@ -553,6 +553,8 @@ function tryHitMob() {
           }
         });
         if (mob.health <= 0) {
+          playEnemyDeath();
+          showPlacementEffect(dX, dY, false);
           const drops = mobtype[mob.type].drop;
           const dropAmounts = mobtype[mob.type].getDropAmount;
           if (Array.isArray(drops) && Array.isArray(dropAmounts)) {

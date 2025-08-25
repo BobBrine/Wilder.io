@@ -138,7 +138,9 @@ function tryHitResource() {
     lastHitTime = now;
     tryHitMob();
     hitResourceInCone();
-    tryAttack();
+    tryBreakBlock();
+    // tryAttack();
+    punchHand = (punchHand === 'right') ? 'left' : 'right';
     isAttacking = true;
     attackStartTime = now;
   }

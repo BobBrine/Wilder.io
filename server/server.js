@@ -1,4 +1,3 @@
-
 const express = require('express');
 const os = require('os');
 const http = require('http');
@@ -89,6 +88,11 @@ const lastResourcesEmitAt = new Map(); // sid -> timestamp
 // Cache last per-client players map for delta (id -> minimal fields)
 const lastPlayersDeltaMap = new Map(); // sid -> Map(id, obj)
 const lastPlayersDeltaAt = new Map(); // sid -> timestamp
+let placedBlocks = [];
+const BlockTypes = {
+  'crafting_table': { maxHealth: 100 },
+  // Add more block types as needed
+};
 const ItemTypes = {
   // Basic hand
   hand: {
@@ -227,6 +231,16 @@ const ItemTypes = {
     attackRange: 70,
     attackSpeed: 0.45
   },
+  wooden_hammer: {
+    name: "Wooden Hammer",
+    color: "sienna",
+    isTool: true,
+    category: "hammer",
+    tier: 1,
+    damage: 25,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
 
   // Special Items
   torch: {
@@ -252,6 +266,7 @@ const ItemTypes = {
   health_potion: { name: "Health Potion", color: "red", attackSpeed: 0.5 },
   strength_potion: { name: "Strength Potion", color: "orange", attackSpeed: 0.5 },
   mythic_potion: { name: "Mythic Potion", color: "purple", attackSpeed: 0.5 },
+  crafting_table: { name: "Crafting Table", color: "brown", attackSpeed: 0.5 },
 };
 
 
@@ -405,6 +420,59 @@ io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
   emitVisibleDroppedItemsPerClient();
   // Send initial static data only to the connecting client
+  socket.on('placeBlock', (blockData) => {
+    const block = {
+      ...blockData,
+      id: Date.now() + Math.random().toString(36).substr(2, 9), // Unique ID
+      health: BlockTypes[blockData.type].maxHealth,
+      maxHealth: BlockTypes[blockData.type].maxHealth
+    };
+    placedBlocks.push(block);
+    // Broadcast to all clients with health info
+    io.emit('blockPlaced', block);
+  });
+  socket.on('blockHit', (data) => {
+    const { gridX, gridY, damage } = data;
+    const block = placedBlocks.find(b => 
+      b.gridX === gridX && b.gridY === gridY
+    );
+    
+    if (block) {
+      block.health -= damage;
+      
+      // Broadcast health update to all clients
+      io.emit('blockHealthUpdate', { 
+        gridX, 
+        gridY, 
+        health: block.health,
+        maxHealth: block.maxHealth
+      });
+      
+      if (block.health <= 0) {
+        // Remove the block
+        placedBlocks = placedBlocks.filter(b => 
+          !(b.gridX === gridX && b.gridY === gridY)
+        );
+        io.emit('blockBroken', { gridX, gridY });
+      }
+    }
+  });
+  socket.on('breakBlock', (blockData) => {
+    const index = placedBlocks.findIndex(b => 
+      b.gridX === blockData.gridX && b.gridY === blockData.gridY
+    );
+    
+    if (index !== -1) {
+      placedBlocks.splice(index, 1);
+      socket.broadcast.emit('blockBroken', blockData);
+    }
+  });
+  socket.emit('initialBlocks', placedBlocks.map(b => ({
+    ...b,
+    // Ensure health is included
+    health: b.health,
+    maxHealth: b.maxHealth
+  })));
   socket.emit("resourceType", resourceTypes);
   socket.emit("mobType", mobtype);
   socket.emit("itemTypes", ItemTypes);
@@ -728,7 +796,7 @@ function createNewPlayer(id, name) {
     playerrange: 0,
     playerknockback: 0,
 
-    healthRegen: 1,
+    healthRegen: 0.01,
     lastDamageTime: null,
     isDead: false,
     maxStamina: 100,
@@ -1110,7 +1178,7 @@ function updatePlayers(deltaTime, now) {
       // Regenerate health if not recently damaged and hunger > 0
       if (!p.lastDamageTime || (now - p.lastDamageTime) / 1000 >= 5) {
         if (p.hunger > 25) {
-          p.health = Math.min(p.maxHealth, p.health + p.healthRegen * deltaTime);
+          p.health = Math.min(p.maxHealth, p.health + p.maxHealth*p.healthRegen * deltaTime);
         }
       }
     }
@@ -1131,7 +1199,7 @@ function updatePlayers(deltaTime, now) {
       // Lose health if hunger is 0
       if (p.hunger <= 0) {
         socket.emit('showMessage', 'You are starving!');
-        p.health = Math.max(0, p.health - 1 * deltaTime); // lose 1 health per second
+        p.health = Math.max(0, p.health - p.maxHealth * 0.01 * deltaTime); // lose 1 health per second
 
         // Track when to flash
         if (!p.lastFlash || Date.now() - p.lastFlash >= 2000) {

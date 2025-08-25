@@ -16,15 +16,21 @@ function playSound(url) {
 
 // Play select.wav on every button click
 function playSelect() {
-  playSound('Sound/select.wav');
+  playSound('Sound/select1.wav');
 }
 
 function playChopTree() {
   playSound('Sound/choptree.wav');
 }
-
+function playBlockBreak() {
+  playSound('Sound/blockbreak.wav');
+}
 function playEnemyHit() {
-  playSound('Sound/enemyhit.wav');
+  playSound('Sound/enemyhit6.wav');
+}
+
+function playEnemyDeath() {
+  playSound('Sound/enemydeath.wav');
 }
 
 function playPlayerHurt() {
@@ -39,7 +45,15 @@ function playConsume() {
   playSound('Sound/consume.wav');
 }
 function playCancel() {
-  playSound('Sound/cancel.wav');
+  playSound('Sound/cancal1.wav');
+}
+
+function playDeath() {
+  playSound('Sound/playerdeath.wav');
+}
+
+function playBlockPlace() {
+    playSound('Sound/placeblock.wav');
 }
 
 // Export for use in other scripts
@@ -50,3 +64,5 @@ window.playPopClaim = playPopClaim;
 window.playConsume = playConsume;
 window.playSelect = playSelect;
 window.playCancel = playCancel;
+window.playDeath = playDeath;
+window.playBlockPlace = playBlockPlace;

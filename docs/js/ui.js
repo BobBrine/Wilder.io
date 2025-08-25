@@ -3,10 +3,11 @@ const scoreboardWidth = 200;
 function drawHUD() {
   ctx.save();
   let yOffsetUI = 16;
+  ctx.font = "16px 'VT323', monospace";
   // SOUL: Draw soul currency at top left (gameplay)
   if (typeof window.soulCurrency === 'object') {
     ctx.save();
-    ctx.font = '22px Arial';
+    ctx.font = '22px VT323, monospace';
     ctx.fillStyle = '#00ff22ff';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -23,13 +24,13 @@ function drawHUD() {
     ctx.restore();
   }
   ctx.fillStyle = "white";
-  ctx.font = "16px Arial";
+  
   ctx.textAlign = "left";
   
 
   if (showData) {
     if (player) {
-      yOffsetUI += 2;
+      yOffsetUI += 20;
       ctx.fillText('Player position: ' + Math.floor(player.x) + ', ' + Math.floor(player.y), 10, yOffsetUI);
       yOffsetUI += 20;
       ctx.fillText('Gametime: ' + Math.floor(gameTime), 10, yOffsetUI);
@@ -88,7 +89,7 @@ function drawHUD() {
   ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
   ctx.fillRect(scoreboardX, scoreboardY, scoreboardWidth, 20 + 20 * (5 + 1)); // Always height for 5 players
   ctx.fillStyle = "white";
-  ctx.font = "16px Arial";
+  ctx.font = "16px 'VT323', monospace";
   ctx.textAlign = "left";
   ctx.fillText("Scoreboard", scoreboardX + 10, scoreboardY + 15);
   let yOffset = scoreboardY + 40;
@@ -160,7 +161,7 @@ function drawHotbar() {
       const badgeY = y + slotSize - badgeH - 2;
       ctx.fillStyle = "white";
       ctx.textAlign = "left";
-      ctx.font = "12px Arial";
+      ctx.font = "12px 'VT323', monospace";
       ctx.textBaseline = "middle";
       ctx.fillText(String(slot.count), badgeX + 4, badgeY + badgeH / 2);
     }
@@ -170,7 +171,7 @@ function drawHotbar() {
     const { x: hx, y: hy, slot } = hoveredSlotInfo;
     const label = String(slot.type);
     ctx.save();
-    ctx.font = "12px Arial";
+    ctx.font = "12px 'VT323', monospace";
     const paddingX = 6;
     const paddingY = 4;
     const textWidth = ctx.measureText(label).width;
@@ -226,13 +227,14 @@ function drawHotbar() {
     ctx.lineWidth = 1;
     ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
     ctx.fillStyle = "white";
-    ctx.font = "12px Arial";
+    ctx.font = "12px 'VT323', monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(String(draggedItem.count), badgeX + badgeW / 2, badgeY + badgeH / 2);
   }
   ctx.restore();
 }
+
 
 function drawCraftingUI() {
   ctx.save();
@@ -245,17 +247,30 @@ function drawCraftingUI() {
   const gridX = canvas.width - scoreboardWidth - gridWidth - 20;
   const gridY = gridHeight - slotSize - 75;
 
-  // Show recipes that player has at least one required resource for
-  const availableRecipes = recipes.filter(recipe => 
+  // 🔹 Check crafting table proximity
+  const nearTable = isNearCraftingTable();
+
+  // 🔹 Filter recipes based on crafting table requirement
+  const filteredRecipes = recipes.filter(recipe => {
+    if (!recipe.craftingTable) return true; // no table needed
+    return nearTable; // only allow if near a table
+  });
+
+  // Separate craftable and non-craftable from filtered set
+  const craftableRecipes = filteredRecipes.filter(recipe => canCraft(recipe));
+  const nonCraftableRecipes = filteredRecipes.filter(recipe => 
     Object.keys(recipe.cost).some(key => {
       if (key === 'soul') {
         return window.soulCurrency.get() >= 1;
       } else {
         return inventory.hasItem(key, 1);
       }
-    })
-  ).slice(0, 16);
-
+    }) && !canCraft(recipe)
+  );
+  
+  // Combine with craftable items first
+  const availableRecipes = [...craftableRecipes, ...nonCraftableRecipes].slice(0, 16);
+  
   let hoveredCell = null;
   for (let i = 0; i < availableRecipes.length; i++) {
     const row = Math.floor(i / gridCols);
@@ -266,7 +281,7 @@ function drawCraftingUI() {
     const recipe = availableRecipes[i];
     const canCraftRecipe = canCraft(recipe);
     
-    // Draw cell background - grayed out if cannot craft
+    // Draw cell background
     ctx.save();
     ctx.globalAlpha = canCraftRecipe ? 1 : 0.5;
     ctx.fillStyle = "rgba(30,60,30,0.85)";
@@ -298,7 +313,7 @@ function drawCraftingUI() {
       ctx.save();
       ctx.globalAlpha = canCraftRecipe ? 1 : 0.5;
       ctx.fillStyle = "#fff";
-      ctx.font = "bold 14px Arial";
+      ctx.font = "bold 14px 'VT323', monospace";
       ctx.textAlign = "right";
       ctx.textBaseline = "bottom";
       ctx.fillText("x"+recipe.output.count, x+cellSize-4, y+cellSize-4);
@@ -308,7 +323,6 @@ function drawCraftingUI() {
     // Mouse hover detection
     if (mouseX >= x && mouseX <= x+cellSize && mouseY >= y && mouseY <= y+cellSize) {
       hoveredCell = { x, y, recipe, cellSize, canCraft: canCraftRecipe };
-      // Highlight border only if craftable
       if (canCraftRecipe) {
         ctx.save();
         ctx.strokeStyle = "yellow";
@@ -319,39 +333,28 @@ function drawCraftingUI() {
     }
   }
   
-  // Tooltip for hovered recipe
+  // Tooltip (unchanged)
   if (hoveredCell) {
     const {x, y, recipe, cellSize, canCraft} = hoveredCell;
-    
-    // Build recipe text with resource availability
     let lines = [recipe.name];
     lines.push('Requires:');
     
     for (const [key, val] of Object.entries(recipe.cost)) {
-      let hasEnough = false;
-      if (key === 'soul') {
-        hasEnough = window.soulCurrency.get() >= val;
-      } else {
-        hasEnough = inventory.hasItem(key, val);
-      }
-      
-      // Show resources in red if not enough, green if enough
+      let hasEnough = (key === 'soul') 
+        ? window.soulCurrency.get() >= val
+        : inventory.hasItem(key, val);
       const color = hasEnough ? '#0f0' : '#f00';
       lines.push({text: `- ${key}: ${val}`, color});
     }
     
-    // Tooltip box
     ctx.save();
-    ctx.font = "13px Arial";
+    ctx.font = "13px 'VT323', monospace";
     const paddingX = 10, paddingY = 6;
-    
-    // Calculate max width considering colored text
     let maxWidth = ctx.measureText(recipe.name).width;
     for (const line of lines.slice(1)) {
       const width = ctx.measureText(typeof line === 'string' ? line : line.text).width;
       if (width > maxWidth) maxWidth = width;
     }
-    
     const boxW = maxWidth + paddingX * 2;
     const boxH = lines.length * 18 + paddingY * 2;
     let boxX = x - boxW - 8;
@@ -372,19 +375,15 @@ function drawCraftingUI() {
     
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i];
-      if (typeof line === 'string') {
-        ctx.fillStyle = "#fff";
-        ctx.fillText(line, boxX + paddingX, boxY + paddingY + i * 18);
-      } else {
-        ctx.fillStyle = line.color;
-        ctx.fillText(line.text, boxX + paddingX, boxY + paddingY + i * 18);
-      }
+      ctx.fillStyle = typeof line === 'string' ? "#fff" : line.color;
+      ctx.fillText(typeof line === 'string' ? line : line.text, boxX + paddingX, boxY + paddingY + i * 18);
     }
     ctx.restore();
   }
   
   ctx.restore();
 }
+
 
 let message = "";
 let messageEndTime = 0;
@@ -398,7 +397,7 @@ function drawMessage() {
   if (Date.now() < messageEndTime) {
     ctx.save();
     ctx.fillStyle = "white";
-    ctx.font = "16px sans-serif";
+    ctx.font = "16px 'VT323', monospace";
     ctx.textAlign = "center";
     ctx.fillText(message, canvas.width / 2, 75);
     ctx.restore();
@@ -420,7 +419,7 @@ function drawDamageTexts() {
     const screenY = dmg.y - camera.y;
     ctx.save();
     ctx.globalAlpha = dmg.opacity;
-    ctx.font = "32px Arial";
+    ctx.font = "32px 'VT323', monospace";
     ctx.lineWidth = 3;
     ctx.strokeStyle = "black";
     ctx.fillStyle = "white";
@@ -465,7 +464,7 @@ function updateFPSCounter() {
 function drawFPSCounter() {
   ctx.save();
   ctx.fillStyle = "white";
-  ctx.font = "16px monospace";
+  ctx.font = "16px 'VT323', monospace";
   ctx.textAlign = "right";
   ctx.textBaseline = "top";
   const shown = fpsShown || fpsDisplay || 0;
@@ -477,7 +476,7 @@ function drawFPSCounter() {
 function drawCreatorTag() {
   ctx.save();
   ctx.fillStyle = "white";
-  ctx.font = "16px monospace";
+  ctx.font = "16px 'VT323', monospace";
   ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
   ctx.fillText(`@BobBrine`, canvas.width - 10, canvas.height - 10);
@@ -523,10 +522,12 @@ function drawDroppedItems() {
       ctx.closePath();
     }
     // Draw label with amount below the icon/circle
-    ctx.fillStyle = "white";
-    ctx.font = "10px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(`${item.type} (${item.amount})`, screenX, screenY + 20);
+    if(showData) {
+      ctx.fillStyle = "white";
+      ctx.font = "10px 'VT323', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`${item.type} (${item.amount})`, screenX, screenY + 20);
+    }
     ctx.restore();
   });
 }
@@ -600,7 +601,7 @@ function drawButtons() {
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '16px Arial';
+    ctx.font = '16px VT323, monospace';
     ctx.fillText(button.text, button.x + button.width / 2, button.y + button.height / 2);
   });
   ctx.restore(); // Restore the context state
@@ -662,15 +663,15 @@ function drawControlGuide() {
   
   // Set text properties
   ctx.fillStyle = 'white';
-  ctx.font = '14px Arial';
+  ctx.font = '14px VT323, monospace';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   
   // Draw title
-  ctx.font = 'bold 16px Arial';
+  ctx.font = 'bold 16px VT323, monospace';
   ctx.fillText('Controls', x + 10, y + 15);
-  ctx.font = '14px Arial';
-  
+  ctx.font = '14px VT323, monospace';
+
   // Draw control instructions
   ctx.fillText('WASD - Move', x + 10, y + 35);
   ctx.fillText('Space - Sprint', x + 10, y + 55);

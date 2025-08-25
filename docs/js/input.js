@@ -143,6 +143,23 @@ function handlePointerEvent(e) {
 
   // Existing food and hitting logic
   const selected = hotbar.slots[hotbar.selectedIndex];
+  if (selected && BlockTypes[selected.type] && !buttonClicked && !uiElement) {
+    const { gridX, gridY } = getFrontGridCell(player);
+    
+    if (placeBlockAt(selected.type, gridX, gridY)) {
+      // Remove one block from inventory
+      if (selected.count > 1) {
+        selected.count--;
+      } else {
+        hotbar.slots[hotbar.selectedIndex] = null;
+      }
+    }
+    
+    isMouseDown = false;
+    stopHitting();
+    return;
+  }
+
   if (selected?.type === "food") {
     consumeFood();
     isMouseDown = false;
@@ -259,16 +276,32 @@ function getUIElementAtMouse(e) {
   // Crafting grid (4x4)
   const gridCols = 4;
   const gridRows = 4;
-  const cellSize = 32; // Match image size (icon 32px, padding)
+  const cellSize = 32;
   const cellPadding = 10;
   const gridWidth = gridCols * cellSize + (gridCols - 1) * cellPadding;
   const gridHeight = gridRows * cellSize + (gridRows - 1) * cellPadding;
-  // Position: bottom right, above hotbar, with some margin
   const gridX = canvas.width - scoreboardWidth - gridWidth - 20;
-  const gridY =  gridHeight - slotSize - 75;
+  const gridY = gridHeight - slotSize - 75;
 
-  const craftable = recipes.filter(r => canCraft(r)).slice(0, 16);
-  for (let i = 0; i < craftable.length; i++) {
+  // Check if player is near a crafting table
+  const nearTable = isNearCraftingTable();
+  
+  // Filter recipes based on crafting table requirement
+  const availableRecipes = recipes.filter(recipe => {
+    // Always show recipes that don't require a table
+    if (!recipe.craftingTable) return true;
+    // Only show table recipes if player is near a table
+    return nearTable;
+  });
+  
+  // Get craftable and non-craftable recipes from available recipes
+  const craftableRecipes = availableRecipes.filter(r => canCraft(r));
+  const nonCraftableRecipes = availableRecipes.filter(r => !canCraft(r));
+  
+  // Combine with craftable items first
+  const allRecipes = [...craftableRecipes, ...nonCraftableRecipes].slice(0, 16);
+  
+  for (let i = 0; i < allRecipes.length; i++) {
     const row = Math.floor(i / gridCols);
     const col = gridCols - 1 - (i % gridCols); // right-to-left
     const x = gridX + col * (cellSize + cellPadding);
@@ -276,9 +309,11 @@ function getUIElementAtMouse(e) {
     
     if (mouseX >= x && mouseX <= x + cellSize && 
         mouseY >= y && mouseY <= y + cellSize) {
-      return { type: "crafting", recipe: craftable[i] };
+      return { type: "crafting", recipe: allRecipes[i] };
     }
   }
   
   return null;
 }
+
+

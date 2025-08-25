@@ -70,7 +70,9 @@ function updatePlayerPosition(deltaTime) {
         return (typeof isCollidingWithResources === 'function' && 
                 isCollidingWithResources(x, y, player.size, player.size, allResources)) ||
                (typeof isCollidingWithMobs === 'function' && 
-                isCollidingWithMobs(x, y, player.size, player.size, mobs));
+                isCollidingWithMobs(x, y, player.size, player.size, mobs)) ||
+               (typeof isCollidingWithBlocks === 'function' && 
+                isCollidingWithBlocks(x, y, player.size, player.size));
       }
 
       const attemptX = player.x + kdx;
@@ -158,11 +160,14 @@ function updatePlayerPosition(deltaTime) {
   
   // Helper function for collision detection
   function isCollidingAt(x, y) {
-    return (typeof isCollidingWithResources === 'function' && 
-            isCollidingWithResources(x, y, player.size, player.size, allResources)) ||
-           (typeof isCollidingWithMobs === 'function' && 
-            isCollidingWithMobs(x, y, player.size, player.size, mobs));
-  }
+        return (typeof isCollidingWithResources === 'function' && 
+                isCollidingWithResources(x, y, player.size, player.size, allResources)) ||
+               (typeof isCollidingWithMobs === 'function' && 
+                isCollidingWithMobs(x, y, player.size, player.size, mobs)) ||
+               (typeof isCollidingWithBlocks === 'function' && 
+                isCollidingWithBlocks(x, y, player.size, player.size));
+      }
+
   
   // Try full movement first
   if (!isCollidingAt(player.x + dx, player.y + dy)) {
@@ -457,7 +462,7 @@ function drawPlayer() {
   }
   ctx.restore();
   ctx.fillStyle = "white";
-  ctx.font = "14px Arial";
+  ctx.font = "14px cursive";
   ctx.textAlign = "center";
   ctx.fillText(player.name || "You", centerX, player.y - 10);
 
@@ -631,7 +636,7 @@ function drawOtherPlayers() {
 
     // Name (world space)
     ctx.save();
-    ctx.font = '14px Arial';
+    ctx.font = '14px cursive';
     ctx.textAlign = 'center';
     ctx.fillStyle = 'white';
     ctx.fillText(p.name || 'Unnamed', centerX, screenY - 10);
@@ -706,7 +711,7 @@ function tryAttack() {
       }
       stamina -= cost;
       lastStaminaUseTime = 0;
-      p.health -= damage;
+      p.health -= 0;
       if (window.socket && window.socket.connected) window.socket.emit("playerhit", { targetId: id, newHealth: Math.max(0, p.health) });
       if (typeof showDamageText === 'function') showDamageText(px, py, -damage);
       otherPlayers[id].lastHitTime = performance.now();
