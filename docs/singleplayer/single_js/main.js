@@ -21,10 +21,8 @@ function update() {
     window._debugUpdateLoggedOnce = true;
   }
 
-  if (!window.socket) {
+    lastUpdate = now;
     scheduleNextTick();
-    return;
-  }
   // Keep rendering UI even if player/resources not yet ready to avoid a frozen feel
   if (!player || !resourcesLoaded) {
     ctx.save();
@@ -94,7 +92,6 @@ function update() {
   drawMessage();
   drawButtons();
 
-  lastUpdate = now;
   scheduleNextTick();
 }
 
@@ -104,7 +101,7 @@ function scheduleNextTick() {
   tickTimeout = setTimeout(update, nextTick);
 }
 
-if (!window.isSinglePlayer) {
-  update();
-} 
+
+// Always run update loop in singleplayer
+update();
 

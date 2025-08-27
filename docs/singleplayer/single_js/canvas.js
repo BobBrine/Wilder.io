@@ -1,6 +1,7 @@
 const canvas = document.getElementById("gameCanvas");
 // Prefer a desynchronized, opaque context to reduce compositor latency and blending cost
-const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+window.canvas = document.getElementById("gameCanvas");
+window.ctx = window.canvas.getContext("2d", { alpha: false, desynchronized: true });
 // Reduce filtering cost when scaling images
 ctx.imageSmoothingEnabled = false;
 
@@ -21,7 +22,7 @@ function resizeCanvas() {
 resizeCanvas();
 window.addEventListener("resize", resizeCanvas);
 
-const WORLD_SIZE = 5000;
+// ...existing code...
 const backgroundImage = new Image();
 backgroundImage.src = 'images/grass.png'; // must be 5000x5000
 

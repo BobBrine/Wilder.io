@@ -1,4 +1,3 @@
-// Existing variables
 let otherPlayers = {};
 let player = null;
 // Slightly larger radius makes pickup feel snappier; keep in sync with server PICKUP_RADIUS
@@ -6,24 +5,21 @@ const PICKUP_RADIUS = 32;
 let __lastPickupMsgAt = 0;
 let maxStamina = 0;
 let stamina = 0;
-let staminaRegenSpeed = 0;
+// ...existing code...
 const DEFAULT_ATTACK_RANGE = 50;
 const ATTACK_ANGLE = Math.PI / 2; // 90 degrees
 let punchHand = 'right'; // 'left' or 'right'
-// Knockback variables
 let knockback = { active: false, vx: 0, vy: 0, timer: 0 };
 const KNOCKBACK_DURATION = 0.2; // seconds
 const KNOCKBACK_FORCE = 350; // pixels/sec
 
 // Load player image
 const playerImage = new Image();
-playerImage.src = "images/Player1.png"; // Adjust the path if needed
+playerImage.src = "../images/Player1.png"; // Adjust the path if needed
 let playerImageLoaded = false;
 playerImage.onload = () => {
   playerImageLoaded = true;
 };
-
-
 
 // New variables for attack animation
 let isAttacking = false;
@@ -34,26 +30,28 @@ function getAttackSpeed() {
   if (!player) return 0.5;
   const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
   if (selected && ItemTypes[selected.type] && ItemTypes[selected.type].attackSpeed) {
-
     return Math.max(0.05, ItemTypes[selected.type].attackSpeed - player.playerattackspeed);
   }
   // Hand attack speed fallback
   if (ItemTypes.hand && ItemTypes.hand.attackSpeed) {
-    return (Math.max(0.05, ItemTypes.hand.attackSpeed - player.playerattackspeed));
+    return Math.max(0.05, ItemTypes.hand.attackSpeed - player.playerattackspeed);
   }
-  return (player.playerattackspeed); // fallback default
+  return player.playerattackspeed; // fallback default
 }
 
+// Singleplayer: no need to send player position to server
 function sendPlayerPosition(x, y) {
-  if (window.socket && window.socket.connected) {
-    // Include facingAngle and currently selected tool type for other clients
-    let selectedToolType = null;
-    try {
-      const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
-      selectedToolType = selected && selected.type ? selected.type : null;
-    } catch (_) {}
-    window.socket.emit('move', { x, y, facingAngle: player?.facingAngle ?? 0, selectedToolType });
-  }
+  // No-op in singleplayer
+}
+
+// ...rest of player.js code...
+function sendPlayerPosition(x, y) {
+  // No-op in singleplayer
+}
+
+// Singleplayer: no need to send player position to server
+function sendPlayerPosition(x, y) {
+  // No-op in singleplayer
 }
 
 function updatePlayerPosition(deltaTime) {

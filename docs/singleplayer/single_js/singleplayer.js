@@ -1,4 +1,3 @@
-// Socket connection
 let socket = null;
 let devTest = false; // will be set by server after connect
 
@@ -58,6 +57,156 @@ function initializeSocket(url) {
 }
 function setupSocketListeners() {
   if (!socket) return;
+// Singleplayer state initialization
+let droppedItems = [];
+let currentDropType = null;
+let currentMaxCount = 0;
+let difficultyProgression = Number(localStorage.getItem('difficulty.progression') || '0');
+window.difficultyProgression = difficultyProgression;
+let difficulty = 0;
+let latestSquare = null;
+let player = null;
+let mobs = {};
+let mobloaded = false;
+let allResources = {};
+let resourcesLoaded = false;
+let maxStamina = 100;
+let stamina = 100;
+let staminaRegenSpeed = 1;
+let maxHunger = 100;
+let hunger = 100;
+let isDead = false;
+
+// Show message fallback
+if (typeof showMessage !== "function") {
+  window.showMessage = function(msg, timeout = 3) {
+    console.log("[Message]", msg);
+  };
+}
+
+// Singleplayer: initialize world, mobs, resources, player
+function initializeSingleplayer() {
+  // Example: create player
+  player = {
+    x: 400,
+    y: 300,
+    health: 100,
+    maxHealth: 100,
+    hunger: 100,
+    maxHunger: 100,
+    stamina: 100,
+    maxStamina: 100,
+    staminaRegenSpeed: 1,
+    color: '#fff',
+    isDead: false,
+    facingAngle: 0,
+    playerattackspeed: 0.2,
+  };
+  window.player = player;
+  // Example: create mobs/resources locally
+  mobs = { zombie: [ { id: 1, x: 600, y: 400, health: 50, type: 'zombie' } ] };
+  mobloaded = true;
+  allResources = { wood: [ { id: 1, x: 500, y: 350, type: 'wood', amount: 10 } ] };
+  resourcesLoaded = true;
+  droppedItems = [];
+}
+
+// Drop item locally
+function dropItem(type, amount, entity, dropbyplayer=false) {
+  if (dropbyplayer) {
+    if (inventory.removeItem(type, amount)) {
+      droppedItems.push({ type, amount, x: entity.x, y: entity.y, id: Date.now() });
+      showMessage(`You dropped ${amount} ${type}`);
+    } else {
+      showMessage("Failed to drop item");
+    }
+  } else {
+    const offsetX = (Math.random() - 0.5) * 60;
+    const offsetY = (Math.random() - 0.5) * 60;
+    droppedItems.push({ type, amount, x: entity.x + offsetX, y: entity.y + offsetY, id: Date.now() });
+  }
+}
+
+function submitDropAmount() {
+  const input = document.getElementById("dropAmountInput");
+  const amount = parseInt(input.value, 10);
+  if (isNaN(amount) || amount < 1 || amount > currentMaxCount) {
+    showMessage("Invalid amount");
+    document.getElementById("dropAmountPrompt").style.display = "none";
+    return;
+  }
+  dropItem(currentDropType, amount, player, true);
+  document.getElementById("dropAmountPrompt").style.display = "none";
+  document.getElementById("dropAmountInput").value = "";
+}
+
+function dropAll() {
+  dropItem(currentDropType, currentMaxCount, player, true);
+  document.getElementById("dropAmountPrompt").style.display = "none";
+  document.getElementById("dropAmountInput").value = "";
+}
+
+function promptDropAmount(type, maxCount) {
+  playSelect();
+  currentDropType = type;
+  currentMaxCount = maxCount;
+  const dropPrompt = document.getElementById('dropAmountPrompt');
+  const input = document.getElementById("dropAmountInput");
+  input.placeholder = `Amount to drop (1-${maxCount})`;
+  input.max = maxCount;
+  input.value = "1";
+  dropPrompt.style.display = "block";
+  input.focus();
+  const escapeHandler = function(e) {
+    if (e.key === 'Escape') {
+      closeDropPrompt();
+      document.removeEventListener('keydown', escapeHandler);
+    }
+  };
+  document.addEventListener('keydown', escapeHandler);
+}
+
+function closeDropPrompt() {
+  const dropPrompt = document.getElementById('dropAmountPrompt');
+  if (dropPrompt) dropPrompt.style.display = 'none';
+}
+
+// Respawn logic for singleplayer
+window.respawnNow = function respawnNow() {
+  try {
+    if (typeof window.resetClientState === 'function') window.resetClientState();
+    initializeSingleplayer();
+    isDead = false;
+    showMessage('Respawned!');
+  } catch (e) {
+    console.error('respawnNow error', e);
+  }
+};
+
+// Centralized local state reset
+window.resetClientState = function resetClientState() {
+  try {
+    isDead = false;
+    if (window.inventory && typeof window.inventory.clear === 'function') window.inventory.clear();
+    if (window.hotbar) {
+      window.hotbar.slots = new Array(12).fill(null);
+      window.hotbar.selectedIndex = null;
+    }
+    window.player = null;
+    droppedItems = [];
+    mobs = {};
+    mobloaded = false;
+    allResources = {};
+    resourcesLoaded = false;
+  } catch (e) {
+    console.warn('resetClientState partial failure', e);
+  }
+};
+
+// Initialize singleplayer on load
+onReady(() => {
+  initializeSingleplayer();
+});
   
   socket.on('initialBlocks', (blocks) => {
     placedBlocks = blocks.map(b => ({

@@ -272,7 +272,7 @@ const ItemTypes = {
 
 // Toggle cache and behavior for development
 // Set DEV_TEST=true in env to enable dev mode
-const devTest = false;
+const devTest = true;
 const staticOptions = devTest
   ? { maxAge: 0, etag: false, lastModified: false, index: false }
   : { maxAge: '365d', immutable: true, index: false };

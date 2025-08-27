@@ -38,6 +38,7 @@
   }
 
   function openPanel() {
+    playSelect();
     if (!isInGameplay()) return;
     panel.style.display = 'block';
     overlay.style.display = 'block';
@@ -47,6 +48,7 @@
     panel.style.display = 'none';
     overlay.style.display = 'none';
     controldisplay = false;
+    playCancel();
   }
   function togglePanel() {
     if (panel.style.display === 'none' || panel.style.display === '') openPanel(); else closePanel();
@@ -55,11 +57,6 @@
   // Gear toggles panel
   gear.addEventListener('click', () => {
   togglePanel();
-  try {
-    window.playSelect(); // Play the select sound
-  } catch (e) {
-    console.error('Failed to play select sound:', e);
-  }
 });
 
   // Esc toggles open/close; also closes when already open
@@ -71,11 +68,13 @@
       
       if (howToModal && howToModal.style.display === 'flex') {
         closeHowToModal();
+
         return;
       }
       
       if (privacyModal && privacyModal.style.display === 'flex') {
         closePrivacyModal();
+
         return;
       }
 
@@ -83,6 +82,7 @@
       const dropPrompt = document.getElementById('dropAmountPrompt');
       if (dropPrompt && dropPrompt.style.display !== 'none') {
         dropPrompt.style.display = 'none';
+        playCancel();
         return;
       }
 
@@ -148,6 +148,7 @@
   }
   
   function toggleSound() {
+    playSelect();
     window.soundSettings.muted = !window.soundSettings.muted;
     try {
       localStorage.setItem('sound.muted', window.soundSettings.muted);
@@ -183,6 +184,7 @@
   if (respawnBtn) respawnBtn.addEventListener('click', doRespawn);
 
   function togglePerformance() {
+    playSelect();
     const gs = (window.graphicsSettings ||= {});
     const next = !gs.performanceMode;
     gs.performanceMode = next;
@@ -197,6 +199,7 @@
   if (perfBtn) perfBtn.addEventListener('click', togglePerformance);
 
   function toggleDebug() {
+    playSelect();
     // Match in-game DEBUG button: toggle the global showData binding
     try {
       // Use identifier, not window.showData, so it affects the global lexical binding
@@ -227,6 +230,7 @@
     } catch(_) {}
   }
   function toggleControlsMode(){
+    playSelect();
     const curr = window.controlsSettings.getMode();
     const next = (curr === 'pc') ? 'mobile' : 'pc';
     window.controlsSettings.setMode(next);

@@ -8,6 +8,29 @@
   <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
 
   <style>
+    .modal-close-btn {
+      font-family: 'VT323', monospace;
+      font-size: 1.2em;
+      font-weight: bold;
+      background: #e60000;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 32px;
+      margin-top: 16px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      transition: background 0.2s, transform 0.2s;
+      text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .modal-close-btn:hover {
+      background: #940000;
+      transform: scale(1.05);
+    }
+    /* Existing styles remain unchanged */
     body, html {
       height: 100%;
       margin: 0;
@@ -50,7 +73,7 @@
       font-size: 64px;
       margin-bottom: 32px;
       width: 100%;
-      color: #e0e0e0; /* lighter color for contrast */
+      color: #e0e0e0;
       text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
     }
     #homePage.menu button {
@@ -67,14 +90,13 @@
       cursor: pointer;
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
       transition: background 0.2s;
-      width: 100%;
+      width: auto;
       max-width: 400px;
       text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
     }
     #homePage.menu button:hover {
       background: #4e8f36;
     }
-    /* Soul Reset Button: visually matches homePage.menu button, but fixed at bottom right */
     .home-reset-btn {
       font-family: 'VT323', monospace;
       font-weight: bold;
@@ -83,7 +105,7 @@
       padding: 10px 32px;
       border-radius: 8px;
       border: none;
-      background: #ff3a3a;
+      background: #e60000;
       color: #fff;
       cursor: pointer;
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -93,8 +115,69 @@
       text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
     }
     .home-reset-btn:hover {
-      background: #c62828;
+      background: #940000;
       transform: scale(1.05);
+    }
+    
+    /* New styles for the updated layout */
+    #gameModeSelection {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+    
+    #gameModeSelection button {
+      margin-bottom: 12px;
+    }
+    
+    #multiplayerMenu, #singlePlayerMenu {
+      display: none;
+      width: 100%;
+      flex-direction: column;
+      height: 100%;
+    }
+    
+    .menu-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      width: 100%;
+    }
+    
+    .menu-header h2 {
+      font-size: 32px !important;
+      font-family: cursive !important;
+      font-weight: bold;
+      color: #e0e0e0;
+      text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
+    }
+    
+    .back-button {
+      background: #e60000 !important;
+      padding: 8px 16px !important;
+      width: auto !important;
+      margin-top: auto !important; /* Push to bottom */
+      align-self: center; /* Center horizontally */
+    }
+    
+    .back-button:hover {
+      background: #940000 !important;
+    }
+    
+    #singlePlayerContent {
+      text-align: center;
+      padding: 20px;
+      color: #ccc;
+    }
+    
+    /* Submenu content wrapper */
+    .submenu-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
     }
   </style>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -112,52 +195,102 @@
     <span id="soulAmountHome">Soul: 0</span><br>
     <span id="difficultyProgressionHome" style="color:#ffffff; font-family: 'VT323', monospace; font-size:24px; display:block; margin-top:2px;">Highest Difficulty: 0</span>
   </div>
+  
   <style>
+    #koFiButton {
+      font-family: 'VT323', monospace;
+      font-weight: bold;
+      text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
+      position:fixed;
+      left:24px;
+      bottom:24px;
+      z-index:2002;
+      background:#29abe0;
+      color:white;
+      font-size:1.2em;
+      padding:10px 32px;
+      border:none;
+      border-radius:8px;
+      cursor:pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      transition: background 0.2s;
+    }
     #koFiButton:hover {
-      background: #1f7bbf;
       transform: scale(1.05);
       transition: all 0.2s ease;
+      background: #16588a;
     }
   </style>
-  <button id="koFiButton" onclick="window.open('https://ko-fi.com/bobbrine', '_blank')"
-          style="font-family: 'VT323', monospace; font-weight: bold; text-shadow: 1px 1px 4px rgba(0,0,0,0.7); position:fixed; left:24px; bottom:24px; z-index:2002; background:#29abe0; color:white; font-size:1.2em; padding:10px 32px; border:none; border-radius:8px; cursor:pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+
+  <button id="koFiButton" style="width:auto;" onclick="playSelect(); window.open('https://ko-fi.com/bobbrine', '_blank')">
     ☕ Support on Ko-fi
   </button>
+  
   <!-- Home Page -->
   <div id="homePage" class="menu">
-    <h2>Wilder.io</h2>
-    
-    <!-- Content Wrapper for Consistent Width -->
-    <div style="display: flex; flex-direction: column; width: 100%; max-width: 400px; margin: 0 auto;">
-      <!-- Player Name Input with improved layout -->
-      <div style="display: flex; margin-bottom: 12px;">
-        <input id="playerNameInputHome" type="text" placeholder="Enter your name" 
-              style="font-family: 'VT323', monospace; font-weight: bold;" />
-        <button onclick="playNow()" 
-                style="margin-left: 8px; margin-top: 0px; padding: 14px 48px; width: 160px; border-radius: 8px; border: none; 
-                      background: #6bbf4e; color: white; cursor: pointer; font-size: 1.1em;">
-          Play
-        </button>
-      </div>
-      
-      <!-- Server Selection -->
-      <select id="serverSelect" style="font-family: 'VT323', monospace; font-weight: bold; width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 1.1em; height: 46px; margin-bottom: 12px;">
-        <option value="https://survival-io-md0m.onrender.com">Main Server (Render)</option>
-        <option value="https://70fbf268-5e7f-48d3-bb25-2ba3aaae13e5-00-kgtz2yaascf1.picard.replit.dev/">Replit Server</option>
-      </select>
-    
+    <!-- Only show title on main menu -->
+    <h2 id="mainMenuTitle">Wilder.io</h2>
+    <!-- Game Mode Selection - Single Player first -->
+    <div id="gameModeSelection">
+      <button onclick="playSelect(); setTimeout(function(){ window.location.href='singleplayer/singleplay.html'; }, 250);">Singleplayer</button>
+      <button onclick="showMultiplayerMenu()">Multiplayer</button>
       <button onclick="showHowToModal()">How to Play</button>
       <button onclick="showPrivacyModal()">Privacy Policy</button>
+    </div>
+    
+    <!-- Single Player Menu -->
+    <div id="singlePlayerMenu">
+      <div class="menu-header">
+        <h2 style="margin-bottom: -20px;">Singleplayer</h2>
+      </div>
+      <div class="submenu-content">
+        <a href="#" 
+          onclick="playSelect(); setTimeout(() => { window.location.href='singleplayer/singleplay.html'; }, 250);" 
+          style="text-decoration: none;">
+          <button style="width: 160px; border-radius: 8px; border: none; 
+                        background: #6bbf4e; color: white; cursor: pointer; font-size: 1.1em;">
+            Play
+          </button>
+        </a>
+        <button class="back-button" onclick="backToMainMenu()">Back</button>
+      </div>
+    </div>
+    
+    <!-- Multiplayer Menu -->
+    <div id="multiplayerMenu">
+      <div class="menu-header">
+        <h2>Multiplayer</h2>
+      </div>
+      
+      <div class="submenu-content">
+        <!-- Player Name Input with improved layout -->
+        <div style="display: flex; margin-bottom: 12px;">
+          <input id="playerNameInputHome" type="text" placeholder="Enter your name" 
+                style="font-family: 'VT323', monospace; font-weight: bold;" />
+          <button onclick="playNow(); playSelect();" 
+                  style="margin-left: 8px; margin-top: 0px; padding: 14px 48px; width: 160px; border-radius: 8px; border: none; 
+                        background: #6bbf4e; color: white; cursor: pointer; font-size: 1.1em;">
+            Play
+          </button>
+        </div>
+        
+        <!-- Server Selection -->
+        <select id="serverSelect" style="font-family: 'VT323', monospace; font-weight: bold; width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 1.1em; height: 46px; margin-bottom: 12px;">
+          <option value="https://survival-io-md0m.onrender.com">Main Server (Render)</option>
+          <option value="https://70fbf268-5e7f-48d3-bb25-2ba3aaae13e5-00-kgtz2yaascf1.picard.replit.dev/">Replit Server</option>
+        </select>
+        
+        <button class="back-button" onclick="backToMainMenu()">Back</button>
+      </div>
     </div>
   </div>
 
   <!-- Soul Reset Button (bottom right, overlays canvas, only on home page) -->
-  <button id="resetSoulBtn" style="position:fixed; right:24px; bottom:24px; z-index:2002; display:none; width:260px; max-width:80vw;" class="home-reset-btn">Reset</button>
-
+  <button id="resetSoulBtn" style="position:fixed; right:24px; bottom:24px; z-index:2002; display:none; width:260px; max-width:80vw; width:auto;" class="home-reset-btn">Reset</button>
 
   <!-- How to Play Modal -->
   <div id="howToModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center;">
-    <div style="background:#fff; border-radius:12px; max-width:500px; margin:40px auto; padding:32px; box-shadow:0 4px 32px #0004; position:relative;">
+    <div style="color: #ffffff; background:#008a17; border-radius:12px; max-width:500px; margin:40px auto; padding:32px; box-shadow:0 4px 32px #0004; position:relative;">
       <h2>How to Play</h2>
       <ul>
         <li>Use your mouse and keyboard to move, gather, and fight.</li>
@@ -166,36 +299,29 @@
         <li>Watch your health and hunger bars!</li>
         <li>Compete with other players for survival and XP.</li>
       </ul>
-      </ul>
-      <p style="font-style: italic; color: #000000;">
+      <p style="font-style: italic; color: #ffffff;">
         💡 Tip: Play at <strong>67% zoom</strong> on your desktop browser for better resolution.
       </p>
-      <button onclick="closeHowToModal()" style="margin-top:16px;">Close</button>
+  <button onclick="closeHowToModal()" class="modal-close-btn">✕ Close</button>
     </div>
   </div>
 
   <!-- Privacy Policy Modal -->
   <div id="privacyModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center;">
-    <div style="background:#fff; border-radius:12px; max-width:500px; margin:40px auto; padding:32px; box-shadow:0 4px 32px #0004; position:relative;">
+    <div style="color: #ffffff; background:#008a17; border-radius:12px; max-width:500px; margin:40px auto; padding:32px; box-shadow:0 4px 32px #0004; position:relative;">
       <h2>Privacy Policy</h2>
       <p>This game does not collect personal information except as required for gameplay and analytics. Third-party services (such as Google AdSense) may use cookies to serve ads based on your prior visits to this or other websites. You can opt out of personalized advertising by visiting <a href='https://www.google.com/settings/ads' target='_blank'>Google Ads Settings</a>.</p>
       <p>For questions, contact: <a href="mailto:bobgamingprolol@gmail.com">bobgamingprolol@gmail.com</a></p>
-      <button onclick="closePrivacyModal()" style="margin-top:16px;">Close</button>
+  <button onclick="closePrivacyModal()" class="modal-close-btn">✕ Close</button>
     </div>
   </div>
 
-
   <!-- Server Join Page -->
-  <div id="serverJoin" class="menu" style="display: none;">
+  <div id="serverJoin" class="menu" style="font-family: 'VT323', monospace; display: none;">
     <h2>Join Main Server</h2>
     <p id="serverStatus">Connecting to main server...</p>
     <button onclick="backToHome()">Back</button>
   </div>
-
-
-
-
-  
 
   <!-- Death Screen -->
   <div id="deathScreen" class="menu" style="display: none;">
@@ -240,22 +366,41 @@
   <div id="dropAmountPrompt" class="menu" style="display: none;">
     <h2>Drop Item</h2>
     <input id="dropAmountInput" type="number" min="1" placeholder="Amount to drop" />
-    <button onclick="submitDropAmount()">Drop</button>
-    <button onclick="dropAll()">Drop All</button>
+    <button onclick="submitDropAmount(); playCancel();">Drop</button>
+    <button onclick="dropAll(); playCancel();">Drop All</button>
   </div>
 
   <!-- Game Canvas -->
   <canvas id="gameCanvas"></canvas>
 
-  <!-- Privacy Policy Section removed: now only accessible via modal -->
-
   <script>
+    // New functions for menu navigation
+    function showMultiplayerMenu() {
+      playSelect();
+      document.getElementById('gameModeSelection').style.display = 'none';
+      document.getElementById('multiplayerMenu').style.display = 'flex';
+      document.getElementById('singlePlayerMenu').style.display = 'none';
+      // Hide title in submenu
+      document.getElementById('mainMenuTitle').style.display = 'none';
+    }
+
+
+    function backToMainMenu() {
+      document.getElementById('gameModeSelection').style.display = 'flex';
+      document.getElementById('multiplayerMenu').style.display = 'none';
+      document.getElementById('singlePlayerMenu').style.display = 'none';
+      // Show title on main menu
+      document.getElementById('mainMenuTitle').style.display = 'block';
+      playCancel();
+    }
+    
     // Add event listener for Reset Soul button
     document.addEventListener('DOMContentLoaded', function() {
       var resetBtn = document.getElementById('resetSoulBtn');
       if (resetBtn) {
         resetBtn.addEventListener('click', function() {
           // Reset soul currency
+          playSelect();
           if (window.soulCurrency && typeof window.soulCurrency.set === 'function') {
             window.soulCurrency.set(0);
           } else {
@@ -276,6 +421,7 @@
         });
       }
     });
+    
     const version = "1.1.3";
     const scripts = [
       "js/soul.js",
@@ -292,11 +438,11 @@
       "js/network.js",
       "js/settingsPanel.js",
       "js/canvas.js",
-      "js/camera.js",
       "js/mobileControls.js",
       "js/input.js",
       "js/main.js"
     ];
+
 
     scripts.forEach(src => {
       const script = document.createElement("script");
@@ -304,6 +450,7 @@
       document.head.appendChild(script);
     });
   </script>
+  
   <script>
     // Add event listener to play select sound on all button clicks
     document.addEventListener('DOMContentLoaded', function() {
@@ -315,9 +462,7 @@
       }
       
       // Add event listeners to all existing buttons
-      document.querySelectorAll('button').forEach(button => {
-        button.addEventListener('click', playButtonSound);
-      });
+      
       
       // Use MutationObserver to handle dynamically created buttons
       const observer = new MutationObserver(mutations => {
@@ -343,27 +488,55 @@
       });
     });
   </script>
+  
   <script>
     // Show siteContent only on home page
     function showSiteContent(show) {
       // No longer show siteContent or privacy by default
     }
+    
     // Modal logic
     function showHowToModal() {
+      playSelect();
       document.getElementById('howToModal').style.display = 'flex';
     }
+    
     function closeHowToModal() {
+      playCancel();
       document.getElementById('howToModal').style.display = 'none';
     }
+    
     function showPrivacyModal() {
+      playSelect();
       document.getElementById('privacyModal').style.display = 'flex';
     }
+    
     function closePrivacyModal() {
+      playCancel();
       document.getElementById('privacyModal').style.display = 'none';
     }
 
+    // Escape key handler for menu navigation
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        // Check if we're in a submenu
+        
+        const multiplayerMenu = document.getElementById('multiplayerMenu');
+        const singlePlayerMenu = document.getElementById('singlePlayerMenu');
+        
+        if (multiplayerMenu && multiplayerMenu.style.display === 'flex') {
+          backToMainMenu();
+          e.preventDefault();
+        } else if (singlePlayerMenu && singlePlayerMenu.style.display === 'flex') {
+          backToMainMenu();
+          e.preventDefault();
+        }
+      }
+    });
+
     const origPlayNow = window.playNow;
     window.playNow = function() {
+      
       showSiteContent(false);
       try {
         const mode = (window.controlsSettings && window.controlsSettings.getMode && window.controlsSettings.getMode()) || (localStorage.getItem('controls.mode') || 'pc');
@@ -384,6 +557,7 @@
       try { var gc = document.getElementById('gameCanvas'); if (gc) gc.style.pointerEvents = 'none'; } catch(_) {}
       if (origBackToHome) origBackToHome();
     };
+    
     // On page load, show siteContent
     showSiteContent(true);
     // Ensure canvas is not blocking clicks on home page initially
@@ -395,6 +569,7 @@
       try { var gc = document.getElementById('gameCanvas'); if (gc) gc.style.pointerEvents = 'auto'; } catch(_) {}
       if (origSubmitName) return origSubmitName();
     };
+    
     // SOUL: Show/hide and update soul display on homepage
     function updateSoulDisplayHome() {
       const el = document.getElementById('soulDisplayHome');
@@ -420,12 +595,14 @@
       }
       if (koFiBtn) koFiBtn.style.display = homeVisible ? 'block' : 'none';
     }
+    
     window.addEventListener('DOMContentLoaded', updateSoulDisplayHome);
     window.addEventListener('soulChanged', updateSoulDisplayHome);
-   window.addEventListener('difficultyProgressionChanged', updateSoulDisplayHome);
+    window.addEventListener('difficultyProgressionChanged', updateSoulDisplayHome);
     setInterval(updateSoulDisplayHome, 500);
+    
     // Also update on navigation
-    [window.backToHome, window.playNow].forEach(fn => { // Changed to playNow
+    [window.backToHome, window.playNow].forEach(fn => {
       if (typeof fn === 'function') {
         const orig = fn;
         fn = function() { orig.apply(this, arguments); updateSoulDisplayHome(); };
