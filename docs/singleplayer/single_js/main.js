@@ -54,7 +54,7 @@ function update() {
   if (!(window.isSpectator && window.isSpectator())) staminaRegen(deltaTime);
   if (!(window.isSpectator && window.isSpectator())) updatePlayerFacing(mouseX, mouseY);
   updateMobRespawns(deltaTime, window.allResources, playersMap, gameTime);
-  // updateMobs(window.allResources, playersMap, deltaTime);
+  updateMobs(window.allResources, playersMap, deltaTime);
   // Always tick dropped items timers (so they despawn/blink in spectator too)
   try { if (typeof updateDroppedItems === 'function') updateDroppedItems(deltaTime); } catch(_) {}
 
