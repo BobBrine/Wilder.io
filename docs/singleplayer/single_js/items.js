@@ -1,5 +1,176 @@
 let ItemTypes = {
+  hand: {
+    name: "Hand",
+    color: "peachpuff",
+    isTool: true,
+    attackRange: 50,
+    attackSpeed: 0.5,
+    damage: 1,
+    category: 'hand',
+    tier: 0
+  },
 
+  // Axes
+  wooden_axe: {
+    name: "Wooden Axe",
+    color: "sienna",
+    isTool: true,
+    category: "axe",
+    tier: 1,
+    damage: 3,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  stone_axe: {
+    name: "Stone Axe",
+    color: "darkgray",
+    isTool: true,
+    category: "axe",
+    tier: 2,
+    damage: 5,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  iron_axe: {
+    name: "Iron Axe",
+    color: "white",
+    isTool: true,
+    category: "axe",
+    tier: 3,
+    damage: 7,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  gold_axe: {
+    name: "Gold Axe",
+    color: "gold",
+    isTool: true,
+    category: "axe",
+    tier: 4,
+    damage: 10,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+
+  // Pickaxes
+  wooden_pickaxe: {
+    name: "Wooden Pickaxe",
+    color: "sienna",
+    isTool: true,
+    category: "pickaxe",
+    tier: 1,
+    damage: 3,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  stone_pickaxe: {
+    name: "Stone Pickaxe",
+    color: "darkgray",
+    isTool: true,
+    category: "pickaxe",
+    tier: 2,
+    damage: 5,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  iron_pickaxe: {
+    name: "Iron Pickaxe",
+    color: "white",
+    isTool: true,
+    category: "pickaxe",
+    tier: 3,
+    damage: 7,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  gold_pickaxe: {
+    name: "Gold Pickaxe",
+    color: "gold",
+    isTool: true,
+    category: "pickaxe",
+    tier: 4,
+    damage: 10,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+
+  // Swords
+  wooden_sword: {
+    name: "Wooden Sword",
+    color: "sienna",
+    isTool: true,
+    category: "sword",
+    tier: 1,
+    damage: 10,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  stone_sword: {
+    name: "Stone Sword",
+    color: "darkgray",
+    isTool: true,
+    category: "sword",
+    tier: 2,
+    damage: 15,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  iron_sword: {
+    name: "Iron Sword",
+    color: "white",
+    isTool: true,
+    category: "sword",
+    tier: 3,
+    damage: 20,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  gold_sword: {
+    name: "Gold Sword",
+    color: "gold",
+    isTool: true,
+    category: "sword",
+    tier: 4,
+    damage: 25,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+  wooden_hammer: {
+    name: "Wooden Hammer",
+    color: "sienna",
+    isTool: true,
+    category: "hammer",
+    tier: 1,
+    damage: 25,
+    attackRange: 70,
+    attackSpeed: 0.45
+  },
+
+  // Special Items
+  torch: {
+    name: "Torch",
+    color: "yellow",
+    isTool: true,
+    attackRange: 50,
+    attackSpeed: 0,
+    damage: 1,
+    category: 'hand',
+    tier: 0
+  },
+
+  // Consumables
+  wood: { name: "Wood", color: "green", attackSpeed: 0.5 },
+  stone: { name: "Stone", color: "darkgray", attackSpeed: 0.5 },
+  iron: { name: "Iron", color: "white", attackSpeed: 0.5 },
+  gold: { name: "Gold", color: "gold", attackSpeed: 0.5 },
+  food: { name: "Food", color: "red", attackSpeed: 0.5 },
+  pure_core: { name: "Pure Core", color: "pink", attackSpeed: 0.5 },
+  dark_core: { name: "Dark Core", color: "white", attackSpeed: 0.5 },
+  mythic_core: { name: "Mythic Core", color: "yellow", attackSpeed: 0.5 },
+  health_potion: { name: "Health Potion", color: "red", attackSpeed: 0.5 },
+  strength_potion: { name: "Strength Potion", color: "orange", attackSpeed: 0.5 },
+  mythic_potion: { name: "Mythic Potion", color: "purple", attackSpeed: 0.5 },
+  crafting_table: { name: "Crafting Table", color: "brown", attackSpeed: 0.5 },
 };
 
 const recipes = [
@@ -68,6 +239,8 @@ const hotbar = {
   slots: new Array(12).fill(null),
   selectedIndex: null, // null means hand mode (no hotbar selected)
 };
+// Ensure hotbar is globally accessible in singleplayer
+try { window.hotbar = hotbar; } catch(_) {}
 
 function updateHotbarFromInventory(items) {
   // Sync slots with inventory
@@ -89,6 +262,12 @@ function updateHotbarFromInventory(items) {
 
   // Do NOT auto-deselect hotbar when attacking or if slot is empty; stay in hand mode as long as user is on an empty slot.
   // Only set selectedIndex to null if the user removes an item from a slot they are currently on (handled elsewhere if needed).
+  try { window.hotbar = hotbar; } catch(_) {}
+  // If nothing is selected but there are items, select the first item for immediate usability
+  if (hotbar.selectedIndex == null) {
+    const idx = hotbar.slots.findIndex(Boolean);
+    if (idx !== -1) hotbar.selectedIndex = idx;
+  }
 }
 
 const inventory = {
@@ -213,24 +392,28 @@ craftingImage.onload = () => {
 };
 
 const toolImages = {
+  'wooden_sword': swordImage,
   'stone_sword': stone_sword_Image,
   'iron_sword': iron_sword_Image,
   'gold_sword': gold_sword_Image,
   'wooden_pickaxe': wooden_pickaxe_Image,
   'stone_pickaxe': stone_pickaxe_Image,
   'iron_pickaxe': iron_pickaxe_Image,
+  'gold_pickaxe': gold_pickaxe_Image,
   'wooden_axe': wooden_axe_Image,
+  'stone_axe': stone_axe_Image,
   'iron_axe': iron_axe_Image,
+  'gold_axe': gold_axe_Image,
   'torch': torchImage,
   'wooden_hammer': wooden_hammer_Image,
 };
 
 const healthPotionImage = new Image();
-healthPotionImage.src = 'images/health_potion.png';
+ healthPotionImage.src = '../images/health_potion.png';
 const strengthPotionImage = new Image();
-strengthPotionImage.src = 'images/attack_potion.png';
+ strengthPotionImage.src = '../images/attack_potion.png';
 const mythicPotionImage = new Image();
-mythicPotionImage.src = 'images/Raindom_potion.png';
+ mythicPotionImage.src = '../images/Raindom_potion.png';
 
 const resourceImages = {
   'wood': woodImage,
@@ -247,6 +430,15 @@ const resourceImages = {
   'crafting_table': craftingImage,
 };
 
+// Expose image maps globally so UI render can reuse the exact same images
+window.toolImages = window.toolImages || toolImages;
+window.resourceImages = window.resourceImages || resourceImages;
+
+// Ensure drop timing defaults exist early (items.js loads before main/network)
+if (typeof window.DROP_DESPAWN_LIFETIME_SEC !== 'number') window.DROP_DESPAWN_LIFETIME_SEC = 60;
+if (typeof window.DROP_BLINK_START_SEC !== 'number') window.DROP_BLINK_START_SEC = 30;
+if (typeof window.DROP_BLINK_MAX_HZ !== 'number') window.DROP_BLINK_MAX_HZ = 4;
+
 function drawTool(centerX, centerY, attackRange) {
   // Draw left hand
   if (handImageLoaded) {
@@ -262,14 +454,14 @@ function drawTool(centerX, centerY, attackRange) {
     let localX = -handXOffset;
     let localY = handYOffset;
     let moveBack = false;
-    if (selected && ItemTypes[selected.type] && isAttacking) {
+    if (selected && ItemTypes[selected.type] && player.isAttacking) {
       moveBack = true;
-    } else if (!selected && isAttacking) {
+    } else if (!selected && player.isAttacking) {
       if (punchHand === 'left') {
         const now = performance.now();
         const attackSpeed = getAttackSpeed();
         const attackDuration = attackSpeed * 1000;
-        let attackProgress = (now - attackStartTime) / attackDuration;
+        let attackProgress = (now - (player.attackStartTime || 0)) / attackDuration;
         function bezier(t, p0, p1, p2) {
           return (1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
         }
@@ -304,7 +496,7 @@ function drawTool(centerX, centerY, attackRange) {
       const now = performance.now();
       const attackSpeed = getAttackSpeed();
       const attackDuration = attackSpeed * 1000;
-      const attackProgress = Math.min((now - attackStartTime) / attackDuration, 1);
+      let attackProgress = (now - (player.attackStartTime || 0)) / attackDuration;
       const backAmount = player.size * 0.25 * Math.sin(Math.PI * attackProgress);
       localX = -handXOffset - backAmount;
       localY = handYOffset + backAmount * 0.5;
@@ -335,9 +527,9 @@ function drawTool(centerX, centerY, attackRange) {
     let localY = handYOffset;
     let animate = false;
     let counterMove = false;
-    if (selected && ItemTypes[selected.type] && isAttacking) {
+    if (selected && ItemTypes[selected.type] && player?.isAttacking) {
       animate = true;
-    } else if (!selected && isAttacking) {
+    } else if (!selected && player?.isAttacking) {
       if (punchHand === 'right') animate = true;
       if (punchHand === 'left') counterMove = true;
     }
@@ -345,7 +537,7 @@ function drawTool(centerX, centerY, attackRange) {
       const now = performance.now();
       const attackSpeed = getAttackSpeed();
       const attackDuration = attackSpeed * 1000;
-      let attackProgress = (now - attackStartTime) / attackDuration;
+      let attackProgress = (now - (player.attackStartTime || 0)) / attackDuration;
       function bezier(t, p0, p1, p2) {
         return (1 - t) * (1 - t) * p0 + 2 * (1 - t) * t * p1 + t * t * p2;
       }
@@ -376,7 +568,7 @@ function drawTool(centerX, centerY, attackRange) {
       const now = performance.now();
       const attackSpeed = getAttackSpeed();
       const attackDuration = attackSpeed * 1000;
-      const attackProgress = Math.min((now - attackStartTime) / attackDuration, 1);
+      let attackProgress = (now - (player.attackStartTime || 0)) / attackDuration;
       const backAmount = player.size * 0.25 * Math.sin(Math.PI * attackProgress);
       localX = handXOffset + backAmount;
       localY = handYOffset + backAmount * 0.5;
@@ -396,7 +588,7 @@ function drawTool(centerX, centerY, attackRange) {
           const now = performance.now();
           const attackSpeed = getAttackSpeed();
           const attackDuration = attackSpeed * 1000;
-          let attackProgress = (now - attackStartTime) / attackDuration;
+          let attackProgress = (now - (player.attackStartTime || 0)) / attackDuration;
           if (attackProgress > 1) attackProgress = 1;
           toolAngle -= (Math.PI / 2) * (1 - attackProgress);
         }
@@ -445,4 +637,169 @@ function drawTool(centerX, centerY, attackRange) {
     ctx.restore();
   }
 }
+
+
+// Draw dropped items with 60s lifetime and last-30s blinking
+// - Normalizes any item missing lifetime fields (createdAt, lifetimeSec, expireAt)
+// - Prunes expired items
+// - Blinking starts when remaining <= 30s and ramps frequency up to a capped max
+function drawDroppedItems() {
+  try {
+    if (!Array.isArray(window.droppedItems) || window.droppedItems.length === 0) return;
+    const nowSec = performance.now() / 1000;
+
+    // Local defaults in case other scripts don't define constants
+  const LIFETIME_SEC = (typeof window.DROP_DESPAWN_LIFETIME_SEC === 'number') ? window.DROP_DESPAWN_LIFETIME_SEC : 60;
+  const BLINK_START_SEC = (typeof window.DROP_BLINK_START_SEC === 'number') ? window.DROP_BLINK_START_SEC : 30;
+  const BLINK_MAX_HZ = (typeof window.DROP_BLINK_MAX_HZ === 'number') ? window.DROP_BLINK_MAX_HZ : 8; // cap
+  const BASE_BLINK_HZ = 1; // production base blink
+
+    // Normalize + prune first to avoid drawing expired
+    const next = [];
+    for (let i = 0; i < window.droppedItems.length; i++) {
+      const it = window.droppedItems[i];
+      if (!it) continue;
+      // Attach lifetime metadata if missing
+      if (typeof it.expireAt !== 'number') {
+        const lifetime = Number.isFinite(it.lifetimeSec) ? it.lifetimeSec : LIFETIME_SEC;
+        it.lifetimeSec = lifetime;
+        it.createdAt = (typeof it.createdAt === 'number') ? it.createdAt : nowSec;
+        it.expireAt = (typeof it.expireAt === 'number') ? it.expireAt : (it.createdAt + lifetime);
+      }
+      // Prune expired
+      const remaining = it.expireAt - nowSec;
+      if (remaining > 0) next.push(it);
+    }
+    window.droppedItems = next;
+    if (window.droppedItems.length === 0) return;
+
+    // Draw
+    for (let i = 0; i < window.droppedItems.length; i++) {
+      const it = window.droppedItems[i];
+      if (!it) continue;
+      const remaining = Math.max(0, it.expireAt - nowSec);
+      // Reset dbg fields each frame
+      it.__dbgBlinkHz = null;
+      it.__dbgBlinking = false;
+
+      // Blinking logic
+      let visible = true;
+      // Always show for a short grace period after spawn so it doesn't look like it vanished
+      const timeSinceSpawn = (typeof it.createdAt === 'number') ? (nowSec - it.createdAt) : Infinity;
+      if (timeSinceSpawn < 0.5) {
+        visible = true;
+      } else if (remaining <= BLINK_START_SEC) {
+  // Step the blink speed across the entire blink window for a clearly visible acceleration
+  // Quartiles of remaining time in the blink window: 100%-75% -> 1Hz, 75%-50% -> 2Hz, 50%-25% -> 3Hz, 25%-0% -> 4Hz
+        const q75 = 0.75 * BLINK_START_SEC;
+        const q50 = 0.50 * BLINK_START_SEC;
+        const q25 = 0.25 * BLINK_START_SEC;
+  let hz;
+  if (remaining > q75) hz = 1;
+  else if (remaining > q50) hz = 2;
+  else if (remaining > q25) hz = 3;
+  else hz = 4;
+  hz = Math.min(BLINK_MAX_HZ, Math.max(BASE_BLINK_HZ, hz));
+        const period = 1 / Math.max(0.001, hz);
+        const timeBase = Number.isFinite(timeSinceSpawn) ? timeSinceSpawn : (nowSec);
+        const phase = (timeBase % period) / period; // 0..1
+        visible = phase < 0.5; // strict on/off for clear blinking
+        // Store for debug overlay
+        it.__dbgBlinkHz = hz;
+        it.__dbgBlinking = true;
+      }
+      // Debug overlay: show entity state when debug mode is on (always show, even when not visible)
+      try {
+        const debugOn = (typeof showData !== 'undefined') ? showData : !!window.showData;
+        if (debugOn) {
+          const remStr = remaining.toFixed(1) + 's';
+          const pdStr = (typeof it.pickupDelay === 'number' ? Math.max(0, it.pickupDelay).toFixed(1) + 's' : 'n/a');
+          const hzStr = (typeof it.__dbgBlinkHz === 'number' ? it.__dbgBlinkHz.toFixed(1) + 'Hz' : '-');
+          const idStr = (typeof it.id !== 'undefined' ? String(it.id) : '?');
+          const stateStr = it.__dbgBlinking ? (visible ? 'BLINK:ON' : 'BLINK:OFF') : 'STEADY';
+          const label = `id:${idStr} amt:${it.amount} t:${remStr} pd:${pdStr} hz:${hzStr} ${stateStr}`;
+          ctx.save();
+          ctx.font = "12px 'VT323', monospace";
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          const textW = ctx.measureText(label).width;
+          ctx.fillStyle = 'rgba(0,0,0,0.6)';
+          ctx.fillRect(it.x - (textW/2) - 6, it.y + 14, textW + 12, 16);
+          ctx.fillStyle = '#fff';
+          ctx.fillText(label, it.x, it.y + 16);
+          ctx.restore();
+        }
+      } catch (_) {}
+
+      if (!visible) continue;
+
+      // Pick the best image for this type
+      const type = it.type;
+      let img = (window.resourceImages && window.resourceImages[type]) || (window.toolImages && window.toolImages[type]) || null;
+
+      // Draw centered at (x, y); if no image, draw a simple fallback
+      if (img && img.complete && img.naturalWidth > 0) {
+        const imgW = img.width;
+        const imgH = img.height;
+        // Optional: slight alpha pulse during blinking
+        ctx.save();
+        if (remaining <= BLINK_START_SEC) {
+          ctx.globalAlpha = 0.9;
+        }
+        ctx.drawImage(img, it.x - imgW / 2, it.y - imgH / 2);
+        ctx.restore();
+      } else {
+        // Fallback: colored square based on type
+        ctx.save();
+        ctx.fillStyle = (ItemTypes[type] && ItemTypes[type].color) || '#ccc';
+        const s = 16;
+        ctx.fillRect(it.x - s / 2, it.y - s / 2, s, s);
+        ctx.restore();
+      }
+
+      // (debug overlay drawn above)
+    }
+  } catch (e) {
+    // Avoid throwing from render path
+    console.warn('drawDroppedItems error', e);
+  }
+}
+
+// Update dropped items each frame regardless of player/spectator state
+function updateDroppedItems(deltaTime) {
+  try {
+    if (!Array.isArray(window.droppedItems) || window.droppedItems.length === 0) return;
+    const nowSec = performance.now() / 1000;
+    const LIFETIME_SEC = (typeof window.DROP_DESPAWN_LIFETIME_SEC === 'number') ? window.DROP_DESPAWN_LIFETIME_SEC : 60;
+    const next = [];
+    for (let i = 0; i < window.droppedItems.length; i++) {
+      const it = window.droppedItems[i];
+      if (!it) continue;
+      // Normalize lifetime
+      if (typeof it.expireAt !== 'number') {
+        const lifetime = Number.isFinite(it.lifetimeSec) ? it.lifetimeSec : LIFETIME_SEC;
+        it.lifetimeSec = lifetime;
+        it.createdAt = (typeof it.createdAt === 'number') ? it.createdAt : nowSec;
+        it.expireAt = (typeof it.expireAt === 'number') ? it.expireAt : (it.createdAt + lifetime);
+      }
+      // Offline: tick pickupDelay
+      if (!window.socket || !socket.connected) {
+        if (typeof it.pickupDelay === 'number' && it.pickupDelay > 0) {
+          it.pickupDelay = Math.max(0, it.pickupDelay - (deltaTime || 0));
+        }
+      }
+      if ((it.expireAt - nowSec) > 0) next.push(it);
+    }
+    window.droppedItems = next;
+  } catch (e) {
+    console.warn('updateDroppedItems error', e);
+  }
+}
+
+// Ensure global exposure so main.js can call these regardless of scope quirks
+try {
+  window.drawDroppedItems = drawDroppedItems;
+  window.updateDroppedItems = updateDroppedItems;
+  window.__drawDroppedItemsBlink = drawDroppedItems; // stable alias for delegations
+} catch (_) {}
 

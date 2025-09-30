@@ -1,9 +1,32 @@
+// Ensure Day is defined globally for this module
+if (typeof Day === 'undefined') {
+  var Day = 0;
+}
+// Ensure DAY_LENGTH is defined globally for this module
+if (typeof DAY_LENGTH === 'undefined') {
+  var DAY_LENGTH = 120;
+}
+// --- Singleplayer: Provide isInGameplay for UI/gear logic ---
+function isInGameplay() {
+  // True if the main menu is hidden and the game canvas is visible
+  const menu = document.getElementById('singlePlayerMenu');
+  const gameCanvas = document.getElementById('gameCanvas');
+  return (
+    (!menu || menu.style.display === 'none') &&
+    gameCanvas && gameCanvas.style.display !== 'none'
+  );
+}
 const scoreboardWidth = 200;
+function uiCanvasSize() {
+  const dpr = window.devicePixelRatio || 1;
+  return { w: canvas.width / dpr, h: canvas.height / dpr };
+}
 
 function drawHUD() {
   ctx.save();
   let yOffsetUI = 16;
   ctx.font = "16px 'VT323', monospace";
+  const css = uiCanvasSize();
   // SOUL: Draw soul currency at top left (gameplay)
   if (typeof window.soulCurrency === 'object') {
     ctx.save();
@@ -34,6 +57,23 @@ function drawHUD() {
       ctx.fillText('Player position: ' + Math.floor(player.x) + ', ' + Math.floor(player.y), 10, yOffsetUI);
       yOffsetUI += 20;
       ctx.fillText('Gametime: ' + Math.floor(gameTime), 10, yOffsetUI);
+      
+      
+      // Show save countdown in debug mode
+      if (window.SaveManager && typeof window.SaveManager.getSaveCountdown === 'function') {
+        const saveInfo = window.SaveManager.getSaveCountdown();
+        if (saveInfo && saveInfo.isActive) {
+          yOffsetUI += 20;
+          ctx.fillStyle = saveInfo.remainingSeconds <= 10 ? '#ffaa00' : '#00ff00';
+          ctx.fillText(`Next save in: ${saveInfo.remainingSeconds}s`, 10, yOffsetUI);
+          ctx.fillStyle = '#fff';
+        } else if (saveInfo) {
+          yOffsetUI += 20;
+          ctx.fillStyle = '#00ff00';
+          ctx.fillText('Autosave: Active', 10, yOffsetUI);
+          ctx.fillStyle = '#fff';
+        }
+      }
       yOffsetUI += 20;
       ctx.fillText(`HP: ${Math.floor(player.health)} / ${player.maxHealth}, Stamina: ${Math.floor(stamina)}, Hunger: ${Math.floor(hunger)}`, 10, yOffsetUI);
       yOffsetUI += 20;
@@ -66,57 +106,32 @@ function drawHUD() {
 
   }
   
-  // Scoreboard improvements
-  const scoreboardX = canvas.width - scoreboardWidth - 10;
-  const scoreboardY = 40;
-  // Throttle scoreboard build to reduce per-frame work
-  if (!window.__scoreCache) window.__scoreCache = { last: 0, list: [] };
-  const nowTs = performance.now();
-  if (nowTs - window.__scoreCache.last > 150) {
-    const selfEntries = (player
-      ? [{ id: (window.socket && window.socket.id) ? window.socket.id : 'self', name: player.name, level: player.level }]
-      : []);
-    const others = Object.entries(otherPlayers || {})
-      .filter(([, p]) => p && typeof p.name === 'string' && typeof p.level !== 'undefined')
-      .map(([id, p]) => ({ id, name: p.name, level: p.level }));
-    const allPlayers = [...selfEntries, ...others]
-      .sort((a, b) => (b.level || 0) - (a.level || 0))
-      .slice(0, 5);
-    window.__scoreCache.list = allPlayers;
-    window.__scoreCache.last = nowTs;
-  }
-  const shownPlayers = window.__scoreCache.list;
-  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-  ctx.fillRect(scoreboardX, scoreboardY, scoreboardWidth, 20 + 20 * (5 + 1)); // Always height for 5 players
-  ctx.fillStyle = "white";
-  ctx.font = "16px 'VT323', monospace";
-  ctx.textAlign = "left";
-  ctx.fillText("Scoreboard", scoreboardX + 10, scoreboardY + 15);
-  let yOffset = scoreboardY + 40;
-  for (let i = 0; i < shownPlayers.length; i++) {
-    const p = shownPlayers[i];
-    ctx.fillText(`${i + 1}. ${p.name}: Lv ${p.level}`, scoreboardX + 10, yOffset);
-    yOffset += 20;
-  }
+
+  // Draw crafting UI in top right (where scoreboard was)
+  drawCraftingUI();
   drawControlGuide();
   ctx.restore();
   
 }
 
 const slotSize = 40;
-const padding = 4;
-const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
+const padding = 0;
 
 function drawHotbar() {
-  if (!hotbar || !hotbar.slots) return;
+  // Safely handle cases where hotbar isn't initialized yet
+  const hb = (typeof window !== 'undefined' && window.hotbar) ? window.hotbar : { slots: new Array(12).fill(null), selectedIndex: null };
+  const slots = Array.isArray(hb.slots) ? hb.slots : new Array(12).fill(null);
+  const totalWidth = (slotSize + padding) * slots.length - padding;
+  
   ctx.save();
-  const startX = (canvas.width - totalWidth) / 2;
-  const y = canvas.height - slotSize - 20;
-  drawHealthbar(startX, y);
-  drawHungerBar(startX, y);
+  const css = uiCanvasSize();
+  const startX = (css.w - totalWidth) / 2;
+  const y = css.h - slotSize - 20;
+  drawHealthbar(startX, y, totalWidth, padding);
+  drawHungerBar(startX, y, totalWidth, padding);
   // Track hovered slot for tooltip
   let hoveredSlotInfo = null;
-  for (let i = 0; i < hotbar.slots.length; i++) {
+  for (let i = 0; i < slots.length; i++) {
     const x = startX + i * (slotSize + padding);
     ctx.save();
     ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
@@ -124,7 +139,7 @@ function drawHotbar() {
     ctx.strokeStyle = "white";
     ctx.strokeRect(x, y, slotSize, slotSize);
     ctx.restore();
-    if (i === hotbar.selectedIndex) {
+    if (i === hb.selectedIndex) {
       ctx.save();
       ctx.strokeStyle = "yellow";
       ctx.lineWidth = 3;
@@ -135,7 +150,7 @@ function drawHotbar() {
     const isHover = typeof mouseX === 'number' && typeof mouseY === 'number' &&
                     mouseX >= x && mouseX <= x + slotSize &&
                     mouseY >= y && mouseY <= y + slotSize;
-    const slot = hotbar.slots[i];
+  const slot = slots[i];
     if (isHover) {
       hoveredSlotInfo = { x, y, slot };
     }
@@ -238,14 +253,16 @@ function drawHotbar() {
 
 function drawCraftingUI() {
   ctx.save();
+  const css = uiCanvasSize();
   const gridCols = 4;
   const gridRows = 4;
   const cellSize = 32;
   const cellPadding = 10;
   const gridWidth = gridCols * cellSize + (gridCols - 1) * cellPadding;
   const gridHeight = gridRows * cellSize + (gridRows - 1) * cellPadding;
-  const gridX = canvas.width - scoreboardWidth - gridWidth - 20;
-  const gridY = gridHeight - slotSize - 75;
+  // Place crafting UI at scoreboard's old top-right position
+  const gridX = css.w - gridWidth - 20;
+  const gridY = 40;
 
   // 🔹 Check crafting table proximity
   const nearTable = isNearCraftingTable();
@@ -360,7 +377,7 @@ function drawCraftingUI() {
     let boxX = x - boxW - 8;
     let boxY = y;
     if (boxX < 0) boxX = x + cellSize + 8;
-    if (boxY + boxH > canvas.height) boxY = canvas.height - boxH - 4;
+    if (boxY + boxH > css.h) boxY = css.h - boxH - 4;
     
     ctx.fillStyle = "rgba(0,0,0,0.85)";
     ctx.fillRect(boxX, boxY, boxW, boxH);
@@ -399,7 +416,8 @@ function drawMessage() {
     ctx.fillStyle = "white";
     ctx.font = "16px 'VT323', monospace";
     ctx.textAlign = "center";
-    ctx.fillText(message, canvas.width / 2, 75);
+    const { w } = uiCanvasSize();
+    ctx.fillText(message, w / 2, 75);
     ctx.restore();
   }
 }
@@ -415,8 +433,8 @@ function drawDamageTexts() {
   const deltaTime = (performance.now() - lastUpdate) / 1000;
   for (let i = damageTexts.length - 1; i >= 0; i--) {
     const dmg = damageTexts[i];
-    const screenX = dmg.x - camera.x;
-    const screenY = dmg.y - camera.y;
+    const screenX = dmg.x;
+    const screenY = dmg.y;
     ctx.save();
     ctx.globalAlpha = dmg.opacity;
     ctx.font = "32px 'VT323', monospace";
@@ -452,8 +470,6 @@ function updateFPSCounter() {
     }
   }
   __lastFpsTs = now;
-  // Cap FPS at 60 for display
-  if (fpsDisplay > 60) fpsDisplay = 60;
   // Throttle the visible FPS updates to reduce flicker
   if (!__lastFpsShownTs || (now - __lastFpsShownTs) >= FPS_SHOW_INTERVAL_MS) {
     fpsShown = fpsDisplay;
@@ -467,9 +483,10 @@ function drawFPSCounter() {
   ctx.font = "16px 'VT323', monospace";
   ctx.textAlign = "right";
   ctx.textBaseline = "top";
+  const { w } = uiCanvasSize();
   const shown = fpsShown || fpsDisplay || 0;
-  const displayText = `FPS: ${shown.toFixed(1)} | Ping: ${ping.toFixed(1)} ms`;
-  ctx.fillText(displayText, canvas.width - 10, 10);
+  const displayText = `FPS: ${shown.toFixed(1)}`;
+  ctx.fillText(displayText, w - 10, 10);
   ctx.restore();
 }
 
@@ -479,64 +496,34 @@ function drawCreatorTag() {
   ctx.font = "16px 'VT323', monospace";
   ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
-  ctx.fillText(`@BobBrine`, canvas.width - 10, canvas.height - 10);
+  const css = uiCanvasSize();
+  ctx.fillText(`@BobBrine`, css.w - 10, css.h - 10);
   ctx.restore();
 }
 
 function draw() {
   
   drawMob();
-  drawResources();
+  // drawResources();
   drawDroppedItems();
   drawWorldBorder();
   
 }
 
 function drawDroppedItems() {
-  droppedItems.forEach(item => {
-    // Cull off-screen
-    if (typeof isWorldRectOnScreen === 'function' && !isWorldRectOnScreen(item.x - 10, item.y - 10, 20, 20)) {
-      return;
-    }
-    const screenX = item.x;
-    const screenY = item.y;
-    ctx.save();
-    // Try to draw an icon for the dropped item if available
-    const iconSize = 24;
-    let drewImage = false;
-    const tImg = (typeof toolImages !== 'undefined') ? toolImages[item.type] : undefined;
-    const rImg = (typeof resourceImages !== 'undefined') ? resourceImages[item.type] : undefined;
-    if (tImg && tImg.complete) {
-      ctx.drawImage(tImg, screenX - iconSize / 2, screenY - iconSize / 2, iconSize, iconSize);
-      drewImage = true;
-    } else if (rImg && rImg.complete) {
-      ctx.drawImage(rImg, screenX - iconSize / 2, screenY - iconSize / 2, iconSize, iconSize);
-      drewImage = true;
-    }
-    if (!drewImage) {
-      const itemColor = ItemTypes[item.type]?.color || "brown";
-      ctx.fillStyle = itemColor;
-      ctx.beginPath();
-      ctx.arc(screenX, screenY, 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.closePath();
-    }
-    // Draw label with amount below the icon/circle
-    if(showData) {
-      ctx.fillStyle = "white";
-      ctx.font = "10px 'VT323', monospace";
-      ctx.textAlign = "center";
-      ctx.fillText(`${item.type} (${item.amount})`, screenX, screenY + 20);
-    }
-    ctx.restore();
-  });
+  // Delegate to the blinking renderer defined in items.js using a stable alias
+  if (typeof window.__drawDroppedItemsBlink === 'function') {
+    return window.__drawDroppedItemsBlink();
+  }
+  // Fallback: do nothing (prevents double-draw and ensures the blinking version is used)
 }
 
 function drawTimeIndicator() {
   const isDay = gameTime < DAY_LENGTH;
   ctx.save();
   ctx.beginPath();
-  ctx.arc(canvas.width / 2, 30, 20, 0, Math.PI * 2);
+  const css = uiCanvasSize();
+  ctx.arc(css.w / 2, 30, 20, 0, Math.PI * 2);
   ctx.fillStyle = isDay ? 'yellow' : 'gray';
   ctx.fill(); // Only fill, never stroke
   ctx.restore();
@@ -557,7 +544,7 @@ function drawLightSources() {
     gradient.addColorStop(0.7, 'rgba(255, 255, 245, 0.1)');
     gradient.addColorStop(1, 'rgba(255, 255, 245, 0)');
     ctx.fillStyle = gradient;
-    ctx.fillRect(camera.x - playerRadius, camera.y - playerRadius, canvas.width + 2 * playerRadius, canvas.height + 2 * playerRadius);
+    ctx.fillRect(-5000, -5000, 10000, 10000);
   if (hotbar && hotbar.slots && hotbar.slots[hotbar.selectedIndex]?.type === 'torch') {
   const torchRadius = 300;
       gradient = ctx.createRadialGradient(playerWorldX, playerWorldY, 0, playerWorldX, playerWorldY, torchRadius);
@@ -681,296 +668,38 @@ function drawControlGuide() {
 }
 
 // Settings Panel and Gear UI
-(function(){
-  const panel = document.getElementById('settingsPanel');
-  const overlay = document.getElementById('settingsOverlay');
-  const gear = document.getElementById('settingsGear');
-  if (!panel || !overlay || !gear) return;
 
-  // Controls settings persistence and helpers
-  window.controlsSettings = (function(){
-    const KEY = 'controls.mode'; // 'pc' | 'mobile'
-    function getMode(){
-      try { return localStorage.getItem(KEY) || 'pc'; } catch(_) { return 'pc'; }
-    }
-    function setMode(mode){
-      const m = (mode === 'mobile') ? 'mobile' : 'pc';
-      try { localStorage.setItem(KEY, m); } catch(_){ }
-      // Reflect visibility immediately during gameplay
-      try { window.mobileControls && window.mobileControls.setVisible(m === 'mobile' && isInGameplay()); } catch(_) {}
-    }
-    return { getMode, setMode };
-  })();
+function beginUITransform() {
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);  // UI in CSS pixels
+  ctx.imageSmoothingEnabled = false;
+}
 
-  // Simple hover/click styling
-  gear.addEventListener('mouseenter', () => { gear.style.background = 'rgba(0,0,0,0.8)'; });
-  gear.addEventListener('mouseleave', () => { gear.style.background = 'rgba(0,0,0,0.6)'; });
-  gear.addEventListener('mousedown', () => { gear.style.transform = 'scale(0.96)'; });
-  window.addEventListener('mouseup', () => { gear.style.transform = 'scale(1)'; });
+function drawStaminaBar() {
+  if (typeof canvas === 'undefined' || typeof ctx === 'undefined') return;
+  ctx.save();
+  const cssW = canvas.width / (window.devicePixelRatio || 1);
+  const cssH = canvas.height / (window.devicePixelRatio || 1);
 
-  function isInGameplay() {
-    // Only show during gameplay (no menus visible, not at death screen)
-    const ids = ['homePage','serverJoin','localLAN','hostPrompt','joinLocalPrompt','nameEntry','deathScreen'];
-    for (const id of ids) {
-      const el = document.getElementById(id);
-      if (el && el.style.display !== 'none') return false;
-    }
-    // Socket connected and player context present
-    return !!(window.socket && window.socket.connected);
-  }
+  const barWidth = cssW;
+  const barHeight = 10;
+  const barX = 0;
+  const barY = cssH - barHeight;
 
-  function openPanel() {
-    playSelect();
-    if (!isInGameplay()) return;
-    panel.style.display = 'block';
-    overlay.style.display = 'block';
-    controldisplay = true;
-  }
-  function closePanel() {
-    panel.style.display = 'none';
-    overlay.style.display = 'none';
-    controldisplay = false;
-    playCancel();
-  }
-  function togglePanel() {
-    if (panel.style.display === 'none' || panel.style.display === '') openPanel(); else closePanel();
-  }
+  // Derive stamina and max from safest sources available
+  const ms = (typeof window !== 'undefined' && window.player && typeof window.player.maxStamina === 'number')
+    ? window.player.maxStamina
+    : (typeof maxStamina !== 'undefined' ? maxStamina : 100);
+  const st = (typeof window !== 'undefined' && typeof window.stamina === 'number')
+    ? window.stamina
+    : (typeof stamina !== 'undefined' ? stamina : ms);
+  let staminaRatio = (ms > 0) ? (st / ms) : 0;
+  if (!isFinite(staminaRatio)) staminaRatio = 0;
+  staminaRatio = Math.max(0, Math.min(1, staminaRatio));
 
-  // Gear toggles panel
-  gear.addEventListener('click', () => {
-  togglePanel();
-});
-
-  // Esc toggles open/close; also closes when already open
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-      // Check if modals are open first
-      const howToModal = document.getElementById('howToModal');
-      const privacyModal = document.getElementById('privacyModal');
-      
-      if (howToModal && howToModal.style.display === 'flex') {
-        closeHowToModal();
-
-        return;
-      }
-      
-      if (privacyModal && privacyModal.style.display === 'flex') {
-        closePrivacyModal();
-
-        return;
-      }
-
-      // Check if drop prompt is open
-      const dropPrompt = document.getElementById('dropAmountPrompt');
-      if (dropPrompt && dropPrompt.style.display !== 'none') {
-        dropPrompt.style.display = 'none';
-        playCancel();
-        return;
-      }
-
-      // Check if settings panel is open
-      const settingsPanel = document.getElementById('settingsPanel');
-      if (settingsPanel && settingsPanel.style.display !== 'none') {
-        if (window.__settingsPanel && typeof window.__settingsPanel.close === 'function') {
-          window.__settingsPanel.close();
-        }
-        return;
-      }
-
-      // Check if we're in gameplay (socket connected and no menus visible)
-      if (window.socket && window.socket.connected && 
-          document.getElementById('homePage').style.display === 'none' &&
-          document.getElementById('deathScreen').style.display === 'none' &&
-          document.getElementById('serverJoin').style.display === 'none') {
-        if (window.__settingsPanel && typeof window.__settingsPanel.open === 'function') {
-          window.__settingsPanel.open();
-        }
-        return;
-      }
-
-      // If we're in a menu, go back to home
-      if (document.getElementById('serverJoin').style.display !== 'none' ||
-          document.getElementById('deathScreen').style.display !== 'none') {
-        backToHome();
-      }
-    }
-  });
-
-  // Close button
-  const closeBtn = document.getElementById('settingsCloseBtn');
-  if (closeBtn) closeBtn.addEventListener('click', closePanel);
-
-  // Close when clicking outside the panel
-  document.addEventListener('click', (e) => {
-    if (panel.style.display === 'none') return;
-    if (panel.contains(e.target) || gear.contains(e.target)) return;
-    // Ignore clicks on other menus
-    if (!isInGameplay()) { closePanel(); return; }
-    closePanel();
-  });
-
-  // Wire up buttons
-  const respawnBtn = document.getElementById('settingsRespawnBtn');
-  const perfBtn = document.getElementById('settingsPerformanceBtn');
-  const debugBtn = document.getElementById('settingsDebugBtn');
-  const controlsBtn = document.getElementById('settingsControlsModeBtn');
-  const soundBtn = document.getElementById('settingsSoundBtn'); // New sound button
-  const volumeRow = document.getElementById('settingsVolumeRow'); // New volume row
-  const volumeSlider = document.getElementById('settingsVolumeSlider'); // New volume slider
-  const volumeValue = document.getElementById('settingsVolumeValue'); // New volume value display
-  const goMainBtn = document.getElementById('settingsGoMainBtn');
-  const jsRow = document.getElementById('settingsJoystickRow');
-  const jsRange = document.getElementById('settingsJoystickScale');
-  const jsVal = document.getElementById('settingsJoystickScaleVal');
-
-  function refreshSoundBtn() {
-    if (!soundBtn) return;
-    soundBtn.textContent = `Sound: ${window.soundSettings.muted ? 'Off' : 'On'}`;
-    if (volumeRow) volumeRow.style.display = window.soundSettings.muted ? 'none' : 'flex';
-  }
-  
-  function toggleSound() {
-    playSelect();
-    window.soundSettings.muted = !window.soundSettings.muted;
-    try {
-      localStorage.setItem('sound.muted', window.soundSettings.muted);
-    } catch (e) {}
-    refreshSoundBtn();
-  }
-
-  if (soundBtn) {
-    soundBtn.addEventListener('click', toggleSound);
-    refreshSoundBtn();
-  }
-
-  // Volume slider
-  if (volumeSlider && volumeValue) {
-    volumeSlider.value = window.soundSettings.volume;
-    volumeValue.textContent = `${window.soundSettings.volume}%`;
-    
-    volumeSlider.addEventListener('input', () => {
-      const volume = parseInt(volumeSlider.value, 10);
-      volumeValue.textContent = `${volume}%`;
-      window.soundSettings.volume = volume;
-      try {
-        localStorage.setItem('sound.volume', volume);
-      } catch (e) {}
-    });
-  }
-  // Reuse death screen respawn logic: emulate clicking respawn (calls socket setName, etc.)
-  function doRespawn() {
-    if (typeof window.respawnNow === 'function') window.respawnNow();
-    closePanel();
-  }
-
-  if (respawnBtn) respawnBtn.addEventListener('click', doRespawn);
-
-  function togglePerformance() {
-    playSelect();
-    const gs = (window.graphicsSettings ||= {});
-    const next = !gs.performanceMode;
-    gs.performanceMode = next;
-    // Turn off shadows when performance mode is ON (mirror ensurePerformanceToggle)
-    gs.shadows = !next;
-    try {
-      localStorage.setItem('graphics.performanceMode', JSON.stringify(next));
-      localStorage.removeItem('graphics.shadows');
-    } catch(_) {}
-    if (window.showMessage) window.showMessage(`Performance Mode: ${next ? 'On' : 'Off'}`, 2);
-  }
-  if (perfBtn) perfBtn.addEventListener('click', togglePerformance);
-
-  function toggleDebug() {
-    playSelect();
-    // Match in-game DEBUG button: toggle the global showData binding
-    try {
-      // Use identifier, not window.showData, so it affects the global lexical binding
-      /* eslint-disable no-undef */
-      showData = !showData;
-      /* eslint-enable no-undef */
-      if (window.showMessage) window.showMessage(`Debug: ${showData ? 'On' : 'Off'}`, 2);
-    } catch (e) {
-      // Fallback if binding not available yet
-      const curr = !!window.showData;
-      window.showData = !curr;
-      if (window.showMessage) window.showMessage(`Debug: ${!curr ? 'On' : 'Off'}`, 2);
-    }
-  }
-  if (debugBtn) debugBtn.addEventListener('click', toggleDebug);
-
-  // Controls mode toggle button
-  function refreshControlsBtn(){
-    if (!controlsBtn) return;
-    const mode = window.controlsSettings.getMode();
-    controlsBtn.textContent = `Controls: ${mode === 'mobile' ? 'Mobile' : 'PC'}`;
-    if (jsRow) jsRow.style.display = mode === 'mobile' ? 'flex' : 'none';
-    // Sync range with stored scale
-    try {
-      const scale = (function(){ try { return parseFloat(localStorage.getItem('controls.joystickScale')||'1'); } catch(_) { return 1; } })();
-      if (jsRange) jsRange.value = String(scale);
-      if (jsVal) jsVal.textContent = `${scale.toFixed(2)}×`;
-    } catch(_) {}
-  }
-  function toggleControlsMode(){
-    playSelect();
-    const curr = window.controlsSettings.getMode();
-    const next = (curr === 'pc') ? 'mobile' : 'pc';
-    window.controlsSettings.setMode(next);
-    refreshControlsBtn();
-    if (window.showMessage) window.showMessage(`Controls: ${next === 'mobile' ? 'Mobile' : 'PC'}`, 2);
-  }
-  if (controlsBtn) {
-    controlsBtn.addEventListener('click', toggleControlsMode);
-    refreshControlsBtn();
-  }
-
-  // Joystick size slider wiring
-  if (jsRange) {
-    jsRange.addEventListener('input', () => {
-      const v = parseFloat(jsRange.value || '1');
-      if (jsVal) jsVal.textContent = `${v.toFixed(2)}×`;
-      try { window.mobileControls && window.mobileControls.setScale(v); } catch(_) {}
-    });
-  }
-
-  if (goMainBtn) goMainBtn.addEventListener('click', () => {
-    closePanel();
-    if (typeof window.backToMain === 'function') window.backToMain();
-  });
-
-  // Keep gear visible only in gameplay
-  function updateGearVisibility(){
-    gear.style.display = isInGameplay() ? 'block' : 'none';
-    // Keep mobileControls visibility in sync when gameplay state changes
-    try {
-      const mode = window.controlsSettings.getMode();
-      window.mobileControls && window.mobileControls.setVisible(mode === 'mobile' && isInGameplay());
-    } catch(_) {}
-    // Ensure canvas captures input only during gameplay (fixes PC mouse not working)
-    try {
-      const gc = document.getElementById('gameCanvas');
-      if (gc) gc.style.pointerEvents = isInGameplay() ? 'auto' : 'none';
-    } catch(_) {}
-    // Position gear under scoreboard: scoreboard starts at top-right 10px + header (~40px), so we offset ~150-220px
-    // Already positioned via CSS inline (top:190px). We could adjust dynamically based on canvas height if needed.
-  }
-  setInterval(updateGearVisibility, 250);
-  updateGearVisibility();
-
-  // Expose for other modules to close when needed
-  window.__settingsPanel = { open: openPanel, close: closePanel, toggle: togglePanel };
-
-  // Auto-close on death or navigation
-  const origBackToMain = window.backToMain;
-  window.backToMain = function(){ closePanel(); if (origBackToMain) origBackToMain(); };
-  const origBackToHome = window.backToHome;
-  window.backToHome = function(){ closePanel(); if (origBackToHome) origBackToHome(); };
-
-  // Close when death screen appears
-  const obs = new MutationObserver(() => {
-    const death = document.getElementById('deathScreen');
-    if (death && death.style.display !== 'none') closePanel();
-  });
-  obs.observe(document.body, { attributes:true, subtree:true, attributeFilter:['style'] });
-})();
-
+  ctx.fillStyle = "gray";
+  ctx.fillRect(barX, barY, barWidth, barHeight);
+  ctx.fillStyle = "yellow";
+  ctx.fillRect(barX, barY, barWidth * staminaRatio, barHeight);
+  ctx.restore();
+}

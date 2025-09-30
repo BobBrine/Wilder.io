@@ -27,11 +27,7 @@ function update() {
   }
   // Keep rendering UI even if player/resources not yet ready to avoid a frozen feel
   if (!player || !resourcesLoaded) {
-    ctx.save();
-    ctx.fillStyle = '#000';
-    ctx.globalAlpha = 0.3;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
+
     scheduleNextTick();
     return;
   }
@@ -107,4 +103,3 @@ function scheduleNextTick() {
 if (!window.isSinglePlayer) {
   update();
 } 
-

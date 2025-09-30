@@ -6,6 +6,8 @@ let lastBreakTime = 0;
 const BREAK_COOLDOWN = 200;
 // World blocks data structure
 let placedBlocks = [];
+// Expose placedBlocks globally for save manager
+window.placedBlocks = placedBlocks;
 const BlockTypes = {
   'crafting_table': { maxHealth: 100 },
   // Add more block types as needed
@@ -123,8 +125,10 @@ function placeBlockAt(selectedType, gridX, gridY) {
     worldY: gridY * GRID_SIZE
   });
   
+    // Keep global reference synchronized
+    window.placedBlocks = placedBlocks;
+  
   // Emit to server
-  socket.emit('placeBlock', block);
   
   lastPlacementTime = now;
   inventory.removeItem(selectedType, 1);
@@ -178,8 +182,6 @@ function drawPlacedBlocks(ctx) {
 }
 
 function tryBreakBlock() {
-  if (!player) return false;
-
   let attackRange = DEFAULT_ATTACK_RANGE + player.playerrange;
   const coneAngle = ATTACK_ANGLE;
   const selected = hotbar.slots[hotbar.selectedIndex];
@@ -224,11 +226,14 @@ function tryBreakBlock() {
         // Apply damage to block
         const damage = toolInfo.damage;
         block.health -= damage;
-        socket.emit('blockHit', {
-          gridX: block.gridX,
-          gridY: block.gridY,
-          damage: toolInfo.damage
-        });
+
+        // If online, inform the server so it can track health and drop the item authoritatively
+        try {
+          if (window.socket && socket.connected) {
+            socket.emit('blockHit', { gridX: block.gridX, gridY: block.gridY, damage });
+          }
+        } catch (_) {}
+
         // Show damage text
         showDamageText(block.worldX, block.worldY, -damage);
         
@@ -245,19 +250,29 @@ function tryBreakBlock() {
         if (block.health <= 0) {
           // Break the block
           placedBlocks.splice(i, 1);
+            // Keep global reference synchronized
+            window.placedBlocks = placedBlocks;
           i--; // Adjust index after removal
           
-          // Drop the block as an item
-          socket.emit('dropItem', { 
-            type: block.type, 
-            amount: 1, 
-            x: block.worldX, 
-            y: block.worldY 
-          });
+          // If offline singleplayer, spawn the dropped block item locally (instant pickup)
+          if (!(window.socket && socket.connected)) {
+            if (!Array.isArray(window.droppedItems)) window.droppedItems = [];
+            const nowSec = performance.now() / 1000;
+            const LIFETIME_SEC = (typeof window.DROP_DESPAWN_LIFETIME_SEC === 'number') ? window.DROP_DESPAWN_LIFETIME_SEC : 60;
+            window.droppedItems.push({
+              id: Math.floor(Math.random() * 1e9),
+              type: block.type,
+              amount: 1,
+              x: block.worldX,
+              y: block.worldY,
+              pickupDelay: 0,
+              createdAt: nowSec,
+              lifetimeSec: LIFETIME_SEC,
+              expireAt: nowSec + LIFETIME_SEC,
+            });
+          }
 
           playBlockBreak();
-          socket.emit('breakBlock', { gridX: block.gridX, gridY: block.gridY });
-
           // Show break effect
           showPlacementEffect(block.worldX, block.worldY, false);
         }
@@ -375,3 +390,22 @@ function triggerBlockHitAnimation(block, attacker) {
     duration: 150 // ms total
   };
 }
+
+  // Function to clear blocks when switching worlds
+  function clearAllBlocks() {
+    placedBlocks.length = 0;
+    window.placedBlocks = placedBlocks;
+  }
+
+  // Function to set blocks from loaded world data
+  function setPlacedBlocks(blocks) {
+    placedBlocks.length = 0;
+    if (blocks && Array.isArray(blocks)) {
+      placedBlocks.push(...blocks);
+    }
+    window.placedBlocks = placedBlocks;
+  }
+
+  // Expose block management functions globally
+  window.clearAllBlocks = clearAllBlocks;
+  window.setPlacedBlocks = setPlacedBlocks;

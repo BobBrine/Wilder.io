@@ -1,15 +1,164 @@
+// Seeded random number generator for consistent world generation
+let seedRng = null;
+
+function createSeededRNG(seed) {
+  // Simple seeded random number generator (mulberry32)
+  return function() {
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function getRandomValue() {
+  // Use seeded RNG if available (for world generation), otherwise use Math.random
+  if (seedRng && typeof window.worldSeed !== 'undefined') {
+    const value = seedRng();
+    // Debug: log first few random values to verify uniqueness
+    if (typeof window._debugRandomCount === 'undefined') window._debugRandomCount = 0;
+    if (window._debugRandomCount < 5) {
+      console.log(`Seeded random ${window._debugRandomCount}: ${value} (seed: ${window.worldSeed})`);
+      window._debugRandomCount++;
+    }
+    return value;
+  }
+  return Math.random();
+}
+
+// Initialize seeded RNG when world seed is available
+function initializeWorldSeed() {
+  if (typeof window.worldSeed !== 'undefined' && window.worldSeed) {
+    seedRng = createSeededRNG(window.worldSeed);
+    console.log('Seeded RNG initialized with seed:', window.worldSeed);
+    // Reset debug counter for new world
+    window._debugRandomCount = 0;
+  // Seed initialized (silent)
+  }
+}
+
+// Reset seeded RNG (for clearing between worlds)
+function resetWorldSeed() {
+  seedRng = null;
+  console.log('Seeded RNG reset');
+}
+
+// Make functions globally available
+if (typeof window !== 'undefined') {
+  window.initializeWorldSeed = initializeWorldSeed;
+  window.resetWorldSeed = resetWorldSeed;
+  window.getRandomValue = getRandomValue;
+}
+
+
+const resourceTypes = {
+  food: {
+    maxCount: 50,
+    sizeX: 32,
+    sizeY: 32,
+    get health() { return Math.floor(getRandomValue() * (25 - 15 + 1)) + 15; },
+    color: "red",
+    drop: "food",
+    requiredTool: { categories: ["hand"], minTier: 0 },
+    spawntimer: 8, // faster regen for early game
+    getDropAmount(health) { return health <= 20 ? Math.floor(getRandomValue() * 3) + 3 : Math.floor(getRandomValue() * 4) + 4; }
+  },
+
+  wood: {
+    maxCount: 80,
+    get sizeX() {
+      const min = 48;
+      const maxArea = 8192;
+      const x = Math.floor(getRandomValue() * ((maxArea / min) - min + 1)) + min;
+      return x;
+    },
+    get sizeY() {
+      const maxArea = 8192;
+      const x = this.sizeX;
+      return Math.floor(maxArea / x);
+    },
+    get health() { return Math.floor(getRandomValue() * (35 - 20 + 1)) + 20; },
+    color: "green",
+    drop: "wood",
+    requiredTool: { categories: ["hand", "axe"], minTier: 0 },
+    spawntimer: 10,
+    getDropAmount(health) { return health <= 28 ? Math.floor(getRandomValue() * 3) + 4 : Math.floor(getRandomValue() * 4) + 5; }
+  },
+
+  stone: {
+    maxCount: 50,
+    sizeX: 64,
+    sizeY: 64,
+    get health() { return Math.floor(Math.random() * (50 - 30 + 1)) + 30; },
+    color: "darkgray",
+    drop: "stone",
+    requiredTool: { categories: ["pickaxe"], minTier: 1 },
+    spawntimer: 12,
+    getDropAmount(health) { return health <= 40 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 5; }
+  },
+
+  iron: {
+    maxCount: 25,
+    sizeX: 64,
+    sizeY: 64,
+    get health() { return Math.floor(Math.random() * (70 - 45 + 1)) + 45; },
+    color: "white",
+    drop: "iron",
+    requiredTool: { categories: ["pickaxe"], minTier: 2 },
+    spawntimer: 14,
+    getDropAmount(health) { return health <= 55 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 6; }
+  },
+
+  gold: {
+    maxCount: 15,
+    sizeX: 32,
+    sizeY: 32,
+    get health() { return Math.floor(Math.random() * (90 - 60 + 1)) + 60; },
+    color: "gold",
+    drop: "gold",
+    requiredTool: { categories: ["pickaxe"], minTier: 3 },
+    spawntimer: 16,
+    getDropAmount(health) { return health <= 75 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 5; }
+  }
+};
+
+// Initialize global allResources if it doesn't exist (create once and keep same reference)
+if (!window.allResources) {
+  window.allResources = {
+    food: [],
+    wood: [],
+    stone: [],
+    iron: [],
+    gold: []
+  };
+}
+
+// Ensure all resource type arrays exist without replacing the object (to preserve references)
+function ensureAllResourceTypes() {
+  if (!window.allResources) window.allResources = {};
+  const types = Object.keys(resourceTypes);
+  for (const t of types) {
+    if (!Array.isArray(window.allResources[t])) window.allResources[t] = [];
+  }
+}
+
+// Expose helper for other modules
+window.ensureAllResourceTypes = ensureAllResourceTypes;
+
 // Global graphics settings (persisted)
 if (!window.graphicsSettings) {
   try {
-    const saved = localStorage.getItem('graphics.shadows');
+    const perf = JSON.parse(localStorage.getItem('graphics.performanceMode') ?? 'false');
     window.graphicsSettings = {
-  shadows: saved ? JSON.parse(saved) : false,
-  performanceMode: JSON.parse(localStorage.getItem('graphics.performanceMode') ?? 'false'),
+      performanceMode: perf,
+      // Shadows should be the inverse of performanceMode
+      shadows: !perf
     };
   } catch (_) {
-    window.graphicsSettings = { shadows: false };
+    window.graphicsSettings = { performanceMode: false, shadows: true };
   }
 }
+
 
 let resourcesLoaded = false;
 
@@ -18,7 +167,7 @@ function checkOverlap(x1, y1, sizeX1, sizeY1, x2, y2, sizeX2, sizeY2) {
 }
 
 function getResourceArrayByType(type) {
-  return allResources[type] || [];
+  return (window.allResources && window.allResources[type]) ? window.allResources[type] : [];
 }
 
 function isCollidingWithResources(newX, newY, sizeX = player.size, sizeY = player.size, allResources) {
@@ -42,8 +191,6 @@ function getCenter(x, y, size) {
 }
 
 function hitResourceInCone() {
-  if (!player) return false;
-
   let attackRange = DEFAULT_ATTACK_RANGE + player.playerrange;
   const coneAngle = ATTACK_ANGLE;
   const selected = hotbar.slots[hotbar.selectedIndex];
@@ -93,14 +240,31 @@ function hitResourceInCone() {
   const damage = (type === 'food') ? 1 : toolInfo.damage;
         resource.health -= damage;
         playChopTree();
-        socket.emit("resourceHit", { type, id: resource.id, newHealth: resource.health });
         showDamageText(rx, ry, -damage);
         triggerResourceHitAnimation(resource, player);
 
         if (resource.health <= 0) {
+          // Resource destroyed: grant drops to player (singleplayer logic)
           resource.sizeX = 0;
           resource.sizeY = 0;
           resource.respawnTimer = resource.respawnTime;
+          // Grant resource drop
+          if (typeof inventory !== 'undefined' && typeof inventory.addItem === 'function') {
+            const dropType = config.drop;
+            let dropAmount = 1;
+            if (typeof config.getDropAmount === 'function') {
+              dropAmount = config.getDropAmount(resource.health);
+            } else if (typeof config.dropAmount === 'number') {
+              dropAmount = config.dropAmount;
+            }
+            if (dropType && dropAmount > 0) {
+              // Default singleplayer behavior: auto-add to inventory
+              if (typeof inventory !== 'undefined' && inventory.addItem) {
+                inventory.addItem(dropType, dropAmount);
+                if (typeof showMessage === 'function') showMessage(`+${dropAmount} ${dropType}`);
+              }
+            }
+          }
         } else {
           resource.lastHitTime = performance.now();
         }
@@ -130,9 +294,12 @@ function drawHealthBarR(resource) {
 
 
 function tryHitResource() {
+  // Spectator cannot interact/attack
+  try { if (window.isSpectator && window.isSpectator()) return; } catch(_) {}
   const now = performance.now();
   const attackSpeed = getAttackSpeed();
   if ((now - lastHitTime) / 1000 >= attackSpeed && stamina > 0) {
+    
     lastHitTime = now;
     tryHitMob();
     hitResourceInCone();
@@ -141,14 +308,18 @@ function tryHitResource() {
     punchHand = (punchHand === 'right') ? 'left' : 'right';
     isAttacking = true;
     attackStartTime = now;
+    if (player) {
+      player.isAttacking = true;
+      player.attackStartTime = now;
+    } 
   }
 }
 
 if (typeof socket !== "undefined" && socket) {
   socket.on("updateResourceHealth", ({ id, type, health, x, y, sizeX, sizeY, maxHealth }) => {
-    if (!allResources) allResources = {};
-    if (!allResources[type]) allResources[type] = [];
-    let list = allResources[type];
+    if (!window.allResources) window.allResources = {};
+    if (!window.allResources[type]) window.allResources[type] = [];
+    let list = window.allResources[type];
     let resource = list.find(r => r.id === id);
     // If missing (e.g., just entered visibility), create it so the hit appears instantly
     if (!resource) {
@@ -178,11 +349,11 @@ function drawResources() {
     { x: 0.75, y: 0.25 }  // Bottom-right quarter
   ];
 
-  for (const resources of Object.values(allResources)) {
+  for (const resources of Object.values(window.allResources || {})) {
     for (const r of resources) {
       if (r.sizeX > 0 && r.sizeY > 0) {
-        // Cull off-screen resources to reduce draw calls
-        if (typeof isWorldRectOnScreen === 'function') {
+        // Resource culling disabled by request: always draw resources even if off-screen
+        if (false && typeof isWorldRectOnScreen === 'function') {
           const w = r.sizeX || 32;
           const h = r.sizeY || 32;
           if (!isWorldRectOnScreen(r.x, r.y, w, h)) {
@@ -321,11 +492,8 @@ function triggerResourceHitAnimation(resource, attacker) {
     duration: 150 // ms total
   };
 }
-const WORLD_SIZE = 5000;
 
-const GRID_CELL_SIZE = 100;
-const GRID_COLS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE);
-const GRID_ROWS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE);
+
 
 function getRandomPositionInCell(col, row, sizeX, sizeY) {
   const minX = col * GRID_CELL_SIZE;
@@ -337,90 +505,10 @@ function getRandomPositionInCell(col, row, sizeX, sizeY) {
   return { x, y };
 }
 
-// Removed require("crypto") for browser compatibility
 
-const mobs = {};
 
-const players = {};
 
-const resourceTypes = {
-  food: {
-    maxCount: 50,
-    sizeX: 32,
-    sizeY: 32,
-    get health() { return Math.floor(Math.random() * (25 - 15 + 1)) + 15; },
-    color: "red",
-    drop: "food",
-    requiredTool: { categories: ["hand"], minTier: 0 },
-    spawntimer: 8, // faster regen for early game
-    getDropAmount(health) { return health <= 20 ? Math.floor(Math.random() * 3) + 3 : Math.floor(Math.random() * 4) + 4; }
-  },
 
-  wood: {
-    maxCount: 80,
-    get sizeX() {
-      const min = 48;
-      const maxArea = 8192;
-      const x = Math.floor(Math.random() * ((maxArea / min) - min + 1)) + min;
-      return x;
-    },
-    get sizeY() {
-      const maxArea = 8192;
-      const x = this.sizeX;
-      return Math.floor(maxArea / x);
-    },
-    get health() { return Math.floor(Math.random() * (35 - 20 + 1)) + 20; },
-    color: "green",
-    drop: "wood",
-    requiredTool: { categories: ["hand", "axe"], minTier: 0 },
-    spawntimer: 10,
-    getDropAmount(health) { return health <= 28 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 5; }
-  },
-
-  stone: {
-    maxCount: 50,
-    sizeX: 64,
-    sizeY: 64,
-    get health() { return Math.floor(Math.random() * (50 - 30 + 1)) + 30; },
-    color: "darkgray",
-    drop: "stone",
-    requiredTool: { categories: ["pickaxe"], minTier: 1 },
-    spawntimer: 12,
-    getDropAmount(health) { return health <= 40 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 5; }
-  },
-
-  iron: {
-    maxCount: 25,
-    sizeX: 64,
-    sizeY: 64,
-    get health() { return Math.floor(Math.random() * (70 - 45 + 1)) + 45; },
-    color: "white",
-    drop: "iron",
-    requiredTool: { categories: ["pickaxe"], minTier: 2 },
-    spawntimer: 14,
-    getDropAmount(health) { return health <= 55 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 6; }
-  },
-
-  gold: {
-    maxCount: 15,
-    sizeX: 32,
-    sizeY: 32,
-    get health() { return Math.floor(Math.random() * (90 - 60 + 1)) + 60; },
-    color: "gold",
-    drop: "gold",
-    requiredTool: { categories: ["pickaxe"], minTier: 3 },
-    spawntimer: 16,
-    getDropAmount(health) { return health <= 75 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 5; }
-  }
-};
-
-const allResources = {
-  food: [],
-  wood: [],
-  stone: [],
-  iron: [],
-  gold: []
-};
 
 function checkOverlap(x1, y1, sizeX1, sizeY1, x2, y2, sizeX2, sizeY2) {
   return x1 < x2 + sizeX2 && x1 + sizeX1 > x2 && y1 < y2 + sizeY2 && y1 + sizeY1 > y2;
@@ -433,6 +521,7 @@ function isOverlappingAny(source, x, y, sizeX, sizeY) {
     : Object.values(source || {}).flat();
 
   return list.some(r => {
+    if (!r) return false;
     // Check if resource (uses sizeX/sizeY) or player/mob (uses size)
     const rSizeX = r.sizeX !== undefined ? r.sizeX : r.size;
     const rSizeY = r.sizeY !== undefined ? r.sizeY : r.size;
@@ -448,8 +537,8 @@ function createResourceSpawner(type, targetArray, isOverlapping) {
   let deadCount = targetArray.filter(r => r.sizeX === 0 || r.sizeY === 0).length;
 
   while (activeCount + deadCount < config.maxCount) {
-    const col = Math.floor(Math.random() * GRID_COLS);
-    const row = Math.floor(Math.random() * GRID_ROWS);
+    const col = Math.floor(getRandomValue() * GRID_COLS);
+    const row = Math.floor(getRandomValue() * GRID_ROWS);
     const sizeX = typeof config.sizeX === 'function' ? config.sizeX() : config.sizeX;
     const sizeY = typeof config.sizeY === 'function' ? config.sizeY() : config.sizeY;
     const { x, y } = getRandomPositionInCell(col, row, sizeX, sizeY);
@@ -474,18 +563,45 @@ function createResourceSpawner(type, targetArray, isOverlapping) {
 }
 
 function spawnAllResources() {
-  for (const type in allResources) {
-    allResources[type] = allResources[type].filter(r => r.sizeX > 0 && r.sizeY > 0);
-    createResourceSpawner(type, allResources[type], (x, y, sizeX, sizeY) => 
-      isOverlappingAny(allResources, x, y, sizeX, sizeY) ||
+  console.log('=== SPAWN ALL RESOURCES START ===');
+  console.log('Current worldSeed:', window.worldSeed);
+  
+  // Initialize seeded random generation for consistent world gen
+  initializeWorldSeed();
+  console.log('Seeded RNG initialized for world seed:', window.worldSeed);
+  
+  // Ensure window.allResources and all type arrays exist
+  ensureAllResourceTypes();
+  
+  console.log('Spawning resources into window.allResources');
+  
+  for (const type in window.allResources) {
+    // Keep only alive resources but keep the same array reference
+    const list = window.allResources[type];
+    if (Array.isArray(list)) {
+      const beforeCount = list.length;
+      for (let i = list.length - 1; i >= 0; i--) {
+        const r = list[i];
+        if (!r || r.sizeX <= 0 || r.sizeY <= 0) {
+          // Leave dead resources for respawn logic if they track timers; otherwise remove
+          // Here, keep them so respawn system can handle; don't remove
+        }
+      }
+      console.log(`Spawning ${type} resources (had ${beforeCount} before)`);
+    }
+    createResourceSpawner(type, window.allResources[type], (x, y, sizeX, sizeY) => 
+      isOverlappingAny(window.allResources, x, y, sizeX, sizeY) ||
       isOverlappingAny(mobs, x, y, sizeX, sizeY) || 
-      isOverlappingAny(players, x, y, sizeX, sizeY)
+      isOverlappingAny(player, x, y, sizeX, sizeY)
     );
   }
+  
+  console.log('After spawning, window.allResources contains:', Object.keys(window.allResources).map(k => `${k}: ${window.allResources[k].length}`));
+  window.__resourcesSpawnedOnce = true;
 }
 
 function updateResourceRespawns(deltaTime) {
-  for (const resources of Object.values(allResources)) {
+  for (const resources of Object.values(window.allResources || {})) {
     for (const r of resources) {
       if ((r.sizeX === 0 || r.sizeY === 0) && r.respawnTimer > 0) {
         r.respawnTimer -= deltaTime;
@@ -495,13 +611,13 @@ function updateResourceRespawns(deltaTime) {
           do {
             newSizeX = typeof config.sizeX === 'function' ? config.sizeX() : config.sizeX;
             newSizeY = typeof config.sizeY === 'function' ? config.sizeY() : config.sizeY;
-            const col = Math.floor(Math.random() * GRID_COLS);
-            const row = Math.floor(Math.random() * GRID_ROWS);
+            const col = Math.floor(getRandomValue() * GRID_COLS);
+            const row = Math.floor(getRandomValue() * GRID_ROWS);
             ({ x: newX, y: newY } = getRandomPositionInCell(col, row, newSizeX, newSizeY));
           } while (
-            isOverlappingAny(allResources, newX, newY, newSizeX, newSizeY) ||
+            isOverlappingAny(window.allResources, newX, newY, newSizeX, newSizeY) ||
             isOverlappingAny(mobs, newX, newY, newSizeX, newSizeY) ||
-            isOverlappingAny(players, newX, newY, newSizeX, newSizeY)
+            isOverlappingAny(player, newX, newY, newSizeX, newSizeY)
           );
           const newHealth = typeof config.health === 'function' ? config.health() : config.health;
           r.id = crypto.randomUUID();
@@ -519,91 +635,3 @@ function updateResourceRespawns(deltaTime) {
   }
 }
 
-module.exports = {
-  resourceTypes,
-  allResources,
-  spawnAllResources,
-  updateResourceRespawns,
-  isOverlappingAny
-};
-// Animated idle background for main menu
-(function() {
-  const canvas = document.getElementById('menuBgCanvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-
-  // Set canvas size to fill window
-  function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  }
-  window.addEventListener('resize', resizeCanvas);
-  resizeCanvas();
-
-  // Load grass texture
-  const grassImg = new Image();
-  grassImg.src = '../images/grass.png';
-
-  // Animation state
-  let offsetX = 0;
-  let offsetY = 0;
-  const speed = 0.02; // slower movement
-
-  function drawBackground() {
-    if (!grassImg.complete) {
-      ctx.fillStyle = '#6bbf4e';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      return;
-    }
-    // Zoom in: scale up grass tiles even more
-  const tileSize = 512;
-  const scale = 6; // slightly lower scale to reduce draw count
-    offsetX += speed;
-    offsetY += speed * 0.5;
-    if (offsetX > tileSize) offsetX -= tileSize;
-    if (offsetY > tileSize) offsetY -= tileSize;
-    ctx.save();
-    ctx.scale(scale, scale);
-    for (let x = -tileSize; x < canvas.width / scale + tileSize; x += tileSize) {
-      for (let y = -tileSize; y < canvas.height / scale + tileSize; y += tileSize) {
-        ctx.drawImage(grassImg, x + offsetX, y + offsetY, tileSize, tileSize);
-      }
-    }
-    ctx.restore();
-  }
-
-  function animate() {
-    // Show background if any menu is visible (not gameplay), but NOT for dropAmountPrompt
-    const menuIds = [
-      'homePage',
-      'serverJoin',
-      'localLAN',
-      'hostPrompt',
-      'joinLocalPrompt',
-      'nameEntry',
-      'deathScreen'
-    ];
-    let anyMenuVisible = false;
-    for (const id of menuIds) {
-      const el = document.getElementById(id);
-      if (el && el.style.display !== 'none') {
-        anyMenuVisible = true;
-        break;
-      }
-    }
-    // Hide menu background if dropAmountPrompt is visible
-    const dropPrompt = document.getElementById('dropAmountPrompt');
-    if (dropPrompt && dropPrompt.style.display !== 'none') {
-      anyMenuVisible = false;
-    }
-    const shouldShow = anyMenuVisible;
-    canvas.style.display = shouldShow ? 'block' : 'none';
-    if (shouldShow) {
-      drawBackground();
-    }
-    requestAnimationFrame(animate);
-  }
-
-  grassImg.onload = animate;
-  if (grassImg.complete) animate();
-})();

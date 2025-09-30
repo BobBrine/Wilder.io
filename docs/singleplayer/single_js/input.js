@@ -1,5 +1,169 @@
+// Global Escape key handler for singleplayer: drop prompt, settings panel, and menu logic
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    // Priority 1: Check if delete confirmation dialog is open
+    const deleteDialog = document.querySelector('[data-delete-confirm-dialog="true"]');
+    if (deleteDialog) {
+      // Close the delete confirmation dialog (same as clicking cancel)
+      const overlay = deleteDialog.closest('.delete-confirm-overlay') || deleteDialog.parentElement;
+      if (overlay && overlay.parentElement) {
+        overlay.parentElement.removeChild(overlay);
+        if (typeof playCancel === 'function') playCancel();
+      }
+      return;
+    }
+
+    // Priority 2: Check if drop prompt is open
+    const dropPrompt = document.getElementById('dropAmountPrompt');
+    if (dropPrompt && dropPrompt.style && dropPrompt.style.display !== 'none') {
+      dropPrompt.style.display = 'none';
+      if (typeof playCancel === 'function') playCancel();
+      return;
+    }
+    
+    // Priority 3: Check if settings panel is open
+    const settingsPanel = document.getElementById('settingsPanel');
+    if (settingsPanel && settingsPanel.style && settingsPanel.style.display !== 'none') {
+      if (window.__settingsPanel && typeof window.__settingsPanel.close === 'function') {
+        window.__settingsPanel.close();
+      }
+      return;
+    }
+    
+    // Priority 4: Check if we're in gameplay (open settings)
+    const menu = document.getElementById('singlePlayerMenu');
+    const death = document.getElementById('deathScreen');
+    const gameCanvas = document.getElementById('gameCanvas');
+    const playerPanel = document.getElementById('playerSelectionPanel');
+    const worldPanel = document.getElementById('worldSelectionPanel');
+    
+    if ((!menu || menu.style.display === 'none') && 
+        (!death || death.style.display === 'none') && 
+        (!playerPanel || playerPanel.style.display === 'none') &&
+        (!worldPanel || worldPanel.style.display === 'none') &&
+        gameCanvas && gameCanvas.style.display !== 'none') {
+      // We're in gameplay - open settings
+      if (window.__settingsPanel && typeof window.__settingsPanel.open === 'function') {
+        window.__settingsPanel.open();
+      }
+      return;
+    }
+    
+    // Priority 5: Menu navigation back buttons
+    // Check if world selection panel is open
+    if (worldPanel && worldPanel.style.display !== 'none') {
+      // World Selection → Player Selection
+      if (window.SaveUI && typeof window.SaveUI.showPlayerPanel === 'function') {
+        window.SaveUI.showPlayerPanel();
+        if (typeof playCancel === 'function') playCancel();
+      }
+      return;
+    }
+    
+    // Check if player selection panel is open
+    if (playerPanel && playerPanel.style.display !== 'none') {
+      // Player Selection → Main Menu
+      if (window.SaveUI && typeof window.SaveUI.hideAllPanels === 'function') {
+        window.SaveUI.hideAllPanels();
+      }
+      if (menu) {
+        menu.style.display = 'block';
+      }
+      if (typeof playCancel === 'function') playCancel();
+      return;
+    }
+    
+    // Check if main menu is open (go back to index.html)
+    if (menu && menu.style.display !== 'none') {
+      // Main Menu → Go back to home page
+      if (typeof goBack === 'function') {
+        goBack();
+      }
+      return;
+    }
+  }
+});
+// Fallback for singleplayer: simple drop prompt or no-op
+if (typeof promptDropAmount !== 'function') {
+  function promptDropAmount(type, count) {
+    // Show the drop amount prompt UI
+    const prompt = document.getElementById('dropAmountPrompt');
+    const input = document.getElementById('dropAmountInput');
+    if (!prompt || !input) {
+      alert(`Drop ${count} ${type}?`);
+      return;
+    }
+    prompt.style.display = 'block';
+    // Position slightly above center so it doesn't cover the player
+    prompt.style.left = '50%';
+    prompt.style.top = 'calc(50% - 120px)';
+    prompt.style.transform = 'translate(-50%, -50%)';
+    input.value = count;
+    input.max = count;
+    input.min = 1;
+    input.focus();
+    // Store drop type/count for submit
+    prompt.dataset.type = type;
+    prompt.dataset.count = count;
+  }
+
+  // Called when user confirms drop
+  window.submitDropAmount = function() {
+    const prompt = document.getElementById('dropAmountPrompt');
+    const input = document.getElementById('dropAmountInput');
+    if (!prompt || !input) return;
+    const type = prompt.dataset.type;
+    const maxCount = parseInt(prompt.dataset.count || '1', 10);
+    let amount = parseInt(input.value || '1', 10);
+    if (isNaN(amount) || amount < 1) amount = 1;
+    if (amount > maxCount) amount = maxCount;
+    prompt.style.display = 'none';
+    input.value = '';
+    // Actually drop the item(s)
+    if (typeof dropItemFromHotbar === 'function') {
+      dropItemFromHotbar(type, amount);
+    } else {
+      // fallback: remove from inventory if available
+      if (typeof inventory !== 'undefined' && inventory.removeItem) {
+        inventory.removeItem(type, amount);
+      }
+    }
+  };
+
+  // Called when user clicks Drop All
+  window.dropAll = function() {
+    const prompt = document.getElementById('dropAmountPrompt');
+    if (!prompt) return;
+    const type = prompt.dataset.type;
+    const maxCount = parseInt(prompt.dataset.count || '1', 10);
+    prompt.style.display = 'none';
+    const input = document.getElementById('dropAmountInput');
+    if (input) input.value = '';
+    if (typeof dropItemFromHotbar === 'function') {
+      dropItemFromHotbar(type, maxCount);
+    } else {
+      if (typeof inventory !== 'undefined' && inventory.removeItem) {
+        inventory.removeItem(type, maxCount);
+      }
+    }
+  };
+}
+// Centralized API to drop from hotbar with default 1s pickup delay and cooldown
+window.dropItemFromHotbar = function(type, amount, options = {}) {
+  if (!window.player || window.player.isDead) return false;
+  // Default behavior: player drop with 1s pickup delay; allow override via options
+  const opts = {
+    pickupDelaySec: (typeof options.pickupDelaySec === 'number' ? options.pickupDelaySec : 1),
+    dropCooldownSec: (typeof options.dropCooldownSec === 'number' ? options.dropCooldownSec : undefined),
+  };
+  return dropItem(type, amount, window.player, true, opts);
+};
 let mouseX = 0, mouseY = 0;
+// Expose keys on window so other scripts (e.g., spectator camera) can read movement reliably
 const keys = {};
+if (typeof window !== 'undefined') {
+  window.keys = keys;
+}
 let isMouseDown = false;
 let lastHitTime = 0;
 let holdInterval = null;
@@ -32,23 +196,29 @@ window.addEventListener("keyup", (e) => {
 });
 
 canvas.addEventListener("mousemove", (e) => {
-  const rect = window.canvas.getBoundingClientRect();
+  const rect = canvas.getBoundingClientRect();
   mouseX = e.clientX - rect.left;
   mouseY = e.clientY - rect.top;
+  // Set dragActive if mouse moved enough during drag
+  if (draggingSlotIndex !== null && dragStartPos) {
+    const dx = mouseX - dragStartPos.x;
+    const dy = mouseY - dragStartPos.y;
+    if (!dragActive && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      dragActive = true;
+    }
+  }
 });
-
-// Hotbar selection: toggle slot or hand mode (1-9,0,-,=) -- only one handler
-document.addEventListener("keydown", (e) => {
+document.addEventListener("keydown", function(e) {
   if (!e.key || typeof e.key !== "string") return;
   // Only block hotbar keys if not typing in an input or textarea
-  const active = document.activeElement;
+  var active = document.activeElement;
   if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
-  const key = e.key;
-  const keyMap = {
+  var key = e.key;
+  var keyMap = {
     '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7, '9': 8, '0': 9, '-': 10, '=': 11
   };
   if (keyMap.hasOwnProperty(key)) {
-    const idx = keyMap[key];
+    var idx = keyMap[key];
     if (hotbar.selectedIndex === idx) {
       hotbar.selectedIndex = null; // hand mode
     } else {
@@ -57,6 +227,8 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
   }
 });
+// Ensure draggedItem is global for ui.js
+// This should be set after drag updates, e.g. in mousedown and mouseup handlers
 // Allow Ctrl shortcuts on home page
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey) e.stopPropagation();
@@ -81,7 +253,12 @@ document.addEventListener('keydown', (event) => {
 });
 
 let draggingSlotIndex = null;
+// Ensure draggedItem is global for ui.js
+window.draggedItem = null;
 let draggedItem = null;
+let dragStartPos = null;
+let dragActive = false;
+// Use padding from ui.js, do not redeclare here
 
 // New function: get touch position relative to canvas
 function getTouchPosition(touch) {
@@ -131,7 +308,7 @@ function handlePointerEvent(e) {
       }
       if (hotbar.slots[uiElement.index]) {
         draggingSlotIndex = uiElement.index;
-        draggedItem = { ...hotbar.slots[uiElement.index] };
+    window.draggedItem = draggedItem = { ...hotbar.slots[uiElement.index] };
       }
     } else if (uiElement.type === "crafting") {
       craftItem(uiElement.recipe);
@@ -180,15 +357,61 @@ function handlePointerEvent(e) {
 }
 
 // Mouse event handler
+// Replace the current mousedown event handler with this improved version
 canvas.addEventListener("mousedown", (e) => {
   const rect = canvas.getBoundingClientRect();
-  handlePointerEvent({
-    clientX: e.clientX,
-    clientY: e.clientY,
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top,
-    button: e.button
-  });
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+  dragStartPos = { x: mouseX, y: mouseY };
+  dragActive = false;
+  
+  // Only handle left-click
+  if (e.button !== 0) return;
+  
+  // First, check if we're clicking on a UI element
+  const uiElement = getUIElementAtMouse({ clientX: e.clientX, clientY: e.clientY });
+  
+  if (uiElement) {
+    if (uiElement.type === "hotbar") {
+      // Hotbar selection logic
+      hotbar.selectedIndex = uiElement.index;
+      if (hotbar.slots[uiElement.index]) {
+        draggingSlotIndex = uiElement.index;
+        window.draggedItem = draggedItem = { ...hotbar.slots[uiElement.index] };
+        dragStartPos = { x: mouseX, y: mouseY };
+        dragActive = false;
+      }
+    } else if (uiElement.type === "crafting") {
+      // Crafting logic - this should execute when clicking crafting recipes
+      console.log("Crafting clicked:", uiElement.recipe.name); // Debug log
+      craftItem(uiElement.recipe);
+    }
+    return; // Stop here if we clicked a UI element
+  }
+  
+  // If we get here, we're not clicking on any UI element
+  const selected = hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
+  
+  if (selected && selected.type === "food") {
+    consumeFood();
+  } else if (selected && selected.type && selected.type.endsWith("_potion")) {
+    consumePotion(selected.type);
+  } else if (selected && BlockTypes[selected.type]) {
+    // Block placement logic
+    const { gridX, gridY } = getFrontGridCell(player);
+    if (placeBlockAt(selected.type, gridX, gridY)) {
+      if (selected.count > 1) {
+        selected.count--;
+      } else {
+        hotbar.slots[hotbar.selectedIndex] = null;
+      }
+    }
+  } else {
+    // Default action: start hitting
+    isMouseDown = true;
+    tryHitResource();
+    startHitting();
+  }
 });
 
 // Touch event handler
@@ -211,28 +434,40 @@ canvas.addEventListener("mouseup", (e) => {
   isMouseDown = false;
   stopHitting();
   const rect = canvas.getBoundingClientRect();
+  // Use CSS pixel coordinates for hotbar detection
+  const css = typeof uiCanvasSize === 'function' ? uiCanvasSize() : { w: canvas.width, h: canvas.height };
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
-  if (draggingSlotIndex !== null) {
+  if (draggingSlotIndex !== null && hotbar.slots[draggingSlotIndex]) {
     const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
-    const startX = (canvas.width - totalWidth) / 2;
-    const y = canvas.height - slotSize - 20;
-    let dropped = true;
+    const startX = (css.w - totalWidth) / 2;
+    const y = css.h - slotSize - 20;
+    let droppedOutside = true;
+    let releasedIndex = null;
     for (let i = 0; i < hotbar.slots.length; i++) {
       const x = startX + i * (slotSize + padding);
       if (mouseX >= x && mouseX <= x + slotSize && mouseY >= y && mouseY <= y + slotSize) {
-        const temp = hotbar.slots[i];
-        hotbar.slots[i] = hotbar.slots[draggingSlotIndex];
-        hotbar.slots[draggingSlotIndex] = temp;
-        hotbar.selectedIndex = i;
-        dropped = false;
+        releasedIndex = i;
+        if (i !== draggingSlotIndex) {
+          // Swap items if target slot has an item, move if empty
+          const temp = hotbar.slots[i];
+          hotbar.slots[i] = hotbar.slots[draggingSlotIndex];
+          hotbar.slots[draggingSlotIndex] = temp;
+          hotbar.selectedIndex = i;
+        }
+        droppedOutside = false;
         break;
       }
     }
-    if (dropped && hotbar.slots[draggingSlotIndex]) promptDropAmount(hotbar.slots[draggingSlotIndex].type, hotbar.slots[draggingSlotIndex].count);
+    // Only drop if mouse released outside hotbar
+    if (droppedOutside) {
+      promptDropAmount(hotbar.slots[draggingSlotIndex].type, hotbar.slots[draggingSlotIndex].count);
+    }
   }
   draggingSlotIndex = null;
-  draggedItem = null;
+  window.draggedItem = draggedItem = null;
+  dragStartPos = null;
+  dragActive = false;
 });
 
 canvas.addEventListener("contextmenu", (e) => {
@@ -261,10 +496,12 @@ function getUIElementAtMouse(e) {
   const rect = canvas.getBoundingClientRect();
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
+  // Fix: define css for consistent sizing (matches ui.js)
+  const css = typeof uiCanvasSize === 'function' ? uiCanvasSize() : { w: canvas.width, h: canvas.height };
   const totalWidth = (slotSize + padding) * hotbar.slots.length - padding;
-  const startX = (canvas.width - totalWidth) / 2;
-  const hotbarY = canvas.height - slotSize - 20;
-  
+  const startX = (css.w - totalWidth) / 2;
+  const hotbarY = css.h - slotSize - 20;
+
   // Hotbar slots
   for (let i = 0; i < hotbar.slots.length; i++) {
     const x = startX + i * (slotSize + padding);
@@ -280,8 +517,8 @@ function getUIElementAtMouse(e) {
   const cellPadding = 10;
   const gridWidth = gridCols * cellSize + (gridCols - 1) * cellPadding;
   const gridHeight = gridRows * cellSize + (gridRows - 1) * cellPadding;
-  const gridX = canvas.width - scoreboardWidth - gridWidth - 20;
-  const gridY = gridHeight - slotSize - 75;
+  const gridX = css.w - gridWidth - 20;
+  const gridY = 40;
 
   // Check if player is near a crafting table
   const nearTable = isNearCraftingTable();
@@ -316,14 +553,6 @@ function getUIElementAtMouse(e) {
   return null;
 }
 
-
-// Simple on-screen joystick and action button for mobile
-// Exposes window.mobileControls with properties:
-// - axis: { x: -1..1, y: -1..1 }
-// - isActive(): boolean
-// - setVisible(bool)
-// - getFacing(): number radians, based on last drag direction (fallbacks to 0)
-// - attackPressed: boolean (momentary)
 
 (function(){
   const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;

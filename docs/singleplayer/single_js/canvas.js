@@ -1,30 +1,68 @@
 const canvas = document.getElementById("gameCanvas");
 // Prefer a desynchronized, opaque context to reduce compositor latency and blending cost
-window.canvas = document.getElementById("gameCanvas");
-window.ctx = window.canvas.getContext("2d", { alpha: false, desynchronized: true });
+const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 // Reduce filtering cost when scaling images
 ctx.imageSmoothingEnabled = false;
 
 // Make canvas fill the browser window (CSS) and allow lower internal resolution via renderScale
-function resizeCanvas() {
-    const scale = (window.graphicsSettings && typeof window.graphicsSettings.renderScale === 'number')
-      ? Math.max(0.5, Math.min(1, window.graphicsSettings.renderScale))
-      : 1;
-    // CSS size (visual size)
-    canvas.style.width = window.innerWidth + 'px';
-    canvas.style.height = window.innerHeight + 'px';
-    // Backing store size (internal resolution)
-    canvas.width = Math.floor(window.innerWidth * scale);
-    canvas.height = Math.floor(window.innerHeight * scale);
-    // Reset any transforms that might be set during draws
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+window.zoom = window.zoom ?? 1;              // eg. 0.5 .. 3
+const qualityScale = (window.graphicsSettings?.renderScale ?? 1); // optional
+
+function beginWorldTransform() {
+  const dpr = window.devicePixelRatio || 1;
+  const scale = dpr * qualityScale * (window.zoom || 1);
+
+  // IMPORTANT: camera dimensions in WORLD units
+  camera.width  = canvas.width  / scale;
+  camera.height = canvas.height / scale;
+
+  // Center camera on player in WORLD space unless spectator mode is active
+  const spectActive = (typeof window !== 'undefined' && window.spectator && window.spectator.active);
+  if (!spectActive && player) {
+    camera.x = player.x - camera.width  / 2;
+    camera.y = player.y - camera.height / 2;
+  }
+
+  // Clamp in WORLD space
+  camera.x = Math.max(-100, Math.min(camera.x, WORLD_SIZE - camera.width  + 100));
+  camera.y = Math.max(-100, Math.min(camera.y, WORLD_SIZE - camera.height + 100));
+
+  // Scale then translate so (camera.x,camera.y) appears at (0,0) in device space
+  // Use rounded translation to avoid subpixel “shimmer”
+  const tx = Math.round(-camera.x * scale);
+  const ty = Math.round(-camera.y * scale);
+  ctx.setTransform(scale, 0, 0, scale, tx, ty);
+  ctx.imageSmoothingEnabled = false;
 }
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = window.innerWidth;
+  const cssH = window.innerHeight;
+
+  // CSS size
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+
+  // Internal bitmap = CSS × DPR (no renderScale here)
+  canvas.width  = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+
+  // Draw UI in CSS pixels later using dpr transform
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+}
+
 resizeCanvas();
 window.addEventListener("resize", resizeCanvas);
+let gameTime = 0;
+let difficulty = 1; 
+const WORLD_SIZE = 5000;
 
-// ...existing code...
+const GRID_CELL_SIZE = 100;
+const GRID_COLS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE);
+const GRID_ROWS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE);
 const backgroundImage = new Image();
-backgroundImage.src = 'images/grass.png'; // must be 5000x5000
+backgroundImage.src = '../images/grass.png'; // must be 5000x5000
 
 // This will draw the image once at 0,0
 backgroundImage.onload = function () {
@@ -33,34 +71,50 @@ backgroundImage.onload = function () {
 
 function drawBackground() {
   ctx.save();
-  // Always paint a dark-green base so uncovered areas aren't black (alpha:false context)
-  const baseColor = '#116d10'; // dark green
-  // If camera isn't ready yet (during initial load), draw full-canvas base and optional image
-  if (typeof camera === 'undefined' || camera == null) {
+
+  const baseColor = '#116d10';
+
+  // If camera isn't ready yet, fill using CSS pixels (DPR-aware)
+  if (!camera) {
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.width / dpr;
+    const cssH = canvas.height / dpr;
+
+    // In UI/default transform, canvas is scaled by DPR, so use CSS sizes
     ctx.fillStyle = baseColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    if (backgroundImage.complete) ctx.drawImage(backgroundImage, 0, 0);
+    ctx.fillRect(0, 0, cssW, cssH);
+
+    if (backgroundImage.complete) {
+      // Draw at native size; it's fine during the very first frame
+      ctx.drawImage(backgroundImage, 0, 0);
+    }
     ctx.restore();
     return;
   }
-  // With camera active, fill the current viewport in world coords first
-  ctx.fillStyle = baseColor;
-  ctx.fillRect(camera.x, camera.y, canvas.width, canvas.height);
-  if (!backgroundImage.complete) { ctx.restore(); return; }
-  // Only draw the visible portion of the background (viewport) in world space
-  // World transform is already applied by main.js before calling drawBackground.
-  // Compute source rect based on camera viewport to avoid drawing the entire 5000x5000 each frame.
-  const viewX = Math.max(0, Math.min(camera.x, backgroundImage.width - canvas.width));
-  const viewY = Math.max(0, Math.min(camera.y, backgroundImage.height - canvas.height));
-  const viewW = Math.min(canvas.width, backgroundImage.width - viewX);
-  const viewH = Math.min(canvas.height, backgroundImage.height - viewY);
 
-  // Draw the subsection of the background image mapped 1:1 into world coords over the base
+  // From here on, we assume WORLD TRANSFORM is active (beginWorldTransform() already called)
+
+  // Fill the current viewport in WORLD units
+  const viewW = camera.width;
+  const viewH = camera.height;
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(camera.x, camera.y, viewW, viewH);
+
+  if (!backgroundImage.complete) { ctx.restore(); return; }
+
+  // Clamp source rect in IMAGE space using WORLD viewport
+  const srcX = Math.max(0, Math.min(camera.x, backgroundImage.width  - viewW));
+  const srcY = Math.max(0, Math.min(camera.y, backgroundImage.height - viewH));
+  const srcW = Math.min(viewW, backgroundImage.width  - srcX);
+  const srcH = Math.min(viewH, backgroundImage.height - srcY);
+
+  // Draw 1:1 in WORLD space
   ctx.drawImage(
     backgroundImage,
-    viewX, viewY, viewW, viewH,
-    viewX, viewY, viewW, viewH
+    srcX, srcY, srcW, srcH,
+    srcX, srcY, srcW, srcH
   );
+
   ctx.restore();
 }
 
@@ -95,16 +149,4 @@ const camera = {
   width: canvas.width,
   height: canvas.height
 };
-
-function updateCamera() {
-  if (!player) return;
-  // Center the camera on the player
-  camera.x = player.x - canvas.width / 2;
-  camera.y = player.y - canvas.height / 2;
-
-  camera.x = Math.max(-100, Math.min(camera.x, WORLD_SIZE - canvas.width + 100));
-  camera.y = Math.max(-100, Math.min(camera.y, WORLD_SIZE - canvas.height + 100));
-  camera.width = canvas.width;
-  camera.height = canvas.height;
-}
 

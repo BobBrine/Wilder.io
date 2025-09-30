@@ -1,1074 +1,334 @@
-let socket = null;
-let devTest = false; // will be set by server after connect
-
-// Difficulty progression (highest ever reached)
-let difficultyProgression = Number(localStorage.getItem('difficulty.progression') || '0');
-window.difficultyProgression = difficultyProgression;
-let difficulty = null;
-
-// Dev mode strictly follows devTest only (no localStorage/host overrides)
-const isDevMode = () => !!devTest;
-// Helpful diagnostic
-try { console.log('Dev mode check', { devTest, devModeActive: isDevMode(), host: location.hostname }); } catch (_) {}
-
-// Run a callback now if DOM is ready, otherwise on DOMContentLoaded
-function onReady(cb) {
-  if (document.readyState === 'loading') {
-    window.addEventListener('DOMContentLoaded', cb, { once: true });
+// Standalone singleplayer respawn function
+window.singleplayerRespawn = function() {
+  console.log('[DEBUG] singleplayerRespawn: function entered');
+  try { window.gameplayPaused = false; } catch(_) {}
+  // Ensure spectator is fully disabled when respawning from death flow
+  try { window.exitSpectator && window.exitSpectator({ teleport: false }); } catch(_) {}
+  try { if (window.spectator) { window.spectator.active = false; window.spectator.saved = null; } } catch(_) {}
+  if (window.inventory) {
+    console.log('[DEBUG] window.inventory exists at respawn');
   } else {
-    try { cb(); } catch (e) { console.error('onReady error', e); }
+    console.log('[DEBUG] window.inventory is MISSING at respawn, re-attaching');
+    if (typeof inventory !== 'undefined') window.inventory = inventory;
   }
-}
-
-let latestSquare = null;
-let ping = 0;
-let droppedItems = [];
-let currentDropType = null;
-let currentMaxCount = 0;
-
-// Fallback for showMessage if not defined
-if (typeof showMessage !== "function") {
-  window.showMessage = function(msg, timeout = 3) {
-    // Simple fallback: log to console
-    console.log("[Message]", msg);
-  };
-}
-
-// ========================
-// Socket Initialization
-// ========================
-function initializeSocket(url) {
-  try {
-    // If client is loaded over HTTPS, force WSS/HTTPS for socket.io
-    if (window.location.protocol === 'https:' && url.startsWith('http://')) {
-      url = url.replace('http://', 'https://');
-    }
-    if (window.location.protocol === 'https:' && url.startsWith('ws://')) {
-      url = url.replace('ws://', 'wss://');
-    }
-    socket = io(url, { transports: ['websocket'], reconnection: false });
-    setupSocketListeners();
-    return socket;
-  } catch (error) {
-    console.error("Socket initialization failed:", error);
-    showServerError("Connection failed: " + error.message);
-    return null;
+  // Hide settings panel and death screen if present
+  if (window.__settingsPanel && typeof window.__settingsPanel.close === 'function') window.__settingsPanel.close();
+  const deathScreen = document.getElementById('deathScreen');
+  if (deathScreen) deathScreen.style.display = 'none';
+  // Hide menu and show game canvas
+  const menu = document.getElementById('singlePlayerMenu');
+  if (menu) menu.style.display = 'none';
+  const bg = document.getElementById('bgHomepage');
+  if (bg) bg.style.display = 'none';
+  const gc = document.getElementById('gameCanvas');
+  if (gc) gc.style.display = 'block';
+  // Do NOT reset starter kit flag on respawn; only grant starter kit once per game
+  // Debug: log inventory before clearing
+  if (window.inventory) console.log('[DEBUG] Inventory before clear:', JSON.stringify(window.inventory.items));
+  // Forcefully clear inventory object and reassign to window
+  if (window.inventory) {
+    window.inventory.items = {};
+    if (typeof updateHotbarFromInventory === 'function') updateHotbarFromInventory(window.inventory.items);
   }
-}
-function setupSocketListeners() {
-  if (!socket) return;
-// Singleplayer state initialization
-let droppedItems = [];
-let currentDropType = null;
-let currentMaxCount = 0;
-let difficultyProgression = Number(localStorage.getItem('difficulty.progression') || '0');
-window.difficultyProgression = difficultyProgression;
-let difficulty = 0;
-let latestSquare = null;
-let player = null;
-let mobs = {};
-let mobloaded = false;
-let allResources = {};
-let resourcesLoaded = false;
-let maxStamina = 100;
-let stamina = 100;
-let staminaRegenSpeed = 1;
-let maxHunger = 100;
-let hunger = 100;
-let isDead = false;
-
-// Show message fallback
-if (typeof showMessage !== "function") {
-  window.showMessage = function(msg, timeout = 3) {
-    console.log("[Message]", msg);
-  };
-}
-
-// Singleplayer: initialize world, mobs, resources, player
-function initializeSingleplayer() {
-  // Example: create player
-  player = {
-    x: 400,
-    y: 300,
-    health: 100,
-    maxHealth: 100,
-    hunger: 100,
-    maxHunger: 100,
-    stamina: 100,
-    maxStamina: 100,
-    staminaRegenSpeed: 1,
-    color: '#fff',
-    isDead: false,
-    facingAngle: 0,
-    playerattackspeed: 0.2,
-  };
+  // Debug: log inventory after clearing
+  if (window.inventory) console.log('[DEBUG] Inventory after clear:', JSON.stringify(window.inventory.items));
+  // Clear hotbar
+  if (window.hotbar) {
+    window.hotbar.slots = new Array(12).fill(null);
+    window.hotbar.selectedIndex = null;
+  }
+  // Reset player with hybrid spawn system for death
+  player = createNewPlayer();
   window.player = player;
-  // Example: create mobs/resources locally
-  mobs = { zombie: [ { id: 1, x: 600, y: 400, health: 50, type: 'zombie' } ] };
-  mobloaded = true;
-  allResources = { wood: [ { id: 1, x: 500, y: 350, type: 'wood', amount: 10 } ] };
-  resourcesLoaded = true;
-  droppedItems = [];
-}
-
-// Drop item locally
-function dropItem(type, amount, entity, dropbyplayer=false) {
-  if (dropbyplayer) {
-    if (inventory.removeItem(type, amount)) {
-      droppedItems.push({ type, amount, x: entity.x, y: entity.y, id: Date.now() });
-      showMessage(`You dropped ${amount} ${type}`);
-    } else {
-      showMessage("Failed to drop item");
-    }
+  
+  // Apply hybrid spawn system for death respawn
+  if (window.SaveManager && window.SaveManager.getSpawnPosition) {
+    const deathSpawn = window.SaveManager.getSpawnPosition('DEATH', window.worldSeed);
+    window.player.x = deathSpawn.x;
+    window.player.y = deathSpawn.y;
   } else {
-    const offsetX = (Math.random() - 0.5) * 60;
-    const offsetY = (Math.random() - 0.5) * 60;
-    droppedItems.push({ type, amount, x: entity.x + offsetX, y: entity.y + offsetY, id: Date.now() });
+    // Fallback to fixed spawn if hybrid system not available
+    window.player.x = 2500;
+    window.player.y = 2500;
   }
-}
-
-function submitDropAmount() {
-  const input = document.getElementById("dropAmountInput");
-  const amount = parseInt(input.value, 10);
-  if (isNaN(amount) || amount < 1 || amount > currentMaxCount) {
-    showMessage("Invalid amount");
-    document.getElementById("dropAmountPrompt").style.display = "none";
-    return;
-  }
-  dropItem(currentDropType, amount, player, true);
-  document.getElementById("dropAmountPrompt").style.display = "none";
-  document.getElementById("dropAmountInput").value = "";
-}
-
-function dropAll() {
-  dropItem(currentDropType, currentMaxCount, player, true);
-  document.getElementById("dropAmountPrompt").style.display = "none";
-  document.getElementById("dropAmountInput").value = "";
-}
-
-function promptDropAmount(type, maxCount) {
-  playSelect();
-  currentDropType = type;
-  currentMaxCount = maxCount;
-  const dropPrompt = document.getElementById('dropAmountPrompt');
-  const input = document.getElementById("dropAmountInput");
-  input.placeholder = `Amount to drop (1-${maxCount})`;
-  input.max = maxCount;
-  input.value = "1";
-  dropPrompt.style.display = "block";
-  input.focus();
-  const escapeHandler = function(e) {
-    if (e.key === 'Escape') {
-      closeDropPrompt();
-      document.removeEventListener('keydown', escapeHandler);
+  // Ensure alive/flags sane on respawn
+  try {
+    window.player.isDead = false;
+    window.player.invulnerable = false;
+    if (window.player.__hiddenBySpectator || window.player.size === 0) {
+      window.player.size = window.player.__origSize || window.player.size || 32;
+      delete window.player.__hiddenBySpectator;
+      delete window.player.__origSize;
     }
+  } catch(_) {}
+  // Ensure mobs track the current player object
+  try { if (typeof playersMap !== 'undefined' && player && player.id) { playersMap[player.id] = player; } } catch(_) {}
+  // Reset world
+  if (typeof spawnAllResources === 'function') spawnAllResources();
+  // Give starter kit
+  if (typeof giveStartingItemsOnce === 'function') {
+    giveStartingItemsOnce();
+  }
+  // Select first available hotbar slot if none
+  try {
+    if (window.hotbar && (window.hotbar.selectedIndex == null)) {
+      const firstIdx = (window.hotbar.slots || []).findIndex(Boolean);
+      if (firstIdx !== -1) window.hotbar.selectedIndex = firstIdx;
+    }
+  } catch(_) {}
+  // Restart player state loop
+  if (typeof startPlayerStateLoop === 'function') startPlayerStateLoop();
+  // Optionally reset other UI/game state as needed
+  console.log('[DEBUG] singleplayerRespawn: player respawned');
+};
+
+if (typeof difficultyProgression === 'undefined') {
+  var difficultyProgression = Number(localStorage.getItem('difficulty.progression') || '0');
+}
+
+// One-time starting loadout for singleplayer
+const STARTING_ITEMS = {
+ 
+};
+
+function giveStartingItemsOnce() {
+  if (window.__startingItemsGranted) return;
+  if (typeof inventory === 'undefined' || !inventory.addItem) return;
+  for (const [item, count] of Object.entries(STARTING_ITEMS)) {
+    inventory.addItem(item, count);
+  }
+  try { if (typeof showMessage === 'function') showMessage('Starter kit granted'); } catch (_) {}
+  window.__startingItemsGranted = true;
+}
+
+
+function startGame() {
+  // Hide the menu panel
+  document.getElementById('singlePlayerMenu').style.display = 'none';
+  document.getElementById('bgHomepage').style.display = 'none';
+  document.getElementById('gameCanvas').style.display = 'block';
+  try { window.gameplayPaused = false; } catch(_) {}
+  // Always leave spectator when starting a new run, teleport to current spectator pos
+  try { window.exitSpectator && window.exitSpectator({ teleport: true }); } catch(_) {}
+  try { if (window.spectator) { window.spectator.active = false; window.spectator.saved = null; } } catch(_) {}
+  // If a saved player was already loaded, don't overwrite it here.
+  if (!window.player || !window.player.id) {
+    player = createNewPlayer();
+    window.player = player;
+  } else {
+    player = window.player;
+  }
+  // Ensure mobs track the current player object
+  try { if (typeof playersMap !== 'undefined' && player && player.id) { playersMap[player.id] = player; } } catch(_) {}
+  console.log('Player created:', player); 
+  // Only spawn resources if not already spawned by save/load flow
+  if (!window.__resourcesSpawnedOnce && typeof spawnAllResources === 'function') spawnAllResources();
+  // Give starter kit after player creation so inventory/hotbar are ready
+  // Only give starter kit for new players (no items)
+  try {
+    const hasItems = window.inventory && window.inventory.items && Object.keys(window.inventory.items).length > 0;
+    if (!hasItems) giveStartingItemsOnce();
+  } catch(_) {}
+  // Start player state loop (health regen, hunger, etc.)
+  if (typeof startPlayerStateLoop === 'function') startPlayerStateLoop();
+}
+
+// Show the Singleplayer menu (stay on this page, exit gameplay view)
+window.showSinglePlayerMenu = function() {
+  // Hide gameplay canvas, show background and menu panel
+  const menu = document.getElementById('singlePlayerMenu');
+  const bg = document.getElementById('bgHomepage');
+  const gc = document.getElementById('gameCanvas');
+  if (gc) gc.style.display = 'none';
+  if (bg) bg.style.display = 'block';
+  if (menu) menu.style.display = 'block';
+
+  // Close settings panel if open
+  try { window.__settingsPanel && window.__settingsPanel.close && window.__settingsPanel.close(); } catch(_) {}
+  // Clear any death overlay/timer just in case
+  try {
+    if (window.__deathCountdownTimer) {
+      clearInterval(window.__deathCountdownTimer);
+      window.__deathCountdownTimer = null;
+    }
+    const death = document.getElementById('deathScreen');
+    if (death) death.style.display = 'none';
+    if (window.player && window.player.isDead) window.player.isDead = false;
+  } catch (_) {}
+
+  // Ensure mobile controls hidden if returning to menu
+  try { window.mobileControls && window.mobileControls.setVisible(false); } catch(_) {}
+  // Optional: Set a gameplayPaused flag for subsystems that want to check it directly
+  try { window.gameplayPaused = true; } catch(_) {}
+  // If we came here from gameplay, disable spectator state so returning doesn't keep you spectating
+  try { window.exitSpectator && window.exitSpectator({ teleport: false }); } catch(_) {}
+  try { if (window.spectator) { window.spectator.active = false; window.spectator.saved = null; } } catch(_) {}
+};
+
+// --- Spectator Mode Implementation ---
+// Global spectator state
+window.spectator = window.spectator || {
+  active: false,
+  x: 0,
+  y: 0,
+  speed: 500, // world units per second
+  saved: null // stores paused player snapshot
+};
+
+// Helper: are we in spectator mode?
+window.isSpectator = function() { return !!(window.spectator && window.spectator.active); };
+
+// Enter spectator: hide player, freeze stats, detach camera to spectator.x/y
+window.enterSpectator = function() {
+  if (!window.player) return;
+  if (window.spectator.active) return;
+  // Save player snapshot
+  window.spectator.saved = {
+    x: player.x, y: player.y,
+    health: player.health, hunger: player.hunger,
+    isDead: player.isDead,
+    facingAngle: player.facingAngle,
   };
-  document.addEventListener('keydown', escapeHandler);
-}
-
-function closeDropPrompt() {
-  const dropPrompt = document.getElementById('dropAmountPrompt');
-  if (dropPrompt) dropPrompt.style.display = 'none';
-}
-
-// Respawn logic for singleplayer
-window.respawnNow = function respawnNow() {
+  // Place spectator camera where the player currently is
+  window.spectator.x = player.x;
+  window.spectator.y = player.y;
+  window.spectator.active = true;
+  // Prevent mobs from targeting and damage logic uses isSpectator checks
+  // Hide player visually by setting size 0 (non-collidable) and a flag
+  player.__hiddenBySpectator = true;
+  player.__origSize = player.size;
+  player.size = 0; // invisible and non-collidable
+  // Also set a generic invulnerable flag many checks can respect
+  player.invulnerable = true;
+  // Immediately purge aggro from all mobs targeting this player
   try {
-    if (typeof window.resetClientState === 'function') window.resetClientState();
-    initializeSingleplayer();
-    isDead = false;
-    showMessage('Respawned!');
-  } catch (e) {
-    console.error('respawnNow error', e);
-  }
-};
-
-// Centralized local state reset
-window.resetClientState = function resetClientState() {
-  try {
-    isDead = false;
-    if (window.inventory && typeof window.inventory.clear === 'function') window.inventory.clear();
-    if (window.hotbar) {
-      window.hotbar.slots = new Array(12).fill(null);
-      window.hotbar.selectedIndex = null;
-    }
-    window.player = null;
-    droppedItems = [];
-    mobs = {};
-    mobloaded = false;
-    allResources = {};
-    resourcesLoaded = false;
-  } catch (e) {
-    console.warn('resetClientState partial failure', e);
-  }
-};
-
-// Initialize singleplayer on load
-onReady(() => {
-  initializeSingleplayer();
-});
-  
-  socket.on('initialBlocks', (blocks) => {
-    placedBlocks = blocks.map(b => ({
-      ...b,
-      worldX: b.gridX * GRID_SIZE,
-      worldY: b.gridY * GRID_SIZE,
-      // Ensure health is preserved
-      health: b.health,
-      maxHealth: b.maxHealth
-    }));
-  });
-
-  socket.on('blockPlaced', (block) => {
-    placedBlocks.push({
-      ...block,
-      worldX: block.gridX * GRID_SIZE,
-      worldY: block.gridY * GRID_SIZE,
-      // Ensure health is preserved
-      health: block.health,
-      maxHealth: block.maxHealth
-    });
-  });
-
-  // Add blockHealthUpdate event handler
-  socket.on('blockHealthUpdate', (data) => {
-    const { gridX, gridY, health, maxHealth } = data;
-    const block = placedBlocks.find(b => 
-      b.gridX === gridX && b.gridY === gridY
-    );
-    
-    if (block) {
-      block.health = health;
-      block.maxHealth = maxHealth;
-      block.lastHitTime = performance.now(); // For health bar display
-    }
-  });
-
-  socket.on('blockBroken', (blockData) => {
-    placedBlocks = placedBlocks.filter(b => 
-      !(b.gridX === blockData.gridX && b.gridY === blockData.gridY)
-    );
-  });
-  // Socket event handlers
-  socket.on("resourceType", (data) => {  
-    resourceTypes = data;
-  });
-  // Receive dev flag from server so clients don’t assume localhost
-  // socket.on('DevTest', (flag) => {
-  //   devTest = !!flag;
-  // });
-  
-
-  socket.on("mobType", (data) => {  
-    mobtype = data;
-  });
-
-  socket.on("itemTypes", (data) => {
-    // Merge server ItemTypes into local ItemTypes, preserving local tool properties
-    if (typeof ItemTypes !== 'object' || !ItemTypes) ItemTypes = {};
-    for (const key in data) {
-      if (ItemTypes[key] && ItemTypes[key].isTool) {
-        // Keep local tool definition (attackRange, isTool, etc.)
-        ItemTypes[key] = { ...data[key], ...ItemTypes[key] };
-      } else {
-        ItemTypes[key] = data[key];
-      }
-    }
-  });
-
-  socket.on('connect', () => {
-    console.log('Connected as', socket.id);
-    const nameInput = document.querySelector("#playerNameInput");
-    const nameBtn = document.querySelector("#nameEntry button");
-    if (nameInput) nameInput.disabled = false;
-    if (nameBtn) nameBtn.disabled = false;
-
-    window.graphicsSettings.performanceMode = false;
-    window.graphicsSettings.shadows = true;
-    
-
-  });
-
-  // Receive server time at a modest rate for lighting/day-night effects
-  socket.on('gameTime', ({ serverTime, day, difficulty: serverDifficulty }) => {
-    gameTime = serverTime;
-    Day = day; // Make sure 'Day' variable exists in client scope
-    difficulty = serverDifficulty; // Make sure 'difficulty' variable exists in client scope
-    if (typeof serverDifficulty === 'number') {
-      const newMax = Math.max(serverDifficulty, window.difficultyProgression);
-      if (newMax !== window.difficultyProgression) {
-        window.difficultyProgression = newMax;
-        localStorage.setItem('difficulty.progression', String(newMax));
-        window.dispatchEvent(new CustomEvent('difficultyProgressionChanged'));
-      }
-    }
-  });
-
-  socket.on("resources", (data) => {
-    // Proximity-filtered snapshot: rebuild per-type arrays by id
-    if (!allResources || typeof allResources !== 'object') allResources = {};
-    const nowTypes = Object.keys(data || {});
-    const nextAll = {};
-    for (let ti = 0; ti < nowTypes.length; ti++) {
-      const type = nowTypes[ti];
-      const incoming = Array.isArray(data[type]) ? data[type] : [];
-      const existList = allResources[type] || [];
-      const existById = new Map();
-      for (let i = 0; i < existList.length; i++) {
-        const r = existList[i];
-        if (r && r.id != null) existById.set(r.id, r);
-      }
-      const nextList = [];
-      for (let i = 0; i < incoming.length; i++) {
-        const serverR = incoming[i];
-        const existing = existById.get(serverR.id) || {};
-        nextList.push({
-          ...serverR,
-          lastHitTime: existing.lastHitTime,
-          hitAnim: existing.hitAnim
-        });
-      }
-      nextAll[type] = nextList;
-    }
-    allResources = nextAll;
-    resourcesLoaded = true;
-  });
-
-  socket.on("mobs", (data) => {
-
-    if (!mobs) mobs = {};
-    const nowTs = performance.now();
-    for (const type in data) {
-      const list = mobs[type] || [];
-      const byId = new Map();
-      for (let i = 0; i < list.length; i++) {
-        const m = list[i];
-        if (m && m.id) byId.set(m.id, m);
-      }
-      const nextList = [];
-      const incoming = data[type] || [];
-      for (let i = 0; i < incoming.length; i++) {
-        const serverR = incoming[i];
-        const existing = byId.get(serverR.id) || {};
-        const prevServerX = existing._serverX ?? existing.x ?? serverR.x;
-        const prevServerY = existing._serverY ?? existing.y ?? serverR.y;
-        const prevTime = existing._serverTime ?? nowTs;
-        nextList.push({
-          ...serverR,
-          lastHitTime: existing.lastHitTime,
-          _lastServerX: prevServerX,
-          _lastServerY: prevServerY,
-          _lastServerTime: prevTime,
-          _serverX: serverR.x,
-          _serverY: serverR.y,
-          _serverTime: nowTs,
-        });
-      }
-      mobs[type] = nextList;
-    }
-    mobloaded = true;
-  });
-
-  // Apply delta updates for mobs to reduce payload size
-  socket.on("mobsDelta", ({ add = [], update = [], remove = [] }) => {
-    // Debug: log incoming delta for mobs
-    const nowTs = performance.now();
-    const ensureList = (type) => { if (!mobs[type]) mobs[type] = []; return mobs[type]; };
-    const indexById = (list) => {
-      const map = new Map();
-      for (let i = 0; i < list.length; i++) map.set(list[i]?.id, i);
-      return map;
-    };
-    // Adds
-    for (const m of add) {
-      const list = ensureList(m.type);
-      const byId = indexById(list);
-      if (byId.has(m.id)) continue; // already present
-      list.push({
-        ...m,
-        _lastServerX: m.x,
-        _lastServerY: m.y,
-        _lastServerTime: nowTs,
-        _serverX: m.x,
-        _serverY: m.y,
-        _serverTime: nowTs,
-      });
-    }
-    // Updates
-    for (const m of update) {
-      const list = ensureList(m.type);
-      const idx = list.findIndex(x => x && x.id === m.id);
-      if (idx === -1) { // treat as add if not found
-        list.push({
-          ...m,
-          _lastServerX: m.x,
-          _lastServerY: m.y,
-          _lastServerTime: nowTs,
-          _serverX: m.x,
-          _serverY: m.y,
-          _serverTime: nowTs,
-        });
-      } else {
-        const existing = list[idx] || {};
-        // If we missed prior updates (stale), snap to current to avoid rubber-banding
-        const prevTime = existing._serverTime ?? nowTs;
-        const dt = nowTs - prevTime;
-        const tooOld = dt > 500; // >0.5s
-        const snap = tooOld || Math.hypot((existing._serverX ?? existing.x ?? m.x) - m.x, (existing._serverY ?? existing.y ?? m.y) - m.y) > 600;
-        list[idx] = {
-          ...existing,
-          ...m,
-          lastHitTime: existing.lastHitTime,
-          _lastServerX: snap ? m.x : (existing._serverX ?? existing.x ?? m.x),
-          _lastServerY: snap ? m.y : (existing._serverY ?? existing.y ?? m.y),
-          _lastServerTime: snap ? nowTs : (existing._serverTime ?? nowTs),
-          _serverX: m.x,
-          _serverY: m.y,
-          _serverTime: nowTs,
-        };
-      }
-    }
-    // Removes
-    for (const r of remove) {
-      const list = ensureList(r.type);
-      const idx = list.findIndex(x => x && x.id === r.id);
-      if (idx !== -1) list.splice(idx, 1);
-    }
-    mobloaded = true;
-  });
-
-  socket.on('currentPlayers', (players) => {
-    otherPlayers = players;
-    delete otherPlayers[socket.id];
-  });
-  
-  socket.on('playerSelf', (playerData) => {
-  // Ensure clean inventory/hotbar on fresh join/respawn
-  try { if (inventory && typeof inventory.clear === 'function') inventory.clear(); } catch(_) {}
-  try {
-    if (window.hotbar) {
-      window.hotbar.slots = new Array(12).fill(null);
-      window.hotbar.selectedIndex = null;
-    }
-  } catch(_) {}
-  try { droppedItems = []; } catch(_) {}
-  player = playerData;
-  maxStamina = playerData.maxStamina;
-  stamina = maxStamina;
-  staminaRegenSpeed = playerData.staminaRegenSpeed;
-  maxHunger = playerData.maxHunger;
-  hunger = playerData.hunger;
-  isDead = playerData.isDead;
-  // Ensure the game loop resumes after respawn without waiting for a resources re-broadcast
-  if (typeof resourcesLoaded !== 'undefined') resourcesLoaded = true;
-  if (typeof mobloaded !== 'undefined') mobloaded = true;
-  // Close death screen immediately on respawn
-  const deathScreen = document.getElementById("deathScreen");
-  if (deathScreen) deathScreen.style.display = "none";
-
-  // In dev mode, grant dev items AFTER a clean playerSelf, once per session
-  try {
-    if (isDevMode()) {
-      const giveDev = (typeof window.__devGiveItems === 'undefined') ? true : !!window.__devGiveItems;
-      if (giveDev && !window.__devItemsGranted && inventory && typeof inventory.addItem === 'function') {
-        ItemTypes = {wooden_sword: {
-          name: "Wooden Sword",
-          color: "saddlebrown",
-          isTool: true,
-          category: "sword",
-          tier: 1,
-          damage: 10000,
-    
-        }};
-
-        inventory.addItem("wooden_sword", 1);
-        inventory.addItem("wooden_axe", 1);
-        inventory.addItem("crafting_table", 1);
-        inventory.addItem("food", 1000);
-        inventory.addItem("wood", 10000);
-        inventory.addItem("stone", 10000);
-        inventory.addItem("gold", 10000);
-        inventory.addItem("health_potion", 100);
-        inventory.addItem("strength_potion", 100);
-        inventory.addItem("mythic_potion", 1000);
-       
-        window.__devItemsGranted = true;
-      }
-    }
-  } catch(_) {}
-  });
-
-  socket.on('playerRenamed', ({ id, name }) => {
-    if (otherPlayers[id]) {
-      otherPlayers[id].name = name;
-    }
-  });
-
-  // Apply players delta for non-pos fields
-  socket.on("playersDelta", ({ add = [], update = [], remove = [] }) => {
-    // Adds
-    for (const p of add) {
-      if (!otherPlayers[p.id]) otherPlayers[p.id] = {};
-      otherPlayers[p.id].name = p.name;
-      otherPlayers[p.id].level = p.level;
-      otherPlayers[p.id].color = p.color;
-      otherPlayers[p.id].health = p.health;
-    }
-    // Updates
-    for (const p of update) {
-      if (!otherPlayers[p.id]) otherPlayers[p.id] = {};
-      otherPlayers[p.id].name = p.name;
-      otherPlayers[p.id].level = p.level;
-      otherPlayers[p.id].color = p.color;
-      otherPlayers[p.id].health = p.health;
-    }
-    // Removes
-    for (const r of remove) {
-      delete otherPlayers[r.id];
-    }
-  });
-
-  socket.on('newPlayer', (playerData) => {
-    console.log('New player joined:', playerData);
-    otherPlayers[playerData.id] = playerData;
-  });
-
-  socket.on("state", (data) => {
-    latestSquare = data.pond;
-    const serverPlayers = data.players;
-    maxStamina = data.self.maxStamina;
-    staminaRegenSpeed = data.self.staminaRegenSpeed;
-    maxHunger = data.self.maxHunger;
-    hunger = data.self.hunger;
-  // droppedItems moved to its own event for diffed proximity updates
-
-    for (const id in serverPlayers) {
-      if (id !== socket.id) {
-        if (!otherPlayers[id]) {
-          otherPlayers[id] = { ...serverPlayers[id], lastHitTime: undefined };
-        } else {
-          const existing = otherPlayers[id];
-          otherPlayers[id] = {
-            ...serverPlayers[id],
-            lastHitTime: existing.lastHitTime,
-          };
+    if (typeof mobs !== 'undefined') {
+      for (const list of Object.values(mobs)) {
+        for (const mob of list) {
+          if (!mob) continue;
+          if (mob.threatTable && player.id in mob.threatTable) {
+            delete mob.threatTable[player.id];
+          }
+          if (mob.targetPlayerId === player.id) {
+            mob.targetPlayerId = null;
+            mob.currentBehavior = 'wander';
+          }
         }
       }
     }
+  } catch(_) { }
+  // Freeze player updates via gameplayPaused only for the player systems? We keep game running, just skip player updates
+  // Ensure mobile controls hidden if desired in spectator
+  try { window.mobileControls && window.mobileControls.setVisible(false); } catch(_) {}
+  if (window.showMessage) window.showMessage('Spectator Mode: On', 2);
+};
 
-    if (data.self && player) {
-      player.health = data.self.health;
-      player.color = data.self.color || player.color;
-      player.hunger = data.self.hunger;
-      player.maxHunger = data.self.maxHunger;
+// Exit spectator: restore player at spectator camera position and resume
+window.exitSpectator = function(options) {
+  const teleport = !(options && options.teleport === false);
+  if (!window.spectator) return;
+  if (!window.spectator.active) { window.spectator.active = false; window.spectator.saved = null; return; }
+  if (teleport && window.player) {
+    // Move player to spectator camera position
+    player.x = window.spectator.x;
+    player.y = window.spectator.y;
+  }
+  if (window.player) {
+    // Restore size/flags
+    if (player.__hiddenBySpectator) {
+      player.size = player.__origSize || player.size || 40;
+      delete player.__origSize;
+      delete player.__hiddenBySpectator;
     }
-  });
-
-  // Receive per-client, proximity-filtered dropped items snapshot
-  socket.on("droppedItems", (items) => {
-    // Merge incoming items with existing droppedItems to avoid losing instant drops
-    if (!Array.isArray(items)) items = [];
-    if (!Array.isArray(droppedItems)) droppedItems = [];
-    // Build a map of current items by id
-    const itemMap = new Map(droppedItems.map(it => [it.id, it]));
-    // Add or update items from the new snapshot
-    for (const it of items) {
-      itemMap.set(it.id, it);
+    player.invulnerable = false;
+    // Restore saved stats (health/hunger unchanged while we were spectating)
+    if (window.spectator.saved) {
+      player.health = window.spectator.saved.health;
+      player.hunger = window.spectator.saved.hunger;
+      player.isDead = window.spectator.saved.isDead;
+      player.facingAngle = window.spectator.saved.facingAngle;
     }
-    // Remove items not present in the new snapshot
-    for (const id of Array.from(itemMap.keys())) {
-      if (!items.some(it => it.id === id)) {
-        itemMap.delete(id);
-      }
-    }
-    droppedItems = Array.from(itemMap.values());
-  });
-  
-  socket.on('updatePlayerStats', (stats) => {
-    if (player) Object.assign(player, stats);
-  });
+  }
+  window.spectator.active = false;
+  window.spectator.saved = null;
+  if (window.showMessage) window.showMessage('Spectator Mode: Off', 2);
+};
 
-  socket.on('GainSoul', (amount) => {
-    window.soulCurrency.add(amount);
-  });
-
-  // Low-latency item appear: merge single new item between snapshots
-  socket.on("newDroppedItem", (item) => {
-    if (!item || typeof item.id !== 'number') return;
-    if (!Array.isArray(droppedItems)) droppedItems = [];
-    const exists = droppedItems.some(it => it && it.id === item.id);
-    if (!exists) droppedItems.push(item);
-  });
-
-  socket.on('playerMoved', (playerData) => {
-    if (playerData.id !== socket.id && otherPlayers[playerData.id]) {
-      otherPlayers[playerData.id].x = playerData.x;
-      otherPlayers[playerData.id].y = playerData.y;
-  if (typeof playerData.facingAngle === 'number') otherPlayers[playerData.id].facingAngle = playerData.facingAngle;
-  if ('selectedToolType' in playerData) otherPlayers[playerData.id].selectedToolType = playerData.selectedToolType;
-    }
-  });
-
-  socket.on('playerDisconnected', (id) => {
-    delete otherPlayers[id];
-  });
-
-  socket.on("itemDrop", ({ item, amount }) => {
-    if (inventory.addItem(item, amount)) {
-      showMessage(`+${amount} ${item}`);
-    }
-  });
-
-  socket.on('showMessage', (text) => {
-    showMessage(text, 2); // 2 seconds duration
-  });
-
-  socket.on("gainXP", (amount) => {
-    gainXP(amount);
-  });
-
-  socket.on("playerLevelUpdated", ({ id, level }) => {
-    if (otherPlayers[id]) {
-      otherPlayers[id].level = level;
-    }
-  });
-
-  socket.on("addItem", ({ type, amount }) => {
-    if (inventory.addItem(type, amount)) {
-      playPopClaim();
-      showMessage(`Picked up ${amount} ${type}`);
-    }
-  });
-
-  socket.on("removeDroppedItem", (itemId) => {
-  if (!Array.isArray(droppedItems)) { droppedItems = []; return; }
-  droppedItems = droppedItems.filter(item => item && item.id !== itemId);
-  });
-
-  socket.on('playerDied', () => {
-    isDead = true;
-    console.log("Player has died");
-    playDeath();
-    for (const [item, count] of Object.entries(inventory.items)) {
-      dropItem(item, count, player);
-    }
-    inventory.clear();
-    //I want a delay here
-    player = null;
-    otherPlayers = {};
-  // Keep resources/mobs flags so the loop doesn't stall during respawn
-    const deathScreen = document.getElementById("deathScreen");
-    deathScreen.style.display = "block";
-    // Add Respawn button if not already present
-    let respawnBtn = document.getElementById("respawnBtn");
-    if (!respawnBtn) {
-      respawnBtn = document.createElement("button");
-      respawnBtn.id = "respawnBtn";
-      respawnBtn.textContent = "Respawn";
-      respawnBtn.style.marginTop = "20px";
-  respawnBtn.onclick = function() { if (typeof window.respawnNow === 'function') window.respawnNow(); };
-      deathScreen.appendChild(respawnBtn);
+// Per-frame spectator camera movement (called from main loop via hooks below)
+window.updateSpectatorCamera = function(deltaTime) {
+  if (!window.spectator?.active) return;
+  const speed = window.spectator.speed;
+  // Prefer window.keys to avoid scope issues across scripts; fallback to local 'keys' if present
+  const k = (typeof window !== 'undefined' && window.keys)
+    ? window.keys
+    : ((typeof keys !== 'undefined') ? keys : {});
+  let dx = 0, dy = 0;
+  if (k['w'] || k['arrowup']) dy -= 1;
+  if (k['s'] || k['arrowdown']) dy += 1;
+  if (k['a'] || k['arrowleft']) dx -= 1;
+  if (k['d'] || k['arrowright']) dx += 1;
+  if (dx !== 0 || dy !== 0) {
+    const len = Math.hypot(dx, dy) || 1;
+    dx /= len; dy /= len;
+    window.spectator.x += dx * speed * deltaTime;
+    window.spectator.y += dy * speed * deltaTime;
+    // Clamp spectator center in sync with camera clamp and viewport size
+    const margin = 100;
+    const world = (typeof WORLD_SIZE !== 'undefined') ? WORLD_SIZE : 5000;
+    const camW = (typeof camera !== 'undefined' && camera && camera.width) ? camera.width : 0;
+    const camH = (typeof camera !== 'undefined' && camera && camera.height) ? camera.height : 0;
+    const minCenterX = -margin + camW * 0.5;
+    const maxCenterX = (world - camW + margin) + camW * 0.5; // = world + margin - camW/2
+    const minCenterY = -margin + camH * 0.5;
+    const maxCenterY = (world - camH + margin) + camH * 0.5; // = world + margin - camH/2
+    if (camW > 0) {
+      window.spectator.x = Math.max(minCenterX, Math.min(window.spectator.x, maxCenterX));
     } else {
-      respawnBtn.style.display = "inline-block";
+      // Fallback if camera size not initialized yet
+      window.spectator.x = Math.max(-margin, Math.min(window.spectator.x, world - margin));
     }
-  });
-
-  socket.on('connect_error', (err) => {
-    console.error('Connection error:', err);
-    showServerError("Server is unavailable. Please try again later.");
-    if (socket) {
-      socket.disconnect();
-      socket = null;
-    }
-  });
-
-    // Listen for knockback event from server
-    socket.on('playerKnockback', ({ mobX, mobY, mobId }) => {
-      playPlayerHurt();
-      // Create a minimal mob object for knockback direction
-      if (window.applyKnockbackFromMob) {
-        window.applyKnockbackFromMob({ x: mobX, y: mobY });
-      }
-    });
-
-    // Listen for mob knockback when player hits mob
-  
-  // Ping check
-  setInterval(() => {
-    if (socket && socket.connected) {
-      const startTime = performance.now();
-      socket.emit("pingCheck", () => {
-        ping = performance.now() - startTime;
-      });
-    }
-  }, 2000);
-  window.socket = socket;
-}
-
-// ========================
-// UI Navigation Functions
-// ========================
-function playNow() {
-  // Get name and server selection
-  const nameInput = document.getElementById('playerNameInputHome');
-  const name = nameInput.value.trim() || "Unknown";
-  const serverSelect = document.getElementById('serverSelect');
-  const serverURL = serverSelect.value;
-  
-  // Validate name
-  if (name.length > 20) {
-    showMessage("Name must be 20 characters or less", 3);
-    return;
-  }
-  
-  // Reset client state
-  if (typeof window.resetClientState === 'function') window.resetClientState();
-  
-  // Show connecting UI
-  document.getElementById("homePage").style.display = "none";
-  const serverJoin = document.getElementById("serverJoin");
-  serverJoin.style.display = "block";
-  const statusElement = document.getElementById("serverStatus");
-  
-  if (statusElement) {
-    statusElement.textContent = "Connecting to server...";
-    statusElement.style.color = "white";
-  }
-  
-  // Clear any existing retry button
-  const existingRetry = document.querySelector('#serverJoin button.retry');
-  if (existingRetry) existingRetry.remove();
-  
-  try {
-    // Initialize socket
-    initializeSocket(serverURL);
-    
-    // Set connection timeout
-    window._mainServerTimeout && clearTimeout(window._mainServerTimeout);
-    window._mainServerTimeout = setTimeout(() => {
-      if (!socket || !socket.connected) {
-        showServerError("Failed to connect. Please try again later.");
-      }
-    }, 5000);
-    
-    // When connected, set player name
-    if (socket) {
-      socket.on('connect', () => {
-        console.log('Socket connected, joining game');
-        socket.emit("setName", name);
-        
-        // Hide connecting UI
-        if (serverJoin) serverJoin.style.display = "none";
-      });
-    }
-  } catch (error) {
-    showServerError("Connection failed: " + error.message);
-  }
-}
-
-
-
-
-
-function backToHome() {
-  if (socket) {
-    socket.disconnect();
-    socket = null;
-  }
-  // Full client-side reset when returning home
-  if (typeof window.resetClientState === 'function') window.resetClientState();
-  const serverJoin = document.getElementById("serverJoin");
-  if (serverJoin) serverJoin.style.display = "none";
-  const localLAN = document.getElementById("localLAN");
-  if (localLAN) localLAN.style.display = "none";
-  const hostPrompt = document.getElementById("hostPrompt");
-  if (hostPrompt) hostPrompt.style.display = "none";
-  const joinLocalPrompt = document.getElementById("joinLocalPrompt");
-  if (joinLocalPrompt) joinLocalPrompt.style.display = "none";
-  const nameEntry = document.getElementById("nameEntry");
-  if (nameEntry) nameEntry.style.display = "none";
-  const deathScreen = document.getElementById("deathScreen");
-  if (deathScreen) deathScreen.style.display = "none";
-  const homePage = document.getElementById("homePage");
-  if (homePage) homePage.style.display = "block";
-}
-
-
-
-function showServerError(message) {
-  const statusElement = document.getElementById("serverStatus");
-  if (statusElement) {
-    statusElement.textContent = message;
-    statusElement.style.color = "#ff5555";
-    statusElement.classList.add("error");
-    // Add retry button
-    const existingRetry = document.querySelector('#serverJoin button.retry');
-    if (!existingRetry) {
-      const retryButton = document.createElement("button");
-      retryButton.textContent = "Retry Connection";
-      retryButton.className = "retry";
-      retryButton.onclick = playNow; // Changed to playNow
-      document.getElementById("serverJoin").appendChild(retryButton);
-    }
-    // Log error for diagnostics
-    console.error("Server connection error:", message);
-  }
-}
-
-
-
-function isValidIP(ip) {
-  const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-  return ipRegex.test(ip);
-}
-
-function backToMain() {
-  if (socket) {
-    socket.disconnect();
-    socket = null;
-  }
-  const deathScreen = document.getElementById("deathScreen");
-  if (deathScreen) deathScreen.style.display = "none";
-  // Hide respawn button if present
-  const respawnBtn = document.getElementById("respawnBtn");
-  if (respawnBtn) respawnBtn.style.display = "none";
-  // Full client-side reset like a fresh player
-  if (typeof window.resetClientState === 'function') window.resetClientState();
-  const homePage = document.getElementById("homePage");
-  if (homePage) homePage.style.display = "block";
-  // Use correct input ID for home page
-  const nameInput = document.getElementById("playerNameInputHome");
-  if (nameInput) nameInput.value = "";
-}
-
-function submitName() {
-  isDead = false;
-  // Force a clean slate before respawn/join
-  if (typeof window.resetClientState === 'function') window.resetClientState();
-  const input = document.getElementById("playerNameInput");
-  const name = input.value.trim() || "Unknown";
-  if (!socket || socket.disconnected) {
-    showMessage("Not connected to server. Please try again.", 5);
-    backToHome();
-    return;
-  }
-  document.getElementById("nameEntry").style.display = "none";
-  document.getElementById("deathScreen").style.display = "none";
-  // Hide respawn button if present
-  const respawnBtn = document.getElementById("respawnBtn");
-  if (respawnBtn) respawnBtn.style.display = "none";
-  socket.emit("setName", name);
-}
-
-// ========================
-// Game Functions
-// ========================
-let gameTime = 0;
-const CYCLE_LENGTH = 120;
-const DAY_LENGTH = 120;
-let lastDayIncrement = false;
-
-let Day = 0;
-
-
-function calculateDayNightCycle() {
-  if (player && gameTime >= DAY_LENGTH) {
-    // if (!(window.graphicsSettings && window.graphicsSettings.performanceMode)) {
-    //   ctx.save();
-    //   ctx.globalAlpha = 0.28;
-    //   ctx.fillStyle = '#000';
-    //   ctx.fillRect(0, 0, canvas.width, canvas.height);
-    //   ctx.restore();
-    //   drawLightSources();
-    // }
-  }
-  
-}
-
-
-
-function dropItem(type, amount, entity, dropbyplayer=false) {
-  if (dropbyplayer) {
-    // Player-specific drop logic
-    if (inventory.removeItem(type, amount)) {
-      socket.emit("dropItem", { type, amount, x: entity.x + entity.size / 2, y: entity.y + entity.size / 2 });
-      showMessage(`You dropped ${amount} ${type}`);
+    if (camH > 0) {
+      window.spectator.y = Math.max(minCenterY, Math.min(window.spectator.y, maxCenterY));
     } else {
-      showMessage("Failed to drop item");
+      window.spectator.y = Math.max(-margin, Math.min(window.spectator.y, world - margin));
     }
-  } else {
-    const offsetX = (Math.random() - 0.5) * 60;
-    const offsetY = (Math.random() - 0.5) * 60;
-
-    socket.emit("dropItem", {
-      type,
-      amount,
-      x: entity.x + entity.size / 2 + offsetX,
-      y: entity.y + entity.size / 2 + offsetY
-    });
   }
-}
-
-function submitDropAmount() {
-  const input = document.getElementById("dropAmountInput");
-  const amount = parseInt(input.value, 10);
-  if (isNaN(amount) || amount < 1 || amount > currentMaxCount) {
-    showMessage("Invalid amount");
-    document.getElementById("dropAmountPrompt").style.display = "none";
-    return;
+  // Drive camera from spectator position
+  if (typeof camera !== 'undefined' && camera) {
+    // camera width/height will be set in beginWorldTransform; we set origin here
+    camera.x = window.spectator.x - (camera.width||0) / 2;
+    camera.y = window.spectator.y - (camera.height||0) / 2;
   }
-  dropItem(currentDropType, amount, player, true);
-  document.getElementById("dropAmountPrompt").style.display = "none";
-  document.getElementById("dropAmountInput").value = "";
-}
-
-function dropAll() {
-  dropItem(currentDropType, currentMaxCount, player, true);
-  document.getElementById("dropAmountPrompt").style.display = "none";
-  document.getElementById("dropAmountInput").value = "";
-}
-
-// Update the promptDropAmount function
-function promptDropAmount(type, maxCount) {
-  playSelect();
-  currentDropType = type;
-  currentMaxCount = maxCount;
-  const dropPrompt = document.getElementById('dropAmountPrompt');
-  const input = document.getElementById("dropAmountInput");
-  input.placeholder = `Amount to drop (1-${maxCount})`;
-  input.max = maxCount;
-  input.value = "1";
-  dropPrompt.style.display = "block";
-  input.focus();
-  
-  // Add escape handler specifically for the drop prompt
-  const escapeHandler = function(e) {
-    if (e.key === 'Escape') {
-      closeDropPrompt();
-      document.removeEventListener('keydown', escapeHandler);
+};
+  // Expose a global respawn function for singleplayer
+  window.CreateRespawnPlayer = function() {
+    // Ensure spectator is disabled when respawning via settings
+    try { window.exitSpectator && window.exitSpectator({ teleport: false }); } catch(_) {}
+    console.log('[DEBUG] CreateRespawnPlayer called');
+    // Hide menu and show game canvas
+    const menu = document.getElementById('singlePlayerMenu');
+    if (menu) menu.style.display = 'none';
+    const bg = document.getElementById('bgHomepage');
+    if (bg) bg.style.display = 'none';
+    const gc = document.getElementById('gameCanvas');
+    if (gc) gc.style.display = 'block';
+    try { window.gameplayPaused = false; } catch(_) {}
+    // Reset player
+  try { if (window.spectator) { window.spectator.active = false; window.spectator.saved = null; } } catch(_) {}
+    player = createNewPlayer();
+    window.player = player;
+    console.log('[DEBUG] New player object:', player);
+    // Ensure mobs track the current player object
+    try { if (typeof playersMap !== 'undefined' && player && player.id) { playersMap[player.id] = player; } } catch(_) {}
+    // Reset world
+    if (typeof spawnAllResources === 'function') { console.log('[DEBUG] Spawning all resources'); spawnAllResources(); }
+    // Give starter kit
+    if (typeof giveStartingItemsOnce === 'function') {
+      window.__startingItemsGranted = false;
+      giveStartingItemsOnce();
+      console.log('[DEBUG] Starter kit granted');
     }
+    // Restart player state loop
+    if (typeof startPlayerStateLoop === 'function') { console.log('[DEBUG] Starting player state loop'); startPlayerStateLoop(); }
+    // Optionally reset other UI/game state as needed
   };
-  document.addEventListener('keydown', escapeHandler);
-}
-
-// Dev testing
-if (isDevMode()) {
-  onReady(() => {
-    // Always start from a clean client state in dev
-    if (typeof window.resetClientState === 'function') window.resetClientState();
-    // Hide all menus and show game instantly (with null checks)
-    const homePage = document.getElementById("homePage");
-    if (homePage) homePage.style.display = "none";
-    const serverJoin = document.getElementById("serverJoin");
-    if (serverJoin) serverJoin.style.display = "none";
-    // Remove these old UI elements (with null checks):
-    // const localLAN = document.getElementById("localLAN");
-    // if (localLAN) localLAN.style.display = "none";
-    // const hostPrompt = document.getElementById("hostPrompt");
-    // if (hostPrompt) hostPrompt.style.display = "none";
-    // const joinLocalPrompt = document.getElementById("joinLocalPrompt");
-    // if (joinLocalPrompt) joinLocalPrompt.style.display = "none";
-    const nameEntry = document.getElementById("nameEntry");
-    if (nameEntry) nameEntry.style.display = "none";
-    const deathScreen = document.getElementById("deathScreen");
-    if (deathScreen) deathScreen.style.display = "none";
-    
-    console.log('[Dev] Auto-connect initializing...');
-    // In dev mode, connect to the same host the page was served from
-    try {
-      const base = `${location.protocol}//${location.host}`;
-      initializeSocket(base);
-    } catch(_) {
-      initializeSocket("http://localhost:3000");
-    }
-    // Wait for socket connection before submitting name
-    const tryLogin = () => {
-      if (socket && socket.connected) {
-        socket.emit("setName", "DevUser");
-        showData = false;
-        console.log('[Dev] Auto-login done');
-      } else {
-        setTimeout(tryLogin, 100);
-      }
-    };
-    tryLogin();
-  });
-} else {
-  // Minimal UI bootstrap for non-dev mode to ensure menus/buttons exist
-onReady(() => {
-
-    // Instead, just ensure home page is visible
-    const nameEntry = document.getElementById('nameEntry');
-    if (nameEntry && nameEntry.children.length === 0) {
-      // This is no longer needed since we have the new UI
-    }
-    
-    // Hide non-home pages on load
-    ['serverJoin','nameEntry','deathScreen']
-      .forEach(id => { 
-        const el = document.getElementById(id); 
-        if (el) el.style.display = 'none'; 
-      });
-      
-    const homePage = document.getElementById('homePage');
-    if (homePage) homePage.style.display = 'block';
-  });
-}
-
-// Unified client-side respawn (used by death screen and settings panel)
-window.respawnNow = function respawnNow() {
-  try {
-    const input = document.getElementById('playerNameInputHome');
-    const name = (input && input.value.trim()) || 'Unknown';
-    if (!socket || socket.disconnected) {
-      showMessage("Not connected to server. Please try again.", 5);
-      backToHome();
-      return;
-    }
-    // Full reset of local state
-    if (typeof window.resetClientState === 'function') window.resetClientState();
-    // Emit setName to respawn on server
-    socket.emit('setName', name);
-  } catch (e) {
-    console.error('respawnNow error', e);
-  }
-};
-
-// Centralized local state reset used by Home/Main and Respawn
-window.resetClientState = function resetClientState() {
-  try {
-    // UI states
-    const deathScreen = document.getElementById('deathScreen');
-    if (deathScreen) deathScreen.style.display = 'none';
-    // player lifecycle flags
-    try { isDead = false; } catch(_) {}
-    // inventory
-    try { if (window.inventory && typeof window.inventory.clear === 'function') window.inventory.clear(); } catch(_) {}
-    // hotbar
-    try {
-      if (window.hotbar) {
-        window.hotbar.slots = new Array(12).fill(null);
-        window.hotbar.selectedIndex = null;
-      }
-    } catch(_) {}
-    // players
-    try { window.otherPlayers = {}; } catch(_) {}
-    try { window.player = null; } catch(_) {}
-    // items
-    try { window.droppedItems = []; } catch(_) {}
-    // optional: clear mobs/resources caches; these will be repopulated on join
-    try { if (typeof mobs !== 'undefined') mobs = {}; } catch(_) {}
-    try { if (typeof mobloaded !== 'undefined') mobloaded = false; } catch(_) {}
-    try { if (typeof allResources !== 'undefined') allResources = {}; } catch(_) {}
-    try { if (typeof resourcesLoaded !== 'undefined') resourcesLoaded = false; } catch(_) {}
-
-  } catch (e) {
-    console.warn('resetClientState partial failure', e);
-  }
-};
-
-function closeDropPrompt() {
-  const dropPrompt = document.getElementById('dropAmountPrompt');
-  if (dropPrompt) dropPrompt.style.display = 'none';
-}
-

@@ -1,14 +1,182 @@
-let otherPlayers = {};
-let player = null;
+// Main player state update loop (health regen, hunger, death, etc.)
+function startPlayerStateLoop() {
+  let lastUpdate = Date.now();
+  let lastHungerDepletion = Date.now();
+  let lastStarveMsg = 0;
+  function loop() {
+    if (!player) { requestAnimationFrame(loop); return; }
+    // If player reference was replaced by other modules, ensure globals stay coherent
+    try { if (typeof window !== 'undefined' && window.player && window.player !== player) { player = window.player; } } catch(_) {}
+    if (player.isDead) { requestAnimationFrame(loop); return; }
+    const now = Date.now();
+    const deltaTime = (now - lastUpdate) / 1000;
+    lastUpdate = now;
+
+    // If gameplay is paused (e.g., in Singleplayer menu), freeze player state updates
+    // This prevents hunger drain and starvation damage while in menus.
+    try {
+      if (window.gameplayPaused) {
+        requestAnimationFrame(loop);
+        return;
+      }
+    } catch(_) {}
+
+    // Health regen if not recently damaged and hunger > 25
+    if (player.health > 0 && player.health < player.maxHealth) {
+      if (!player.lastDamageTime || (now - player.lastDamageTime) / 1000 >= 5) {
+        if (player.hunger > 25) {
+          player.health = Math.min(player.maxHealth, player.health + player.maxHealth * (player.healthRegen || 0.01) * deltaTime);
+        }
+      }
+    }
+
+    // Hunger depletion every 10 seconds (disabled during spectator or paused)
+    if (player.health > 0 && !(window.isSpectator && window.isSpectator())) {
+      if (!player.lastHungerDepletion) player.lastHungerDepletion = now;
+      const timeSinceLastDepletion = (now - player.lastHungerDepletion) / 1000;
+      if (timeSinceLastDepletion >= 10) {
+        if (player.hunger > 0) {
+          player.hunger = Math.max(0, player.hunger - 5);
+          player.lastHungerDepletion = now;
+          if (player.hunger <= 25 && typeof showMessage === 'function') {
+            showMessage('You are starving!');
+          }
+        }
+      }
+      // Lose health if hunger is 0
+      if (player.hunger <= 0) {
+        if (typeof showMessage === 'function' && now - lastStarveMsg > 2000) {
+          showMessage('You are starving!');
+          lastStarveMsg = now;
+        }
+        player.health = Math.max(0, player.health - player.maxHealth * 0.01 * deltaTime); // lose 1% per second
+        // Optional: flash color or knockback effect here
+      }
+    }
+
+    // Death handling
+    if (player.health <= 0 && !player.isDead) {
+      player.isDead = true;
+  if (typeof showMessage === 'function') showMessage('You died!');
+  if (typeof playDeath === 'function') try { playDeath(); } catch(_) {}
+
+      // Drop all inventory items on death (singleplayer/offline only)
+      try {
+        const isOnline = (typeof window.socket !== 'undefined' && window.socket && window.socket.connected);
+        // Support both window.inventory (if exported) and the global const inventory from items.js
+        const inv = (!isOnline) ? ((typeof window.inventory !== 'undefined' && window.inventory) || (typeof inventory !== 'undefined' ? inventory : null)) : null;
+        if (inv && inv.items) {
+          const entries = Object.entries(inv.items);
+          if (entries.length > 0) {
+            for (const [type, count] of entries) {
+              if (!type || !Number.isFinite(count) || count <= 0) continue;
+              // Spawn a single drop per item type at player's center with short pickup delay
+              try {
+                if (typeof window.dropItem === 'function') {
+                  window.dropItem(type, count, player, false, { pickupDelaySec: 1 });
+                } else if (typeof dropItem === 'function') {
+                  dropItem(type, count, player, false, { pickupDelaySec: 1 });
+                }
+              } catch(_) {}
+            }
+            // Clear inventory after spawning drops so hotbar/UI updates
+            try { (inv.clear && inv.clear()); } catch(_) {}
+          }
+        }
+      } catch(_) {}
+      // Show a death panel with countdown and auto-respawn
+      try {
+        let death = document.getElementById('deathScreen');
+        if (!death) {
+          death = document.createElement('div');
+          death.id = 'deathScreen';
+          death.style.position = 'fixed';
+          death.style.inset = '0';
+          death.style.display = 'flex';
+          death.style.alignItems = 'center';
+          death.style.justifyContent = 'center';
+          death.style.zIndex = '1200';
+          death.style.background = 'rgba(0,0,0,0.4)';
+          const panel = document.createElement('div');
+          panel.style.fontFamily = "'VT323', monospace";
+          panel.style.color = '#fff';
+          panel.style.background = 'rgba(0,0,0,0.6)';
+          panel.style.border = '2px solid #fff';
+          panel.style.borderRadius = '12px';
+          panel.style.padding = '24px 28px';
+          panel.style.minWidth = '260px';
+          panel.style.textAlign = 'center';
+          const h2 = document.createElement('h2');
+          h2.textContent = 'You Died!';
+          const p = document.createElement('div');
+          p.id = 'deathCountdownText';
+          p.style.marginTop = '8px';
+          p.textContent = 'Respawning in 5...';
+          panel.appendChild(h2);
+          panel.appendChild(p);
+          death.appendChild(panel);
+          document.body.appendChild(death);
+        } else {
+          death.style.display = 'flex';
+          let p = document.getElementById('deathCountdownText');
+          if (!p) {
+            p = document.createElement('div');
+            p.id = 'deathCountdownText';
+            p.style.marginTop = '8px';
+            const h2 = death.querySelector('h2') || (()=>{ const h=document.createElement('h2'); h.textContent='You Died!'; death.firstElementChild?.appendChild(h); return h; })();
+            (h2.parentElement||death).appendChild(p);
+          }
+          p.textContent = 'Respawning in 5...';
+        }
+        // Clear any existing countdown
+        if (window.__deathCountdownTimer) { clearInterval(window.__deathCountdownTimer); }
+        let seconds = 5;
+        window.__deathCountdownTimer = setInterval(() => {
+          seconds -= 1;
+          const el = document.getElementById('deathCountdownText');
+          if (el) el.textContent = `Respawning in ${Math.max(0, seconds)}...`;
+          if (seconds <= 0) {
+            clearInterval(window.__deathCountdownTimer);
+            window.__deathCountdownTimer = null;
+            try {
+              // Prefer offline singleplayer respawn flow
+              if (typeof window.singleplayerRespawn === 'function') {
+                window.singleplayerRespawn();
+              } else if (typeof window.CreateRespawnPlayer === 'function') {
+                window.CreateRespawnPlayer();
+              } else if (typeof window.respawnNow === 'function') {
+                window.respawnNow();
+              }
+            } catch(_) {}
+          }
+        }, 1000);
+      } catch (_) {}
+    }
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+// Existing variables
+let player = (typeof window !== 'undefined' && window.player) ? window.player : createNewPlayer();
+const playersMap = (typeof window !== 'undefined' && window.playersMap)
+  ? window.playersMap
+  : { [player.id]: player };
+if (typeof window !== 'undefined') {
+  window.player = player;
+  window.playersMap = playersMap;
+}
 // Slightly larger radius makes pickup feel snappier; keep in sync with server PICKUP_RADIUS
 const PICKUP_RADIUS = 32;
 let __lastPickupMsgAt = 0;
-let maxStamina = 0;
-let stamina = 0;
-// ...existing code...
+// Make stamina variables global so they can be accessed by UI and save system
+window.maxStamina = (player && typeof player.maxStamina === 'number') ? player.maxStamina : 100;
+window.stamina = window.maxStamina;
+window.staminaRegenSpeed = (player && typeof player.staminaRegenSpeed === 'number') ? player.staminaRegenSpeed : 40;
 const DEFAULT_ATTACK_RANGE = 50;
 const ATTACK_ANGLE = Math.PI / 2; // 90 degrees
 let punchHand = 'right'; // 'left' or 'right'
+// Knockback variables
 let knockback = { active: false, vx: 0, vy: 0, timer: 0 };
 const KNOCKBACK_DURATION = 0.2; // seconds
 const KNOCKBACK_FORCE = 350; // pixels/sec
@@ -21,6 +189,8 @@ playerImage.onload = () => {
   playerImageLoaded = true;
 };
 
+
+
 // New variables for attack animation
 let isAttacking = false;
 let attackStartTime = 0;
@@ -30,32 +200,21 @@ function getAttackSpeed() {
   if (!player) return 0.5;
   const selected = hotbar && hotbar.selectedIndex !== null ? hotbar.slots[hotbar.selectedIndex] : null;
   if (selected && ItemTypes[selected.type] && ItemTypes[selected.type].attackSpeed) {
+
     return Math.max(0.05, ItemTypes[selected.type].attackSpeed - player.playerattackspeed);
   }
   // Hand attack speed fallback
   if (ItemTypes.hand && ItemTypes.hand.attackSpeed) {
-    return Math.max(0.05, ItemTypes.hand.attackSpeed - player.playerattackspeed);
+    return (Math.max(0.05, ItemTypes.hand.attackSpeed - player.playerattackspeed));
   }
-  return player.playerattackspeed; // fallback default
+  return (player.playerattackspeed); // fallback default
 }
 
-// Singleplayer: no need to send player position to server
-function sendPlayerPosition(x, y) {
-  // No-op in singleplayer
-}
 
-// ...rest of player.js code...
-function sendPlayerPosition(x, y) {
-  // No-op in singleplayer
-}
-
-// Singleplayer: no need to send player position to server
-function sendPlayerPosition(x, y) {
-  // No-op in singleplayer
-}
 
 function updatePlayerPosition(deltaTime) {
-  if (isDead || !player) return;
+  try { if (window.gameplayPaused) return; } catch(_) {}
+  if (!player || player.isDead) return;
   if (typeof keys === 'undefined') return;
 
   // Knockback physics
@@ -67,7 +226,7 @@ function updatePlayerPosition(deltaTime) {
       // Collision aware move: attempt full, then axis, then damp/stop
       function isCollidingAt(x, y) {
         return (typeof isCollidingWithResources === 'function' && 
-                isCollidingWithResources(x, y, player.size, player.size, allResources)) ||
+                isCollidingWithResources(x, y, player.size, player.size, window.allResources)) ||
                (typeof isCollidingWithMobs === 'function' && 
                 isCollidingWithMobs(x, y, player.size, player.size, mobs)) ||
                (typeof isCollidingWithBlocks === 'function' && 
@@ -144,9 +303,9 @@ function updatePlayerPosition(deltaTime) {
   }
   
   // Only sprint (and drain stamina) when there's movement input
-  if (wantsToSprint && isMovingInput && stamina > 0) {
+  if (wantsToSprint && isMovingInput && window.stamina > 0) {
     speed *= 1.5;
-    stamina -= 20 * deltaTime;
+    window.stamina -= 20 * deltaTime;
     lastStaminaUseTime = 0;
   }
   
@@ -160,7 +319,7 @@ function updatePlayerPosition(deltaTime) {
   // Helper function for collision detection
   function isCollidingAt(x, y) {
         return (typeof isCollidingWithResources === 'function' && 
-                isCollidingWithResources(x, y, player.size, player.size, allResources)) ||
+                isCollidingWithResources(x, y, player.size, player.size, window.allResources)) ||
                (typeof isCollidingWithMobs === 'function' && 
                 isCollidingWithMobs(x, y, player.size, player.size, mobs)) ||
                (typeof isCollidingWithBlocks === 'function' && 
@@ -237,12 +396,33 @@ function updatePlayerPosition(deltaTime) {
   player.x = Math.max(0, Math.min(WORLD_SIZE - player.size, player.x));
   player.y = Math.max(0, Math.min(WORLD_SIZE - player.size, player.y));
   
-  sendPlayerPosition(player.x, player.y);
   
-  // Item pickup logic (unchanged)
+  // Item pickup logic (online: server-enforced delay; offline: client-enforced)
   if (player && typeof droppedItems !== 'undefined' && typeof inventory !== 'undefined') {
+    // In offline mode, tick down pickupDelay and prune expired items
+    if (!window.socket || !socket.connected) {
+      const nowSec = performance.now() / 1000;
+      const next = [];
+      for (let i = 0; i < droppedItems.length; i++) {
+        const it = droppedItems[i];
+        if (!it) continue;
+        if (typeof it.pickupDelay === 'number' && it.pickupDelay > 0) {
+          it.pickupDelay = Math.max(0, it.pickupDelay - deltaTime);
+        }
+        // Normalize lifetime if missing
+        if (typeof it.expireAt !== 'number') {
+          const lifetime = Number.isFinite(it.lifetimeSec) ? it.lifetimeSec : 60;
+          it.lifetimeSec = lifetime;
+          it.createdAt = (typeof it.createdAt === 'number') ? it.createdAt : nowSec;
+          it.expireAt = (typeof it.expireAt === 'number') ? it.expireAt : (it.createdAt + lifetime);
+        }
+        if ((it.expireAt - nowSec) > 0) next.push(it);
+      }
+      droppedItems = next;
+    }
     const playerCenterX = player.x + player.size / 2;
     const playerCenterY = player.y + player.size / 2;
+    const toRemoveIds = [];
     droppedItems.forEach(item => {
       const dx = playerCenterX - item.x;
       const dy = playerCenterY - item.y;
@@ -250,23 +430,18 @@ function updatePlayerPosition(deltaTime) {
     // Ignore client-side pickupDelay (server enforces true delay)
     const canAdd = inventory.canAddItem && inventory.canAddItem(item.type);
   if (distance < PICKUP_RADIUS && canAdd) {
-        if (window.socket && window.socket.connected) {
-          // Ask server to pick up; include ack for diagnostics
-          window.socket.emit("pickupItem", item.id, (res) => {
-            if (typeof devModeActive !== 'undefined' && devModeActive) {
-              try { console.debug('[pickupItem ack]', { id: item.id, res }); } catch (_) {}
+        if (window.socket && socket.connected) {
+          // Ask server to pick up; it will validate range and delay
+          try { socket.emit('pickupItem', item.id); } catch(_) {}
+        } else {
+          // Offline singleplayer: pickup when delay already elapsed
+          if (!item.pickupDelay || item.pickupDelay <= 0) {
+            if (inventory.addItem && inventory.addItem(item.type, item.amount)) {
+              toRemoveIds.push(item.id);
+              if (typeof playPopClaim === 'function') playPopClaim();
+              if (typeof showMessage === 'function') showMessage(`Picked up ${item.amount} ${item.type}`);
             }
-            if (res && res.ok === true) {
-              // Optimistically remove from local list in case we miss server remove event
-              droppedItems = Array.isArray(droppedItems) ? droppedItems.filter(di => di && di.id !== item.id) : [];
-              
-            } else if (res && res.ok === false && typeof showMessage === 'function') {
-              // Show a brief hint if server rejected
-              const hint = res.reason === 'delay' ? 'Wait a moment…' : (res.reason === 'range' ? 'Move closer' : 'Pickup failed');
-              const now2 = Date.now();
-              if (now2 - __lastPickupMsgAt > 900) { showMessage(hint); __lastPickupMsgAt = now2; }
-            }
-          });
+          }
         }
       } else if (distance < PICKUP_RADIUS && !canAdd) {
         const now = Date.now();
@@ -276,6 +451,9 @@ function updatePlayerPosition(deltaTime) {
         }
       }
     });
+    if (toRemoveIds.length) {
+      droppedItems = droppedItems.filter(it => !toRemoveIds.includes(it.id));
+    }
   }
 
 }
@@ -284,20 +462,21 @@ let lastStaminaUseTime = 0;
 
 function staminaRegen(deltaTime) {
   lastStaminaUseTime += deltaTime;
-  if (lastStaminaUseTime >= 0.5) stamina = Math.min(maxStamina, stamina + staminaRegenSpeed * deltaTime);
-  if (stamina < 0) stamina = 0;
+  if (lastStaminaUseTime >= 0.5) window.stamina = Math.min(window.maxStamina, window.stamina + window.staminaRegenSpeed * deltaTime);
+  if (window.stamina < 0) window.stamina = 0;
 }
 
 let maxHunger = 100;
 let hunger = 100;
 
 function consumeFood() {
-  if (!player || isDead || typeof hotbar === 'undefined' || typeof inventory === 'undefined') return;
+  if (!player || player.isDead || typeof hotbar === 'undefined' || typeof inventory === 'undefined') return;
   const selected = hotbar.slots[hotbar.selectedIndex];
   if (selected?.type === "food" && inventory.hasItem && inventory.hasItem("food", 1) && player.hunger < player.maxHunger) {
     playConsume();
     inventory.removeItem("food", 1);
-    if (window.socket && window.socket.connected) window.socket.emit("consumeFood", { amount: 1 });
+    // Actually restore hunger (match server: +20 per food)
+    player.hunger = Math.min(player.maxHunger, player.hunger + 20);
     if (typeof showMessage === 'function') showMessage("Ate food, hunger restored!");
   } else if (selected?.type === "food" && player.hunger >= player.maxHunger) {
     if (typeof showMessage === 'function') playCancel(); showMessage("You are not hungry!");
@@ -307,12 +486,11 @@ function consumeFood() {
 }
 
 function consumePotion(type) {
-  if (!player || isDead || typeof hotbar === 'undefined' || typeof inventory === 'undefined') return;
+  if (!player || player.isDead || typeof hotbar === 'undefined' || typeof inventory === 'undefined') return;
   const selected = hotbar.slots[hotbar.selectedIndex];
   if (selected?.type === type && inventory.hasItem && inventory.hasItem(type, 1)) {
     playConsume();
     inventory.removeItem(type, 1);
-    if (window.socket && window.socket.connected) window.socket.emit("consumePotion", { type });
     if (typeof showMessage === 'function') showMessage(`Consumed ${ItemTypes[type].name}!`);
   } else {
     if (typeof showMessage === 'function') showMessage("No potion selected!");
@@ -320,7 +498,7 @@ function consumePotion(type) {
 }
 
 
-function drawHungerBar(startX, hotbarY) {
+function drawHungerBar(startX, hotbarY, totalWidth, padding) {
   ctx.save();
   const barWidth = totalWidth / 2.5;
   const barHeight = 10;
@@ -334,7 +512,7 @@ function drawHungerBar(startX, hotbarY) {
   ctx.restore();
 }
 
-function drawHealthbar(startX, hotbarY) {
+function drawHealthbar(startX, hotbarY, totalWidth, padding) {
   ctx.save();
   const barWidth = totalWidth / 2.5;
   const barHeight = 10;
@@ -349,6 +527,8 @@ function drawHealthbar(startX, hotbarY) {
 }
 
 function updatePlayerFacing(mouseX, mouseY) {
+  try { if (window.gameplayPaused) return; } catch(_) {}
+  if (!player || player.isDead) return;
   // On mobile joystick, face toward joystick vector when active; otherwise aim at mouse.
   const controlsMode = (typeof window !== 'undefined' && window.controlsSettings && window.controlsSettings.getMode && window.controlsSettings.getMode()) || 'pc';
   if (controlsMode === 'mobile' && typeof window !== 'undefined' && window.mobileControls) {
@@ -367,13 +547,12 @@ function updatePlayerFacing(mouseX, mouseY) {
 }
 
 function drawPlayer() {
+  if (!player || player.isDead) return;
   const centerX = player.x + player.size / 2;
   const centerY = player.y + player.size / 2;
   
-  if (!player || isDead || typeof ctx === 'undefined') return;
   // Enable high-quality image smoothing for cleaner rotations
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
+  ctx.imageSmoothingEnabled = false;
   ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
   ctx.shadowBlur = 5;
   ctx.shadowOffsetX = 3;
@@ -396,10 +575,12 @@ function drawPlayer() {
   }
 
   // Draw attack cone if attacking
-  if (isAttacking) {
+  if (player.isAttacking) {
     const now = performance.now();
     const attackSpeed = getAttackSpeed();
-    const attackProgress = Math.min((now - attackStartTime) / (attackSpeed * 1000), 1);
+    const attackProgress = Math.min(
+      (now - (player.attackStartTime || 0)) / (attackSpeed * 1000), 1
+    );
     const startAngle = player.facingAngle - ATTACK_ANGLE / 2;
     const currentAngle = startAngle + attackProgress * ATTACK_ANGLE;
     ctx.save();
@@ -415,7 +596,7 @@ function drawPlayer() {
     ctx.fill();
     ctx.restore();
     if (attackProgress >= 1) {
-      isAttacking = false;
+      player.isAttacking = false;
     }
   } else {
     ctx.save();
@@ -431,7 +612,9 @@ function drawPlayer() {
     ctx.fill();
     ctx.restore();
   }
-  drawTool(centerX, centerY, attackRange);
+  if (!player.isDead) {
+    drawTool(centerX, centerY, attackRange);
+  }
 
   // Draw player body
   ctx.save();
@@ -460,10 +643,12 @@ function drawPlayer() {
     ctx.fill();
   }
   ctx.restore();
-  ctx.fillStyle = "white";
-  ctx.font = "14px cursive";
-  ctx.textAlign = "center";
-  ctx.fillText(player.name || "You", centerX, player.y - 10);
+  if (!player.isDead) {
+    ctx.fillStyle = "white";
+    ctx.font = "14px cursive";
+    ctx.textAlign = "center";
+    ctx.fillText(player.name || "You", centerX, player.y - 10);
+  }
 
 }
 
@@ -476,174 +661,11 @@ function gainXP(amount) {
     player.xp -= player.xpToNextLevel;
     player.level++;
     player.xpToNextLevel = Math.floor(player.xpToNextLevel * 2);
-    if (window.socket && window.socket.connected) window.socket.emit("playerLeveledUp", { id: window.socket.id, level: player.level });
-    if (typeof showMessage === 'function') showMessage(`Level Up! You are now level ${player.level}`);
+    showMessage(`Level Up! You are now level ${player.level}`);
   }
 }
 
-function drawOtherPlayers() {
-  if (typeof ctx === 'undefined' || typeof otherPlayers === 'undefined') return;
-  const now = performance.now();
-  ctx.save();
-  
-  for (const id in otherPlayers) {
-    const p = otherPlayers[id];
-    if (!p) continue;
-    const screenX = p.x;
-    const screenY = p.y;
-    const centerX = screenX + (p.size || 20) / 2;
-    const centerY = screenY + (p.size || 20) / 2;
 
-    // Determine attack range from selected tool or default
-    let oAttackRange = DEFAULT_ATTACK_RANGE;
-    if (p.selectedToolType && ItemTypes[p.selectedToolType] && ItemTypes[p.selectedToolType].isTool && ItemTypes[p.selectedToolType].attackRange) {
-      oAttackRange = ItemTypes[p.selectedToolType].attackRange + (p.playerrange || 0);
-    }
-
-    // Draw attack cone (static, like local non-attacking state)
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(centerX, centerY);
-    ctx.lineTo(
-      centerX + Math.cos((p.facingAngle ?? 0) - ATTACK_ANGLE / 2) * oAttackRange,
-      centerY + Math.sin((p.facingAngle ?? 0) - ATTACK_ANGLE / 2) * oAttackRange
-    );
-    ctx.arc(centerX, centerY, oAttackRange, (p.facingAngle ?? 0) - ATTACK_ANGLE / 2, (p.facingAngle ?? 0) + ATTACK_ANGLE / 2);
-    ctx.closePath();
-    ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
-    ctx.fill();
-    ctx.restore();
-
-    // Draw hands and tool (no animation)
-    if (typeof handImageLoaded !== 'undefined' && handImageLoaded) {
-      const handScale = (p.size || 20) / 32;
-      // Left hand
-      (function drawLeftHand(){
-        const handXOffset = (p.size || 20) * 0.75;
-        const handYOffset = -(p.size || 20) * 0.55;
-        const handAngle = -Math.PI / 8;
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.rotate((p.facingAngle ?? 0) + Math.PI / 2);
-        ctx.rotate(handAngle);
-        ctx.translate(-handXOffset, handYOffset);
-        try {
-          ctx.drawImage(
-            handImage,
-            -handImage.width / 2 * handScale,
-            -handImage.height / 2 * handScale,
-            handImage.width * handScale,
-            handImage.height * handScale
-          );
-        } catch (_) {}
-        ctx.restore();
-      })();
-
-      // Right hand + tool (static)
-      (function drawRightHandAndTool(){
-        const handXOffset = (p.size || 20) * 0.8;
-        const handYOffset = -(p.size || 20) * 0.55;
-        const handAngle = Math.PI / 8;
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.rotate((p.facingAngle ?? 0) + Math.PI / 2);
-        ctx.rotate(handAngle);
-        ctx.translate(handXOffset, handYOffset);
-
-        // Draw tool or resource if equipped and image is available
-        try {
-          const hasSelection = p.selectedToolType && ItemTypes[p.selectedToolType];
-          if (hasSelection) {
-            const selType = p.selectedToolType;
-            const isTool = !!ItemTypes[selType].isTool;
-            const toolImage = (typeof toolImages !== 'undefined') ? toolImages[selType] : null;
-            const resourceImage = (typeof resourceImages !== 'undefined') ? resourceImages[selType] : null;
-
-            if (isTool && toolImage && toolImage.complete) {
-              const scale = 1;
-              const imgWidth = toolImage.width * scale;
-              const imgHeight = toolImage.height * scale;
-              ctx.save();
-              const toolAngle = Math.PI * 1.5 + Math.PI / 8;
-              ctx.rotate(toolAngle);
-              const toolOffsetX = 10;
-              const toolOffsetY = 6;
-              ctx.translate(toolOffsetX, toolOffsetY);
-              ctx.drawImage(toolImage, -imgWidth / 2, -imgHeight, imgWidth, imgHeight);
-              ctx.restore();
-            } else if (resourceImage && resourceImage.complete) {
-              // Match local resource hold offsets/orientation
-              const scale = 1;
-              const imgWidth = resourceImage.width * scale;
-              const imgHeight = resourceImage.height * scale;
-              ctx.save();
-              ctx.rotate((Math.PI * 2) - Math.PI / 8);
-              ctx.translate(0, -12);
-              ctx.drawImage(resourceImage, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
-              ctx.restore();
-            } else if (toolImage && toolImage.complete) {
-              // If a non-tool has an image (e.g., torch), show it as-is like a tool
-              const scale = 1;
-              const imgWidth = toolImage.width * scale;
-              const imgHeight = toolImage.height * scale;
-              ctx.save();
-              const toolAngle = Math.PI * 1.5 + Math.PI / 8;
-              ctx.rotate(toolAngle);
-              const toolOffsetX = 10;
-              const toolOffsetY = 6;
-              ctx.translate(toolOffsetX, toolOffsetY);
-              ctx.drawImage(toolImage, -imgWidth / 2, -imgHeight, imgWidth, imgHeight);
-              ctx.restore();
-            } else {
-              // Fallback rectangle (same as local)
-              ctx.save();
-              ctx.rotate(Math.PI / 2);
-              const color = (ItemTypes[selType] && ItemTypes[selType].color) || 'gray';
-              ctx.fillStyle = color;
-              ctx.fillRect(-6, -24, 12, 48);
-              ctx.restore();
-            }
-          }
-        } catch (_) {}
-
-        // Draw right hand on top
-        try {
-          ctx.drawImage(
-            handImage,
-            -handImage.width / 2 * handScale,
-            -handImage.height / 2 * handScale,
-            handImage.width * handScale,
-            handImage.height * handScale
-          );
-        } catch (_) {}
-        ctx.restore();
-      })();
-    }
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.rotate((p.facingAngle ?? 0) + Math.PI / 2);
-    if (playerImageLoaded) {
-      ctx.drawImage(
-        playerImage,
-        -p.size / 2,
-        -p.size / 2,
-        p.size,
-        p.size
-      );
-    }
-    ctx.restore();
-
-    // Name (world space)
-    ctx.save();
-    ctx.font = '14px cursive';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'white';
-    ctx.fillText(p.name || 'Unnamed', centerX, screenY - 10);
-    ctx.restore();
-    if (p.health < p.maxHealth) drawHealthBarP(p);
-  }
-  ctx.restore();
-}
 
 function drawHealthBarP(p) {
   if (typeof ctx === 'undefined' || !p) return;
@@ -662,61 +684,10 @@ function drawHealthBarP(p) {
   ctx.restore();
 }
 
-function drawStaminaBar() {
-  if (typeof canvas === 'undefined' || typeof ctx === 'undefined') return;
-  ctx.save();
-  const barWidth = canvas.width;
-  const barHeight = 10;
-  const barX = 0;
-  const barY = canvas.height - barHeight;
-  ctx.fillStyle = "gray";
-  ctx.fillRect(barX, barY, barWidth, barHeight);
-  const staminaRatio = stamina / maxStamina;
-  ctx.fillStyle = "yellow";
-  ctx.fillRect(barX, barY, barWidth * staminaRatio, barHeight);
-  ctx.restore();
-}
 
-if (typeof socket !== "undefined" && socket) {
-  socket.on("updatePlayerHealth", ({ id, health }) => {
-    if (otherPlayers[id]) otherPlayers[id].health = health;
-  });
-}
 
-function tryAttack() {
-  if (!player || typeof hotbar === 'undefined' || typeof ItemTypes === 'undefined' || typeof otherPlayers === 'undefined') return;
-  punchHand = (punchHand === 'right') ? 'left' : 'right';
-  const selected = hotbar.slots[hotbar.selectedIndex];
-  let selectedTool = (selected && selected.type) ? selected.type : "hand";
-  const toolInfo = ItemTypes[selectedTool] && ItemTypes[selectedTool].isTool ? ItemTypes[selectedTool] : { category: "hand", tier: 0, damage: 1, attackRange: DEFAULT_ATTACK_RANGE };
-  const swordTypes = ["hand", "sword"];
-  const coneLength = toolInfo.attackRange || DEFAULT_ATTACK_RANGE;
-  const coneAngle = ATTACK_ANGLE;
-  for (const id in otherPlayers) {
-    const p = otherPlayers[id];
-    if (!p || p.isDead) continue;
-    const px = p.x;
-    const py = p.y;
-    if (p.size > 0 && isObjectInAttackCone(player, p, coneLength, coneAngle)) {
-      if (!swordTypes.includes(toolInfo.category)) {
-        if (typeof showMessage === 'function') showMessage("This tool is not effective.");
-        return;
-      }
-      const damage = toolInfo.damage;
-      const cost = 10;
-      if (stamina < cost) {
-        if (typeof showMessage === 'function') showMessage("Low Stamina");
-        return;
-      }
-      stamina -= cost;
-      lastStaminaUseTime = 0;
-      p.health -= 0;
-      if (window.socket && window.socket.connected) window.socket.emit("playerhit", { targetId: id, newHealth: Math.max(0, p.health) });
-      if (typeof showDamageText === 'function') showDamageText(px, py, -damage);
-      otherPlayers[id].lastHitTime = performance.now();
-    }
-  }
-}
+
+
 
 function isObjectInAttackCone(player, object, coneLength, ATTACK_ANGLE) {
   const playerCenterX = player.x + player.size / 2;
@@ -880,11 +851,6 @@ function isEdgeIntersectingArc(edgeStart, edgeEnd, cx, cy, radius, facingAngle, 
   return false;
 }
 
-window.sendPlayerPosition = sendPlayerPosition;
-window.consumeFood = consumeFood;
-window.consumePotion = consumePotion;
-window.tryAttack = tryAttack;
-window.applyKnockbackFromMob = applyKnockbackFromMob;
 
 // Called when mob hits player
 function applyKnockbackFromMob(mob) {
@@ -896,4 +862,59 @@ function applyKnockbackFromMob(mob) {
   knockback.vy = (dy / dist) * KNOCKBACK_FORCE;
   knockback.timer = KNOCKBACK_DURATION;
   knockback.active = true;
+}
+
+function createNewPlayer() {
+  const size = 32;
+  let x, y;
+  let attempts = 0;
+  
+  // Use seeded random for consistent player spawning per world
+  const getRandom = () => {
+    if (typeof window.getRandomValue === 'function') {
+      return window.getRandomValue();
+    }
+    return Math.random();
+  };
+  
+  while (true) {
+    x = getRandom() * (WORLD_SIZE / 5 - size);
+    y = getRandom() * (WORLD_SIZE / 5 - size);
+    attempts++;
+    const overlapsResource = isOverlappingAny(window.allResources, x, y, size, size);
+    const overlapsMob = isOverlappingAny(mobs, x, y, size, size);
+    if (!overlapsResource && !overlapsMob) break;
+    if (attempts % 1000 === 0) {
+      console.warn(`⚠️ Still trying to place player ${id}, attempts: ${attempts}`);
+    }
+  }
+  return {
+    id: "singleplayer",
+    x,
+    y,
+    size,
+    color: "rgba(0, 0, 0, 0)",
+    speed: 175,
+    facingAngle: 0,
+    level: 1,
+    xp: 0,
+    xpToNextLevel: 10,
+    health: 100,
+    maxHealth: 100,
+    playerdamage: 1,
+    playerattackspeed: 0.15,
+    playerrange: 0,
+    playerknockback: 0,
+
+    healthRegen: 0.01,
+    lastDamageTime: null,
+    isDead: false,
+    maxStamina: 100,
+    staminaRegenSpeed: 40,
+    hunger: 100, // Add hunger
+    maxHunger: 100,
+    hungerDepletionSpeed: 2,
+    lastHungerDepletion: Date.now(),
+    
+  };
 }

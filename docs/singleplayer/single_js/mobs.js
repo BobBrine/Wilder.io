@@ -1,3 +1,5 @@
+const mobtype = initializeMobTypes(gameTime, difficulty);
+const mobs = Object.fromEntries(Object.keys(mobtype).map(type => [type, []]));
 
 let mobloaded = false;
 let showData = false;
@@ -6,30 +8,7 @@ function getMobArrayByType(type) {
   return mobs[type] || [];
 }
 
-if (typeof socket !== "undefined" && socket) {
-  socket.on("updateMobHealth", ({ id, type, health }) => {
-    const list = getMobArrayByType(type);
-    const mob = list.find(r => r.id === id);
-    if (mob) {
-      mob.health = health;
-      if (health <= 0) {
-        mob.size = 0;
-        mob.respawnTimer = mob.respawnTime;
-      }
-    }
-  });
 
-  socket.on("mobKnockback", ({ id, type, knockbackVx, knockbackVy, duration, continuous }) => {
-    const list = getMobArrayByType(type);
-    const mob = list.find(m => m.id === id);
-    if (mob) {
-      const now = performance.now();
-      // Disable client-side knockback animation; rely on server position updates only
-      mob.flashEndTime = now + 150;
-      mob._kbFlashUntil = now + 150;
-    }
-  });
-}
 
 function drawPolygon(ctx, x, y, size, sides, rotation = 0) {
   ctx.save();
@@ -81,8 +60,9 @@ function drawMob() {
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
       if (mob.health > 0) {
-        // Cull off-screen mobs to reduce draw calls
-        if (typeof isWorldRectOnScreen === 'function') {
+        // Culling disabled by request: always draw mobs regardless of on-screen visibility
+        // (kept code for reference but bypassed the 'continue')
+        if (false && typeof isWorldRectOnScreen === 'function') {
           const size = mob.size || 0;
           const rx = (mob._renderX !== undefined ? mob._renderX : mob.x);
           const ry = (mob._renderY !== undefined ? mob._renderY : mob.y);
@@ -95,25 +75,27 @@ function drawMob() {
         if (window.graphicsSettings && window.graphicsSettings.shadows) {
           ctx.shadowColor = 'rgba(0,0,0,0.5)';
         } else {
-          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
         }
-  // Smoothly follow server/logic position only (knockback animation disabled)
-  if (mob._renderX === undefined) { mob._renderX = mob.x; mob._renderY = mob.y; }
-  const follow = 0.35; // snappy follow to reduce visible snap-back
-  const dfx = mob.x - mob._renderX;
-  const dfy = mob.y - mob._renderY;
-  const d2 = dfx * dfx + dfy * dfy;
-  // Dead-zone to prevent micro jitter
-  if (d2 < 0.25) { // ~0.5px
-    mob._renderX = mob.x;
-    mob._renderY = mob.y;
-  } else {
-    mob._renderX += dfx * follow;
-    mob._renderY += dfy * follow;
-  }
+        // Smoothly follow logic position only (knockback animation disabled)
+        if (mob._renderX === undefined) { mob._renderX = mob.x; mob._renderY = mob.y; }
+        const follow = 0.35; // snappy follow to reduce visible snap-back
+        const dfx = mob.x - mob._renderX;
+        const dfy = mob.y - mob._renderY;
+        const d2 = dfx * dfx + dfy * dfy;
+        // Dead-zone to prevent micro jitter
+        if (d2 < 0.25) { // ~0.5px
+          mob._renderX = mob.x;
+          mob._renderY = mob.y;
+        } else {
+          mob._renderX += dfx * follow;
+          mob._renderY += dfy * follow;
+        }
 
-  const drawX = mob._renderX;
-  const drawY = mob._renderY;
+        const drawX = mob._renderX;
+        const drawY = mob._renderY;
         if (window.graphicsSettings && window.graphicsSettings.shadows) {
           ctx.shadowBlur = 5;
           ctx.shadowOffsetX = 3;
@@ -348,8 +330,15 @@ function drawMob() {
             const sortedThreats = Object.entries(mob.threatTable).sort(([, a], [, b]) => b - a);
             let textLines = sortedThreats.map(([name, threat]) => `${name}: ${Math.floor(threat)}`);
             if (mob.targetPlayerId) {
-              const targetName = Object.entries(otherPlayers).find(([id]) => id === mob.targetPlayerId)?.[1].name ||
-                                (player && player.id === mob.targetPlayerId ? player.name : 'Unknown');
+              // Safely resolve target name in singleplayer (no otherPlayers)
+              const others = (typeof otherPlayers !== 'undefined' && otherPlayers) ? otherPlayers : {};
+              let targetName = 'Unknown';
+              if (player && player.id === mob.targetPlayerId) {
+                targetName = player.name || 'You';
+              } else {
+                const entry = Object.entries(others).find(([id]) => id === mob.targetPlayerId);
+                if (entry && entry[1]) targetName = entry[1].name || `Player ${String(entry[0]).slice(0,4)}`;
+              }
               textLines = textLines.map(line => line.startsWith(targetName) ? `>${line}` : line);
             }
             const fontSize = 12;
@@ -373,6 +362,10 @@ function drawMob() {
           ctx.font = "12px monospace";
           ctx.textAlign = "center";
           let yOffset = drawY - 15;
+          // Compute effective attack stats for debug
+          const atkMultDbg = (typeof window !== 'undefined' && typeof window.MOB_ATTACK_SPEED_MULT === 'number') ? window.MOB_ATTACK_SPEED_MULT : 1;
+          const effAtkDbg = Math.max(0.01, (attackSpeed || 1) * atkMultDbg);
+          const effIntervalDbg = Math.max(0.05, 1 / effAtkDbg);
           const texts = [
             `ID: ${mob.id.slice(0, 4)}`,
             `HP: ${mob.health.toFixed(0)}/${mob.maxHealth}`,
@@ -382,7 +375,10 @@ function drawMob() {
             `Range: ${aggroRadius?.toFixed(0) ?? 'N/A'}/${escapeRadius?.toFixed(0) ?? 'N/A'}`,
             `Speed: ${mobSpeed?.toFixed(0) ?? 'N/A'}`,
             `Damage: ${mobDamage?.toFixed(0) ?? 'N/A'}`,
-            `Attack Speed: ${attackSpeed ?? 'N/A'}`
+            `Attack Speed: ${attackSpeed ?? 'N/A'}`,
+            `Eff atk: ${effAtkDbg.toFixed(2)}/s`,
+            `Eff interval: ${effIntervalDbg.toFixed(2)}s`,
+            `CD: ${(mob.damageCooldown ?? 0).toFixed(2)}s`
 
           ];
           if (mob.state) {
@@ -462,6 +458,7 @@ function drawHealthBarM(mob) {
 }
 
 function tryHitMob() {
+  try { if (window.isSpectator && window.isSpectator()) return; } catch(_) {}
   if (!player) return;
 
   let attackRange = DEFAULT_ATTACK_RANGE + player.playerrange;
@@ -540,17 +537,27 @@ function tryHitMob() {
         player.isAttacking = true;
         player.attackStartTime = performance.now();
 
-  // Emit hit and requested knockback to server (no client-side animation)
-        window.socket.emit("mobhit", { 
-          type, 
-          id: mob.id, 
-          newHealth: mob.health,
-          knockback: {
-            vx: nx * knockbackDistance,
-            vy: ny * knockbackDistance,
-            duration: knockbackDuration,  // Seconds
-          }
-        });
+  // Emit hit and requested knockback to server when network is available
+        if (window.socket && typeof window.socket.emit === 'function' && window.socket.connected) {
+          window.socket.emit("mobhit", { 
+            type, 
+            id: mob.id, 
+            newHealth: mob.health,
+            knockback: {
+              vx: nx * knockbackDistance,
+              vy: ny * knockbackDistance,
+              duration: knockbackDuration,  // Seconds
+            }
+          });
+        }
+        // Offline singleplayer: apply knockback locally (server won't echo mobKnockback)
+        else {
+          try {
+            mob.kbVx = nx * knockbackDistance / knockbackDuration; // convert distance to approx initial velocity
+            mob.kbVy = ny * knockbackDistance / knockbackDuration;
+            mob.kbTimer = knockbackDuration;
+          } catch(_) {}
+        }
         if (mob.health <= 0) {
           playEnemyDeath();
           showPlacementEffect(dX, dY, false);
@@ -560,10 +567,12 @@ function tryHitMob() {
             for (let i = 0; i < drops.length; i++) {
               const dropType = drops[i];
               const amountObj = dropAmounts[i];
-              dropItem(dropType, amountObj.amount, mob);
+              // Mob drops: no pickup delay so player can pick instantly
+              dropItem(dropType, amountObj.amount, mob, false, { pickupDelaySec: 0 });
             }
           } else {
-            dropItem(drops, dropAmounts, mob);
+            // Mob drops: no pickup delay so player can pick instantly
+            dropItem(drops, dropAmounts, mob, false, { pickupDelaySec: 0 });
           }
         }
       }
@@ -589,26 +598,6 @@ function isCollidingWithMobs(newX, newY, sizeX = player.size, sizeY = player.siz
   });
 
 }
-
-window.tryHitMob = tryHitMob;
-// ...existing code...
-
-const GRID_CELL_SIZE = 100;
-const GRID_COLS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE); // 50
-const GRID_ROWS = Math.floor(WORLD_SIZE / GRID_CELL_SIZE);
-
-let difficulty = 1; // Set difficulty level (1 = normal, 2 = hard, etc.)
-const gameTime = 0; // Example game time
-const mobtype = initializeMobTypes(gameTime, difficulty);
-const mobs = Object.fromEntries(Object.keys(mobtype).map(type => [type, []]));
-
-let pond = (() => {
-  const col = Math.floor(Math.random() * GRID_COLS);
-  const row = Math.floor(Math.random() * GRID_ROWS);
-  const { x, y } = getRandomPositionInCell(col, row, 50);
-  return { x, y, size: 50 };
-})();
-
 function getRandomPositionInCell(col, row, size) {
   const minX = col * GRID_CELL_SIZE;
   const minY = row * GRID_CELL_SIZE;
@@ -619,13 +608,10 @@ function getRandomPositionInCell(col, row, size) {
   return { x, y };
 }
 
-const crypto = require("crypto");
-const CYCLE_LENGTH = 120;//180; // 20 minutes in seconds
 
 // Constants
 const passiveColors = ["green", "lightblue", "pink"];
 const aggressiveColors = [ "#560202ff", "#000000", "#505050ff" ];
-const DAY_LENGTH = 120;//120; // 15 minutes of day, 5 minutes of night
 
 // Helper function to generate random numbers within a range
 function randomBetween(min, max) {
@@ -800,7 +786,6 @@ function createMobSpawner(type, targetArray, isOverlapping, gameTime) {
   const maxCount = typeof config.maxCount === 'function' ? config.maxCount(gameTime) : config.maxCount;
   let activeCount = targetArray.filter(r => r.size > 0).length;
   // For aggressive mobs, don't block spawning based on total count; handle per-profile below
-  if (type !== "aggressive_mob") return; // Don't spawn if max count reached for non-aggressive
   let profiles = {};
   if (type === "aggressive_mob") {
     profiles = config.profiles;
@@ -940,8 +925,7 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
               break;
             }
           } while (
-            mobPositionBlocked(newX, newY, size, allResources, players, mobs, null, size * 0.4) ||
-            checkOverlap(newX, newY, size, size, pond.x, pond.y, pond.size, pond.size)
+            mobPositionBlocked(newX, newY, size, allResources, players, mobs, null, size * 0.4)
           );
           if (attempts <= maxAttempts) {
             r.id = crypto.randomUUID();
@@ -1011,8 +995,7 @@ function updateMobRespawns(deltaTime, allResources, players, gameTime) {
               break;
             }
           } while (
-            mobPositionBlocked(newX, newY, size, allResources, players, mobs, null, size * 0.4) ||
-            checkOverlap(newX, newY, size, size, pond.x, pond.y, pond.size, pond.size)
+            mobPositionBlocked(newX, newY, size, allResources, players, mobs, null, size * 0.4)
           );
           if (attempts <= maxAttempts) {
             const id = crypto.randomUUID();
@@ -1063,8 +1046,8 @@ function spawnAllMob(allResources, players, gameTime) {
       (x, y, sizeX, sizeY) => {
         const overlapMargin = sizeX * 0.4;
         return (
-          mobPositionBlocked(x, y, sizeX, allResources, players, mobs, null, overlapMargin) ||
-          checkOverlap(x, y, sizeX, sizeY, pond.x, pond.y, pond.size, pond.size)
+          mobPositionBlocked(x, y, sizeX, allResources, players, mobs, null, overlapMargin)
+          // Removed pond check as pond is not defined
         );
       },
       gameTime
@@ -1118,7 +1101,7 @@ function mobCollideMobsCentered(newX, newY, size, selfMob, mobsObj, overlapMargi
 function mobCollidePlayersCentered(newX, newY, size, playersObj, overlapMargin) {
   const { cx, cy } = getCenterPos(newX, newY, size);
   return Object.values(playersObj || {}).some(player => {
-    if (player.size > 0) {
+    if (player.size > 0 && !player.isDead && player.health > 0) {
       const playerColliderSize = player.size * 0.6;
       const offset = (player.size - playerColliderSize) / 2;
       const pcx = player.x + offset + playerColliderSize / 2;
@@ -1146,6 +1129,8 @@ function isMobPosBlockedForServer(newX, newY, size, allResources, playersObj, mo
 }
 
 function updateMobs(allResources, players, deltaTime) {
+  // Skip mob updates while gameplay is paused (e.g., menu open)
+  try { if (window.gameplayPaused) return; } catch(_) {}
   for (const mobList of Object.values(mobs)) {
     for (const mob of mobList) {
       if (mob.size === 0) continue;
@@ -1163,6 +1148,9 @@ function updateMobs(allResources, players, deltaTime) {
 
       if (config.isAggressive) {
         for (const player of Object.values(players)) {
+          if (!player || player.isDead || player.health <= 0) continue;
+          // Ignore spectator-hidden or invulnerable players
+          if (player.__hiddenBySpectator || player.invulnerable || player.size === 0) continue;
           const dx = player.x - mob.x;
           const dy = player.y - mob.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
@@ -1175,7 +1163,7 @@ function updateMobs(allResources, players, deltaTime) {
 
         for (const playerId in mob.threatTable) {
           const player = players[playerId];
-          if (!player) {
+          if (!player || player.isDead || player.health <= 0 || player.__hiddenBySpectator || player.invulnerable || player.size === 0) {
             delete mob.threatTable[playerId];
             continue;
           }
@@ -1215,6 +1203,8 @@ function updateMobs(allResources, players, deltaTime) {
         let closestDistance = Infinity;
         let closestPlayer = null;
         for (const player of Object.values(players)) {
+          if (!player || player.isDead || player.health <= 0) continue;
+          if (player.__hiddenBySpectator || player.invulnerable || player.size === 0) continue;
           const dx = player.x - mob.x;
           const dy = player.y - mob.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
@@ -1223,11 +1213,12 @@ function updateMobs(allResources, players, deltaTime) {
             closestPlayer = player;
           }
         }
-        if (closestPlayer && mob.moveTimer <= 0 && !mob.isTurning) {
+        mob._wanderReaim = (mob._wanderReaim || 0) - deltaTime;
+        if (closestPlayer && mob._wanderReaim <= 0) {
           mob.targetAngle = Math.atan2(closestPlayer.y - mob.y, closestPlayer.x - mob.x);
-          mob.moveTimer = Math.random() * 3 + 2;
-          mob.isTurning = true;
-        } else if (mob.moveTimer <= 0 && !mob.isTurning) {
+          mob._wanderReaim = 0.2;
+        }
+        if (mob.moveTimer <= 0 && !mob.isTurning) {
           mob.targetAngle = Math.random() * Math.PI * 2;
           mob.moveTimer = Math.random() * 3 + 2;
           mob.isTurning = true;
@@ -1237,11 +1228,15 @@ function updateMobs(allResources, players, deltaTime) {
       } else if (mob.currentBehavior === 'chase') {
         if (mob.chaseTimer <= 0) {
           const targetPlayer = players[mob.targetPlayerId];
-          if (targetPlayer) {
+          if (targetPlayer && !targetPlayer.isDead && targetPlayer.health > 0 && !targetPlayer.__hiddenBySpectator && !targetPlayer.invulnerable && targetPlayer.size > 0) {
             const dx = targetPlayer.x - mob.x;
             const dy = targetPlayer.y - mob.y;
             mob.targetAngle = Math.atan2(dy, dx);
             mob.chaseTimer = 0.5;
+          } else {
+            // Lose target if it became invalid/spectator
+            mob.currentBehavior = 'wander';
+            mob.targetPlayerId = null;
           }
         } else {
           mob.chaseTimer -= deltaTime;
@@ -1331,7 +1326,8 @@ function updateMobs(allResources, players, deltaTime) {
         function isCollidingWithPlayersCentered(newX, newY, size, players) {
           const { cx, cy } = getCenter(newX, newY, size);
           return Object.values(players).some(player => {
-            if (player.size > 0) {
+            if (player.size > 0 && !player.isDead && player.health > 0) {
+              if (player.__hiddenBySpectator || player.invulnerable || player.size === 0) return false;
               const playerColliderSize = player.size * 0.6;
               const offset = (player.size - playerColliderSize) / 2; // Center the smaller collider
               const playerCenterX = player.x + offset + playerColliderSize / 2;
@@ -1486,10 +1482,25 @@ function updateMobs(allResources, players, deltaTime) {
 
       if (config.isAggressive && mob.currentBehavior === 'chase' && mob.damageCooldown <= 0 && mob.health > 0) {
         const targetPlayer = players[mob.targetPlayerId];
-        if (targetPlayer) {
-          if (checkOverlap(mob.x, mob.y, mob.size, mob.size, targetPlayer.x, targetPlayer.y, targetPlayer.size, targetPlayer.size)) {
+        if (targetPlayer && !targetPlayer.isDead && targetPlayer.health > 0 && !targetPlayer.__hiddenBySpectator && !targetPlayer.invulnerable && targetPlayer.size > 0) {
+          // Use centered collider logic consistent with movement collision so mobs can hit without full AABB overlap
+          const overlapMargin = mob.size * 0.4; // same margin used for movement
+          const mobCenterX = mob.x + mob.size / 2;
+          const mobCenterY = mob.y + mob.size / 2;
+          const playerColliderSize = targetPlayer.size * 0.6; // player's reduced collider
+          const pOffset = (targetPlayer.size - playerColliderSize) / 2;
+          const playerCenterX = targetPlayer.x + pOffset + playerColliderSize / 2;
+          const playerCenterY = targetPlayer.y + pOffset + playerColliderSize / 2;
+          const minDistX = (mob.size + playerColliderSize) / 2 - overlapMargin;
+          const minDistY = (mob.size + playerColliderSize) / 2 - overlapMargin;
+          // Slight epsilon so edge contact registers as a hit (larger to reduce "miss" feel)
+          const EPS = 4;
+          const overlapping = Math.abs(mobCenterX - playerCenterX) <= (minDistX + EPS) && Math.abs(mobCenterY - playerCenterY) <= (minDistY + EPS);
+
+          if (overlapping) {
             const damage = mob.damage;
             targetPlayer.health -= damage;
+            if (typeof playPlayerHurt === 'function') playPlayerHurt();
             targetPlayer.lastDamageTime = Date.now();
             if (!targetPlayer.originalColor) {
               targetPlayer.originalColor = targetPlayer.color || "defaultColor";
@@ -1502,16 +1513,24 @@ function updateMobs(allResources, players, deltaTime) {
 
             if (targetPlayer.health <= 0) targetPlayer.health = 0;
             // Damage cooldown scales with mob attackspeed (higher attackspeed => shorter cooldown)
-            const atk = mob.attackspeed || 1;
-            mob.damageCooldown = Math.max(0.1, 1 / atk);
-                // Emit knockback event using stored socketId
-                if (ioRef && targetPlayer.socketId) {
-                  ioRef.to(targetPlayer.socketId).emit('playerKnockback', {
-                    mobX: mob.x,
-                    mobY: mob.y,
-                    mobId: mob.id || null
-                  });
-                }
+            // Allow global tuning via window.MOB_ATTACK_SPEED_MULT (defaults to 1)
+            const atkBase = mob.attackspeed || 1;
+            const atkMult = (typeof window !== 'undefined' && typeof window.MOB_ATTACK_SPEED_MULT === 'number') ? window.MOB_ATTACK_SPEED_MULT : 1;
+            const atk = Math.max(0.01, atkBase * atkMult);
+            mob.damageCooldown = Math.max(0.05, 1 / atk);
+            // Emit knockback event using stored socketId (multiplayer)
+            if (ioRef && targetPlayer.socketId) {
+              ioRef.to(targetPlayer.socketId).emit('playerKnockback', {
+                mobX: mob.x,
+                mobY: mob.y,
+                mobId: mob.id || null
+              });
+            } else {
+              // Singleplayer/local: directly apply knockback if helper exists
+              if (typeof applyKnockbackFromMob === 'function') {
+                applyKnockbackFromMob(mob);
+              }
+            }
           }
         }
       }
@@ -1533,17 +1552,5 @@ function checkOverlap(x1, y1, sizeX1, sizeY1, x2, y2, sizeX2, sizeY2) {
   );
 }
 
-function isOverlappingAny(source, x, y, sizeX, sizeY) {
-  if (!source) return false;
-  const list = Array.isArray(source)
-    ? source
-    : Object.values(source || {}).flat();
-  return list.some(r => {
-    const rSizeX = r.sizeX !== undefined ? r.sizeX : r.size;
-    const rSizeY = r.sizeY !== undefined ? r.sizeY : r.size;
-    return rSizeX > 0 && rSizeY > 0 && checkOverlap(x, y, sizeX, sizeY, r.x, r.y, rSizeX, rSizeY);
-  });
-}
 
-
-
+window.tryHitMob = tryHitMob;
