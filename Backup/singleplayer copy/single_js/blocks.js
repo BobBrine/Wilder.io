@@ -46,9 +46,9 @@ function getFrontGridCell(player) {
   const wx = px + dx;
   const wy = py + dy;
   
-  // Snap to grid (top-left alignment)
-  const gridX = Math.floor(wx / GRID_SIZE);
-  const gridY = Math.floor(wy / GRID_SIZE);
+  // Snap to grid
+  const gridX = Math.round(wx / GRID_SIZE);
+  const gridY = Math.round(wy / GRID_SIZE);
   
   return { gridX, gridY, worldX: gridX * GRID_SIZE, worldY: gridY * GRID_SIZE };
 }
@@ -88,17 +88,17 @@ function drawBlockPlacementPreview(ctx, player, selectedType) {
   ctx.globalAlpha = 0.6;
   
   if (img && img.complete) {
-    ctx.drawImage(img, worldX, worldY, GRID_SIZE, GRID_SIZE);
+    ctx.drawImage(img, worldX - GRID_SIZE/2, worldY - GRID_SIZE/2, GRID_SIZE, GRID_SIZE);
   } else {
     // Fallback rectangle if image not loaded
     ctx.fillStyle = ItemTypes[selectedType]?.color || 'gray';
-    ctx.fillRect(worldX, worldY, GRID_SIZE, GRID_SIZE);
+    ctx.fillRect(worldX - GRID_SIZE/2, worldY - GRID_SIZE/2, GRID_SIZE, GRID_SIZE);
   }
   
   // Outline to indicate placement status
   ctx.strokeStyle = canPlace ? 'lime' : 'red';
   ctx.lineWidth = 3;
-  ctx.strokeRect(worldX, worldY, GRID_SIZE, GRID_SIZE);
+  ctx.strokeRect(worldX - GRID_SIZE/2, worldY - GRID_SIZE/2, GRID_SIZE, GRID_SIZE);
   
   ctx.restore();
 }
@@ -121,8 +121,8 @@ function placeBlockAt(selectedType, gridX, gridY) {
   
   placedBlocks.push({ 
     ...block,
-    worldX: gridX * GRID_SIZE, // top-left of grid cell
-    worldY: gridY * GRID_SIZE  // top-left of grid cell
+    worldX: gridX * GRID_SIZE,
+    worldY: gridY * GRID_SIZE
   });
   
     // Keep global reference synchronized
@@ -144,8 +144,8 @@ function drawPlacedBlocks(ctx) {
   
   for (const b of placedBlocks) {
     // Apply hit animation offset if active
-  let drawX = b.worldX;
-  let drawY = b.worldY;
+    let drawX = b.worldX - GRID_SIZE/2;
+    let drawY = b.worldY - GRID_SIZE/2;
     
     if (b.hitAnim) {
       const t = (now - b.hitAnim.startTime) / b.hitAnim.duration;

@@ -3,7 +3,6 @@ function startPlayerStateLoop() {
   let lastUpdate = Date.now();
   let lastHungerDepletion = Date.now();
   let lastStarveMsg = 0;
-  let healBuffer = 0; // accumulate fractional healing
   function loop() {
     if (!player) { requestAnimationFrame(loop); return; }
     // If player reference was replaced by other modules, ensure globals stay coherent
@@ -22,24 +21,13 @@ function startPlayerStateLoop() {
       }
     } catch(_) {}
 
-    // Health regen: fixed +1 HP/sec if not recently damaged and hunger > 25
+    // Health regen if not recently damaged and hunger > 25
     if (player.health > 0 && player.health < player.maxHealth) {
       if (!player.lastDamageTime || (now - player.lastDamageTime) / 1000 >= 5) {
         if (player.hunger > 25) {
-          healBuffer += deltaTime;
-          const healAmount = Math.floor(healBuffer);
-          if (healAmount > 0) {
-            player.health = Math.min(player.maxHealth, player.health + healAmount);
-            healBuffer -= healAmount;
-          }
-        } else {
-          healBuffer = 0;
+          player.health = Math.min(player.maxHealth, player.health + player.maxHealth * (player.healthRegen || 0.01) * deltaTime);
         }
-      } else {
-        healBuffer = 0;
       }
-    } else {
-      healBuffer = 0;
     }
 
     // Hunger depletion every 10 seconds (disabled during spectator or paused)
@@ -61,9 +49,7 @@ function startPlayerStateLoop() {
           showMessage('You are starving!');
           lastStarveMsg = now;
         }
-        // Apply fractional damage per frame without rounding away sub-1 values
-        // 1% of maxHealth per second when starving
-        player.health = Math.max(0, player.health - (player.maxHealth * 0.01 * deltaTime));
+        player.health = Math.max(0, player.health - player.maxHealth * 0.01 * deltaTime); // lose 1% per second
         // Optional: flash color or knockback effect here
       }
     }
@@ -166,15 +152,6 @@ function startPlayerStateLoop() {
         }, 1000);
       } catch (_) {}
     }
-
-    // Keep global hunger mirrors updated for HUD/save systems that read window.hunger
-    try {
-      if (typeof window !== 'undefined') {
-        window.hunger = player.hunger;
-        // Also keep player.maxHunger mirrored if needed by UI/save
-        if (typeof player.maxHunger === 'number') window.maxHunger = player.maxHunger;
-      }
-    } catch(_) {}
 
     requestAnimationFrame(loop);
   }
@@ -923,7 +900,6 @@ function createNewPlayer() {
     xp: 0,
     xpToNextLevel: 10,
     health: 100,
-    health: 100, // always int
     maxHealth: 100,
     playerdamage: 1,
     playerattackspeed: 0.15,

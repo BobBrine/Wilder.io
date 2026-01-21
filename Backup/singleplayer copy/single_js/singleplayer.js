@@ -64,7 +64,7 @@ window.singleplayerRespawn = function() {
   // Ensure mobs track the current player object
   try { if (typeof playersMap !== 'undefined' && player && player.id) { playersMap[player.id] = player; } } catch(_) {}
   // Reset world
-  // Resources and terrain are now streamed by ChunkManager; no global spawn here
+  if (typeof spawnAllResources === 'function') spawnAllResources();
   // Give starter kit
   if (typeof giveStartingItemsOnce === 'function') {
     giveStartingItemsOnce();
@@ -88,7 +88,7 @@ if (typeof difficultyProgression === 'undefined') {
 
 // One-time starting loadout for singleplayer
 const STARTING_ITEMS = {
- wood: 20,
+ 
 };
 
 function giveStartingItemsOnce() {
@@ -121,7 +121,8 @@ function startGame() {
   // Ensure mobs track the current player object
   try { if (typeof playersMap !== 'undefined' && player && player.id) { playersMap[player.id] = player; } } catch(_) {}
   console.log('Player created:', player); 
-  // Resources are handled by ChunkManager streaming; no legacy global spawn call
+  // Only spawn resources if not already spawned by save/load flow
+  if (!window.__resourcesSpawnedOnce && typeof spawnAllResources === 'function') spawnAllResources();
   // Give starter kit after player creation so inventory/hotbar are ready
   // Only give starter kit for new players (no items)
   try {
@@ -162,17 +163,7 @@ window.showSinglePlayerMenu = function() {
   // If we came here from gameplay, disable spectator state so returning doesn't keep you spectating
   try { window.exitSpectator && window.exitSpectator({ teleport: false }); } catch(_) {}
   try { if (window.spectator) { window.spectator.active = false; window.spectator.saved = null; } } catch(_) {}
-
-  // Despawn all mobs so next entry spawns fresh
-  try { window.ChunkManager && window.ChunkManager.clearAllMobsAndResetFresh && window.ChunkManager.clearAllMobsAndResetFresh(); } catch(_) {}
 };
-
-// Ensure mobs are cleared on page unload so next session starts fresh
-try {
-  window.addEventListener('beforeunload', function() {
-    try { window.ChunkManager && window.ChunkManager.clearAllMobsAndResetFresh && window.ChunkManager.clearAllMobsAndResetFresh(); } catch(_) {}
-  });
-} catch(_) {}
 
 // --- Spectator Mode Implementation ---
 // Global spectator state
@@ -329,7 +320,8 @@ window.updateSpectatorCamera = function(deltaTime) {
     console.log('[DEBUG] New player object:', player);
     // Ensure mobs track the current player object
     try { if (typeof playersMap !== 'undefined' && player && player.id) { playersMap[player.id] = player; } } catch(_) {}
-  // Resources are streamed by ChunkManager; no global spawn
+    // Reset world
+    if (typeof spawnAllResources === 'function') { console.log('[DEBUG] Spawning all resources'); spawnAllResources(); }
     // Give starter kit
     if (typeof giveStartingItemsOnce === 'function') {
       window.__startingItemsGranted = false;

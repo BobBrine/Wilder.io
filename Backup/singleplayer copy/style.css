@@ -1,0 +1,189 @@
+/* Ensure .panel menus are visible and centered above canvases */
+.panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1100;
+  background: rgba(0,0,0,0.85);
+  border: 2px solid #fff;
+  border-radius: 10px;
+  color: #fff;
+  min-width: 300px;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  font-family: 'VT323', monospace;
+  text-align: center;
+}
+
+/* Ensure the singleplayer menu is visible initially (allow JS to hide later) */
+#singlePlayerMenu { display: block; }
+/* Ensure drop prompt is above menu background and menu background is always at the back */
+#dropAmountPrompt { z-index: 2000 !important; }
+#menuBgCanvas { z-index: 0 !important; }
+/* Background canvas should never capture input */
+#menuBgCanvas { pointer-events: none !important; }
+/* Settings panel/overlay/gear layering */
+#settingsOverlay { z-index: 900 !important; }
+#settingsPanel { z-index: 1100 !important; }
+#settingsPanel, 
+#settingsPanel * {
+  font-family: 'VT323', monospace !important;
+}
+#settingsGear { z-index: 1050 !important; }
+/* Make drop amount prompt background semi-transparent so game is visible */
+#dropAmountPrompt.menu {
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  border: 2px solid rgba(255,255,255,0.7) !important;
+}
+body {
+  font-family: 'VT323', monospace;
+  margin: 0;
+  background-color: #1e1e1e;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  display: block !important; /* override parent flex-centering */
+}
+
+canvas {
+  border: 2px solid #fff;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw;
+  max-height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Only show grass background on game canvas during gameplay */
+#gameCanvas {
+  background-color: #189a21 !important;
+  display: none; /* Hidden by default; shown when body has .gameplay */
+}
+
+/* Menu background canvas should be transparent */
+#bgHomepage {
+  background-color: transparent !important;
+}
+
+/* Default: game canvas does not capture input while in menus; JS will enable during gameplay */
+#gameCanvas { pointer-events: none; }
+
+/* Utility to forcibly hide any element regardless of prior styles */
+.hidden { display: none !important; }
+
+/* Gameplay state toggles (applied to <body>) */
+.gameplay #gameCanvas { display: block !important; pointer-events: auto; }
+.gameplay #bgHomepage { display: none !important; }
+.gameplay #singlePlayerMenu { display: none !important; }
+
+/* Mobile controls (shown on touch during gameplay) */
+#mobileControls { z-index: 1200; }
+#joystickWrap { touch-action: none; }
+#sprintBtn { touch-action: none; }
+#aimWrap { touch-action: none; }
+
+.menu {
+  font-family: 'VT323', monospace;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(0, 0, 0, 0.8);
+  padding: 30px;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  color: #fff;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  min-width: 300px;
+  z-index: 1000;
+}
+
+.menu input {
+  padding: 10px;
+  font-size: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.menu button {
+  font-family: 'VT323', monospace;
+  padding: 12px 20px;
+  font-size: 16px;
+  background-color: #333;
+  color: #fff;
+  border: 1px solid #666;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.menu button:hover {
+  background-color: #444;
+  transform: scale(1.05);
+}
+
+/* Settings gear look and states */
+#settingsGear {
+  transition: transform 0.05s ease, background 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+#settingsGear:hover { 
+  background: rgba(0,0,0,0.8) !important;
+  transform: scale(1.05);
+ }
+
+#serverStatus {
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  min-height: 20px;
+}
+
+#serverStatus.error {
+  color: #ff5555;
+  font-weight: bold;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255,255,255,.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
+  margin-right: 10px;
+}
+
+#playerNameInputHome {
+  background: rgba(255, 255, 255, 0.9);
+  color: #333;
+}
+
+#serverSelect {
+  background: rgba(255, 255, 255, 0.9);
+  color: #333;
+}
+
+#serverSelect option {
+  background: #333;
+  color: #fff;
+}

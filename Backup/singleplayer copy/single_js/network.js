@@ -111,20 +111,13 @@ function bootstrapOfflineGameplay() {
   // Spawn resources and mobs if not yet spawned and player exists later
   const ensureWorld = () => {
     try {
-      // Disable old resource spawning - now handled by chunk manager
-      // if (!window.__resourcesSpawnedOnce && typeof spawnAllResources === 'function') {
-      //   spawnAllResources(); window.__resourcesSpawnedOnce = true; resourcesLoaded = true;
-      // }
-      window.__resourcesSpawnedOnce = true; // Mark as done to prevent old system
-      resourcesLoaded = true;
-      
-      // Disable old mob spawning - now handled by chunk manager
-      // if (!window.__mobsSpawnedOnce && typeof spawnAllMob === 'function') {
-      //   spawnAllMob(window.allResources, {}, (typeof gameTime === 'number' ? gameTime : 0));
-      //   window.__mobsSpawnedOnce = true; mobloaded = true;
-      // }
-      window.__mobsSpawnedOnce = true; // Mark as done to prevent old system
-      mobloaded = true;
+      if (!window.__resourcesSpawnedOnce && typeof spawnAllResources === 'function') {
+        spawnAllResources(); window.__resourcesSpawnedOnce = true; resourcesLoaded = true;
+      }
+      if (!window.__mobsSpawnedOnce && typeof spawnAllMob === 'function') {
+        spawnAllMob(window.allResources, {}, (typeof gameTime === 'number' ? gameTime : 0));
+        window.__mobsSpawnedOnce = true; mobloaded = true;
+      }
     } catch(_) {}
   };
   // Also ensure after player creation

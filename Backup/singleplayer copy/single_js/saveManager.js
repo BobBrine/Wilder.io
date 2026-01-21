@@ -54,37 +54,6 @@
     }, 1500);
   }
 
-  // Helpers for localStorage I/O
-  function saveToLocalStorage(store, slot, data) {
-    try {
-      localStorage.setItem(`${store}_${slot}`, JSON.stringify(data));
-      return true;
-    } catch (e) {
-      console.warn('LocalStorage save failed:', e);
-      return false;
-    }
-  }
-
-  function loadFromLocalStorage(store, slot) {
-    try {
-      const data = localStorage.getItem(`${store}_${slot}`);
-      if (!data) return null;
-      const parsed = JSON.parse(data);
-      return parsed;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function deleteFromLocalStorage(store, slot) {
-    try {
-      localStorage.removeItem(`${store}_${slot}`);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
   // Initialize IndexedDB
   function initIndexedDB() {
     return new Promise((resolve, reject) => {
@@ -122,113 +91,114 @@
 
   // Generic storage functions
   async function saveData(store, slot, data) {
-    const saveDataObj = {
+    const saveData = {
       slot,
       version: SAVE_VERSION,
       timestamp: Date.now(),
       ...data
     };
 
-    // Always mirror to localStorage to avoid cross-store drift
-    saveToLocalStorage(store, slot, saveDataObj);
-
-    // Write to IndexedDB if available
     if (useIndexedDB && db) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([store], 'readwrite');
+        const objectStore = transaction.objectStore(store);
+        const request = objectStore.put(saveData);
+        request.onsuccess = () => resolve(true);
+        request.onerror = () => reject(request.error);
+      });
+    } else {
+      // localStorage fallback
       try {
-        await new Promise((resolve, reject) => {
-          const transaction = db.transaction([store], 'readwrite');
-          const objectStore = transaction.objectStore(store);
-          const request = objectStore.put(saveDataObj);
-          request.onsuccess = () => resolve(true);
-          request.onerror = () => reject(request.error);
-        });
+        localStorage.setItem(`${store}_${slot}`, JSON.stringify(saveData));
         return true;
       } catch (e) {
-        console.warn('IndexedDB save failed; localStorage copy preserved:', e);
-        // Still return true because LS copy exists
-        return true;
+        throw e;
       }
     }
-    // If no IDB, rely on LS result
-    return true;
   }
 
   async function loadData(store, slot) {
-    // Read from both stores and pick newest valid
-    const readFromIDB = async () => {
-      if (!(useIndexedDB && db)) return null;
+    if (useIndexedDB && db) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([store], 'readonly');
+        const objectStore = transaction.objectStore(store);
+        const request = objectStore.get(slot);
+        
+        request.onsuccess = () => {
+          const result = request.result;
+          if (result && result.version === SAVE_VERSION) {
+            resolve(result);
+          } else {
+            resolve(null);
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } else {
+      // localStorage fallback
       try {
-        const result = await new Promise((resolve, reject) => {
-          const transaction = db.transaction([store], 'readonly');
-          const objectStore = transaction.objectStore(store);
-          const request = objectStore.get(slot);
-          request.onsuccess = () => resolve(request.result || null);
-          request.onerror = () => reject(request.error);
-        });
-        return result;
-      } catch (_) { return null; }
-    };
-
-    const [idbData, lsData] = await Promise.all([
-      readFromIDB(),
-      Promise.resolve(loadFromLocalStorage(store, slot))
-    ]);
-
-    const candidates = [idbData, lsData].filter(Boolean).filter(d => d.version === SAVE_VERSION);
-    if (!candidates.length) return null;
-    candidates.sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
-    return candidates[0];
+        const data = localStorage.getItem(`${store}_${slot}`);
+        if (data) {
+          const parsed = JSON.parse(data);
+          return parsed.version === SAVE_VERSION ? parsed : null;
+        }
+        return null;
+      } catch (e) {
+        return null;
+      }
+    }
   }
 
   async function deleteData(store, slot) {
-    // Always delete LS copy
-    deleteFromLocalStorage(store, slot);
-    // And try IndexedDB
     if (useIndexedDB && db) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([store], 'readwrite');
+        const objectStore = transaction.objectStore(store);
+        const request = objectStore.delete(slot);
+        
+        request.onsuccess = () => resolve(true);
+        request.onerror = () => reject(request.error);
+      });
+    } else {
       try {
-        await new Promise((resolve, reject) => {
-          const transaction = db.transaction([store], 'readwrite');
-          const objectStore = transaction.objectStore(store);
-          const request = objectStore.delete(slot);
-          request.onsuccess = () => resolve(true);
-          request.onerror = () => reject(request.error);
-        });
+        localStorage.removeItem(`${store}_${slot}`);
+        return true;
       } catch (e) {
-        console.warn('IndexedDB delete failed (LS already deleted):', e);
+        throw e;
       }
     }
-    return true;
   }
 
   async function getAllSlots(store) {
-    // Read from both and merge newest per slot
-    let idbList = [];
     if (useIndexedDB && db) {
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([store], 'readonly');
+        const objectStore = transaction.objectStore(store);
+        const request = objectStore.getAll();
+        
+        request.onsuccess = () => {
+          const results = request.result.filter(item => item.version === SAVE_VERSION);
+          resolve(results);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } else {
       try {
-        idbList = await new Promise((resolve, reject) => {
-          const transaction = db.transaction([store], 'readonly');
-          const objectStore = transaction.objectStore(store);
-          const request = objectStore.getAll();
-          request.onsuccess = () => resolve((request.result || []).filter(item => item && item.version === SAVE_VERSION));
-          request.onerror = () => reject(request.error);
-        });
-      } catch (e) { idbList = []; }
-    }
-    const lsList = [];
-    try {
-      for (let i = 0; i < 4; i++) {
-        const parsed = loadFromLocalStorage(store, i);
-        if (parsed && parsed.version === SAVE_VERSION) lsList.push(parsed);
+        const slots = [];
+        for (let i = 0; i < 4; i++) {
+          const data = localStorage.getItem(`${store}_${i}`);
+          if (data) {
+            const parsed = JSON.parse(data);
+            if (parsed.version === SAVE_VERSION) {
+              slots.push(parsed);
+            }
+          }
+        }
+        return slots;
+      } catch (e) {
+        return [];
       }
-    } catch(_) {}
-
-    const bySlot = new Map();
-    for (const item of [...idbList, ...lsList]) {
-      if (!item || typeof item.slot !== 'number') continue;
-      const prev = bySlot.get(item.slot);
-      if (!prev || (item.timestamp || 0) > (prev.timestamp || 0)) bySlot.set(item.slot, item);
     }
-    return Array.from(bySlot.values());
   }
 
   // Player data functions
@@ -253,10 +223,7 @@
       name: window.player.name || 'Unknown',
       health: window.player.health || 100,
       maxHealth: window.player.maxHealth || 100,
-      // Persist hunger from the authoritative player object; fallback to window.hunger
-      hunger: (typeof window.player.hunger === 'number') ? window.player.hunger : (window.hunger || 100),
-      // Also persist maxHunger for future flexibility
-      maxHunger: (typeof window.player.maxHunger === 'number') ? window.player.maxHunger : 100,
+      hunger: window.hunger || 100,
       stamina: window.stamina || 100,
       maxStamina: window.maxStamina || 100,
       staminaRegenSpeed: window.staminaRegenSpeed || 40,
@@ -289,9 +256,6 @@
       name: data.name,
       health: data.health || 100,
       maxHealth: data.maxHealth || 100,
-      // Restore hunger/maxHunger directly onto player so gameplay uses saved values
-      hunger: (typeof data.hunger === 'number') ? data.hunger : 100,
-      maxHunger: (typeof data.maxHunger === 'number') ? data.maxHunger : (typeof targetPlayer.maxHunger === 'number' ? targetPlayer.maxHunger : 100),
       level: data.level || 1,
       xp: data.xp || 0,
       xpToNextLevel: data.xpToNextLevel || 100,
@@ -328,8 +292,8 @@
       console.warn('Failed to update playersMap:', e);
     }
     
-    // Restore global stats and mirrors
-    if (typeof data.hunger === 'number') window.hunger = data.hunger; else window.hunger = window.player.hunger;
+    // Restore global stats
+    if (typeof data.hunger === 'number') window.hunger = data.hunger;
     if (typeof data.stamina === 'number') window.stamina = data.stamina;
       if (typeof data.maxStamina === 'number') window.maxStamina = data.maxStamina;
       if (typeof data.staminaRegenSpeed === 'number') window.staminaRegenSpeed = data.staminaRegenSpeed;
@@ -407,7 +371,6 @@
       Day: window.Day || 0,
       difficulty: window.difficulty || 1,
       worldSeed: window.worldSeed || generateWorldSeed(),
-      worldName: window.worldName || undefined,
       totalGameSeconds: window.__totalGameSeconds || 0,
       placedBlocks: window.placedBlocks ? JSON.parse(JSON.stringify(window.placedBlocks)) : [],
       droppedItems: window.droppedItems ? JSON.parse(JSON.stringify(window.droppedItems)) : [],
@@ -438,7 +401,6 @@
     window.Day = data.Day || 0;
     window.difficulty = data.difficulty || 1;
     window.worldSeed = data.worldSeed || generateWorldSeed();
-    window.worldName = data.worldName || undefined;
     window.__totalGameSeconds = data.totalGameSeconds || 0;
     
       // Restore placed blocks using the block management system
@@ -452,20 +414,29 @@
       window.droppedItems = data.droppedItems;
     }
     
-    // Skip restoring saved mobs: chunk streaming spawns fresh per session
-    if (typeof mobs !== 'undefined') {
-      Object.keys(mobs).forEach(type => { mobs[type] = []; });
-      console.log('Skipped restoring mobs from save; cleared mob state for fresh spawns');
+    // Restore mob state from save data
+    if (data.mobs && typeof mobs !== 'undefined') {
+      Object.assign(mobs, data.mobs);
+      console.log('Restored mob state from save:', Object.keys(data.mobs).length, 'mob types');
+    } else if (typeof mobs !== 'undefined') {
+      // Clear mobs if no saved data (new world)
+      Object.keys(mobs).forEach(type => {
+        mobs[type] = [];
+      });
+      console.log('No saved mobs found, cleared mob state for new world');
     }
     
-    // Do not restore saved resources; chunk streaming will generate deterministically
-    try {
-      window.allResources = window.allResources || {};
-      const types = ['food','wood','stone','iron','gold'];
-      for (const t of types) window.allResources[t] = [];
-    } catch(_) {}
-    window.__resourcesSpawnedOnce = false;
-    console.log('Skipped restoring resources; will use chunk-based deterministic generation');
+    // Restore the exact state of resources (including destroyed ones)
+    if (data.allResources) {
+      window.allResources = data.allResources;
+      window.__resourcesSpawnedOnce = data.resourcesSpawned || true;
+      const resourceCount = Object.values(data.allResources).reduce((total, arr) => total + (arr ? arr.length : 0), 0);
+      console.log('Restored allResources state from save:', Object.keys(data.allResources).length, 'types,', resourceCount, 'total resources');
+    } else {
+      // If no saved resources, mark as not spawned so they can be generated fresh
+      window.__resourcesSpawnedOnce = false;
+      console.log('No saved resources found, will spawn fresh');
+    }
     
     // Restore player positions for this world
     window.__worldPlayerPositions = data.playerPositions || {};
@@ -475,24 +446,14 @@
     return Math.floor(Math.random() * 2147483647);
   }
 
-  // Simple Spawn System - Spawn at center of chunk for better chunk loading
+  // Simple Spawn System - Fixed spawn at (2500, 2500) for all scenarios
   function getPlayerSpawnPosition(reason, worldSeed = null) {
-    // Get chunk size from ChunkManager if available, otherwise use default
-    const chunkSize = (window.ChunkManager && window.ChunkManager.CHUNK_SIZE) ? window.ChunkManager.CHUNK_SIZE : 500;
+    const baseX = 2500;
+    const baseY = 2500;
     
-    // Spawn at center of a central chunk
-    // With CHUNK_SIZE=500, chunk (5,5) starts at (2500,2500) and ends at (2999,2999)
-    // Center of chunk (5,5) would be at (2750, 2750)
-    const baseChunkX = 5; // Central chunk
-    const baseChunkY = 5; // Central chunk
-    const centerX = (baseChunkX * chunkSize) + (chunkSize / 2);
-    const centerY = (baseChunkY * chunkSize) + (chunkSize / 2);
-    
-    console.log(`Spawn position: chunk (${baseChunkX}, ${baseChunkY}) center at (${centerX}, ${centerY})`);
-    
-    // Always spawn at center of chunk regardless of reason
+    // Always spawn at base position regardless of reason
     // World switching uses saved positions, handled separately
-    return { x: centerX, y: centerY };
+    return { x: baseX, y: baseY };
   }
 
 
@@ -503,26 +464,6 @@
       try {
         const success = await initIndexedDB();
         console.log(`SaveManager initialized with ${useIndexedDB ? 'IndexedDB' : 'localStorage'}`);
-        // If IndexedDB is available, sweep localStorage ghosts so deleted data doesn't reappear
-        if (useIndexedDB && db) {
-          try {
-            const sweep = async (store) => {
-              const idbSlots = new Set((await getAllSlots(store)).map(s => s.slot));
-              for (let i = 0; i < 4; i++) {
-                const ls = loadFromLocalStorage(store, i);
-                if (ls && !idbSlots.has(i)) {
-                  // If there is no corresponding IDB entry, remove LS copy to prevent ghost revival
-                  deleteFromLocalStorage(store, i);
-                }
-              }
-            };
-            await sweep(PLAYER_STORE);
-            await sweep(WORLD_STORE);
-            console.log('SaveManager: localStorage ghosts swept');
-          } catch (e) {
-            console.warn('SaveManager: ghost sweep failed:', e);
-          }
-        }
         return true;
       } catch (e) {
         console.warn('SaveManager init failed, using localStorage fallback:', e);
@@ -654,10 +595,6 @@
         return [];
       }
     },
-
-    // Debug helpers used by SaveUI
-    async getPlayerData(slot) { try { return await loadData(PLAYER_STORE, slot); } catch(_) { return null; } },
-    async getWorldData(slot) { try { return await loadData(WORLD_STORE, slot); } catch(_) { return null; } },
 
     // Combined save/load with position handling
     async switchToWorld(worldSlot) {

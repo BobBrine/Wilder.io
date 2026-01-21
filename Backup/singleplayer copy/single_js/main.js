@@ -2,27 +2,10 @@
 if (typeof mouseX === 'undefined') window.mouseX = 0;
 if (typeof mouseY === 'undefined') window.mouseY = 0;
 // ...existing code...
-// Initialize a per-session salt so mob spawns vary across refreshes/reloads
-if (typeof window.__mobSessionSalt !== 'number') {
-  try {
-    window.__mobSessionSalt = Math.floor(Math.random() * 1e9);
-    console.log('Mob session salt:', window.__mobSessionSalt);
-  } catch(_) { window.__mobSessionSalt = 0; }
-}
 const TICK_RATE = 60;
 const TICK_INTERVAL = 1000 / TICK_RATE;
 let lastUpdate = performance.now();
 let tickTimeout = null;
-
-// On app load (refresh), ensure mobs are empty so no stale arrays persist
-try {
-  if (typeof window.mobs === 'object' && window.mobs) {
-    for (const k of Object.keys(window.mobs)) {
-      if (Array.isArray(window.mobs[k])) window.mobs[k] = [];
-    }
-    console.log('Cleared mobs at app start for a fresh session');
-  }
-} catch(_) {}
 
 function update() {
   const now = performance.now();
@@ -63,45 +46,15 @@ function update() {
 
   // --- Clear once per frame in device pixels ---
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  // Use solid fill instead of clearRect to prevent possible flicker on some GPUs
-  ctx.fillStyle = '#116d10';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // --- Update game state (no camera math here) ---
   // Spectator: move camera independently instead of player
   try { if (window.isSpectator && window.isSpectator()) { window.updateSpectatorCamera?.(deltaTime); } else { updatePlayerPosition(deltaTime); } } catch (_) { updatePlayerPosition(deltaTime); }
-  
-  // Update chunk loading based on player position
-  if (window.ChunkManager && window.player && typeof window.player.x === 'number' && typeof window.player.y === 'number') {
-    try {
-      window.ChunkManager.updateLoadedChunks(window.player.x, window.player.y);
-      // Ensure mobs outside loaded chunks are pruned even if player hasn't moved chunks
-      if (typeof window.ChunkManager.pruneMobsOutsideLoadedChunks === 'function') {
-        window.ChunkManager.pruneMobsOutsideLoadedChunks();
-      }
-    } catch (e) {
-      console.warn('Chunk manager update failed:', e);
-    }
-  }
-  
   if (!(window.isSpectator && window.isSpectator())) staminaRegen(deltaTime);
   if (!(window.isSpectator && window.isSpectator())) updatePlayerFacing(mouseX, mouseY);
-  
-  // Mob spawning is handled by ChunkManager; keep movement/AI updates active
-  // updateMobRespawns remains disabled in chunk-streaming mode
-  // updateMobRespawns(deltaTime, window.allResources, playersMap, gameTime);
-  try {
-    const pmap = (typeof playersMap !== 'undefined' && playersMap) ? playersMap : (window.playersMap || {});
-    if (typeof updateMobs === 'function') {
-      updateMobs(window.allResources || {}, pmap, deltaTime);
-    }
-  } catch (e) {
-    // Non-fatal: movement update may fail during early init
-    if (!window.__lastMobUpdateErr || performance.now() - window.__lastMobUpdateErr > 1000) {
-      console.warn('updateMobs failed:', e);
-      window.__lastMobUpdateErr = performance.now();
-    }
-  }
+  updateMobRespawns(deltaTime, window.allResources, playersMap, gameTime);
+  updateMobs(window.allResources, playersMap, deltaTime);
   // Always tick dropped items timers (so they despawn/blink in spectator too)
   try { if (typeof updateDroppedItems === 'function') updateDroppedItems(deltaTime); } catch(_) {}
 
@@ -118,32 +71,7 @@ function update() {
   ctx.save();
   beginWorldTransform();          // sets scale + (-camera.x,-camera.y), updates camera.w/h
 
-  // Draw terrain only for loaded chunks (streamed). Fallbacks if unavailable.
-  let drewChunkedTerrain = false;
-  try {
-    if (window.ChunkManager && typeof window.drawTerrainChunk === 'function') {
-      const keys = (typeof window.ChunkManager.getLoadedChunkKeys === 'function')
-        ? window.ChunkManager.getLoadedChunkKeys()
-        : (window.ChunkManager.getChunkDebugInfo?.().loadedChunks || []);
-      for (const key of keys) {
-        const [cx, cy] = key.split(',').map(Number);
-        const ch = window.ChunkManager.getChunkData ? window.ChunkManager.getChunkData(cx, cy) : null;
-        if (ch && ch.terrain) {
-          window.drawTerrainChunk(ch.terrain);
-          drewChunkedTerrain = true;
-        }
-      }
-    }
-  } catch (e) { console.warn('Chunk terrain draw failed:', e); }
-
-  if (!drewChunkedTerrain) {
-    // Fallbacks:
-    if (typeof drawTerrainBackground === 'function') {
-      drawTerrainBackground();
-    } else if (typeof drawBackground === 'function') {
-      drawBackground(); // Original background
-    }
-  }
+  drawBackground();
   if (typeof drawPlacedBlocks === 'function') drawPlacedBlocks(ctx);
   if (typeof drawPlacementEffects === 'function') drawPlacementEffects();
 
@@ -153,9 +81,6 @@ function update() {
   drawMob();
   if (!(window.isSpectator && window.isSpectator())) drawPlayer();
   drawWorldBorder();
-
-  // Draw grid overlay in debug mode (after world, before UI)
-  if (typeof drawGridOverlay === 'function') drawGridOverlay();
 
   // World-space helpers that should scale with zoom
   drawDamageTexts();

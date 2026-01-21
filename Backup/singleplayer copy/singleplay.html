@@ -6,7 +6,7 @@
   <title>Wilder.io - Menu</title>
   <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
   <style>
-    /* Global theme variables */
+    /* 🌈 Global theme variables */
     :root {
       --color-bg: #189a21;
       --color-text: #fff;
@@ -32,7 +32,7 @@
 
     }
 
-    /* General panel */
+    /* 🔲 General panel */
     .panel {
       color: var(--color-text);
       position: fixed;
@@ -51,7 +51,7 @@
       border: 2px solid white;
     }
 
-    /* Menu header */
+    /* 📌 Menu header */
     .menu-header {
         font-family: "Comic Sans MS", cursive, sans-serif;
       display: flex;
@@ -67,7 +67,7 @@
       font-size: 2em;
     }
 
-    /* Menu content */
+    /* 📂 Menu content */
     .menu-content {
       flex: 1;
       display: flex;
@@ -75,7 +75,7 @@
       width: 100%;
     }
 
-    /* Base button */
+    /* 🔘 Base button */
     button {
       font-family: 'VT323', monospace;
       font-weight: bold;
@@ -93,7 +93,7 @@
       text-shadow: 1px 1px 4px rgba(0,0,0,0.7);
     }
 
-    /* Button variants */
+    /* ✅ Button variants */
     .primary {
       background: var(--color-primary);
       transform: scale(1.0);
@@ -151,16 +151,16 @@
 
   <!-- Settings Panel -->
   <div id="settingsPanel" class="panel" style="display:none; z-index:1100; min-width: 360px;">
-    <div style="position:relative; width:100%; margin-bottom:10px;">
-      <h3 style="margin:0; text-align:center;">Settings</h3>
-      <button id="settingsCloseBtn" title="Close" style="position:absolute; top:0; right:0; padding:6px 14px 6px 14px; font-size:18px; background:var(--color-danger); color:white; border-radius:8px; border:none;">✕</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="margin:0;">Settings</h3>
+      <button id="settingsCloseBtn" title="Close" style="padding:6px 10px; font-size:14px;">✕</button>
     </div>
     <div style="display:flex; flex-direction:column; gap:10px;">
-      <button id="settingsRespawnBtn" class="danger">Respawn Player</button>
-      <button id="settingsPerformanceBtn" class="primary">Performance: Toggle</button>
-      <button id="settingsDebugBtn" class="primary">Debug: Toggle</button>
-      <button id="settingsControlsModeBtn" class="primary">Controls: PC</button>
-      <button id="settingsSoundBtn" class="primary">Sound: On</button>
+      <button id="settingsRespawnBtn">Respawn Player</button>
+      <button id="settingsPerformanceBtn">Performance: Toggle</button>
+      <button id="settingsDebugBtn">Debug: Toggle</button>
+      <button id="settingsControlsModeBtn">Controls: PC</button>
+      <button id="settingsSoundBtn">Sound: On</button>
       <div id="settingsVolumeRow" style="display:flex; gap:8px; align-items:center;">
         <label for="settingsVolumeSlider" style="flex:0 0 130px; text-align:left;">Volume</label>
         <input id="settingsVolumeSlider" type="range" min="0" max="100" step="5" value="100" style="flex:1;" />
@@ -171,7 +171,7 @@
         <input id="settingsJoystickScale" type="range" min="0.6" max="1.6" step="0.05" value="1.0" style="flex:1;" />
         <span id="settingsJoystickScaleVal" style="min-width:46px; text-align:right;">1.0×</span>
       </div>
-      <button id="settingsGoMainBtn" class="danger">Save &amp; Go Main</button>
+      <button id="settingsGoMainBtn">Go Main</button>
     </div>
   </div>
 
@@ -274,8 +274,6 @@
       "single_js/canvas.js",
       "single_js/soul.js",
       "single_js/resourceTypes.js",
-      "single_js/worldGeneration.js", // <-- world generation system
-      "single_js/chunkManager.js", // <-- chunk streaming system
       "single_js/mobs.js",
       "single_js/player.js",
       "single_js/items.js",

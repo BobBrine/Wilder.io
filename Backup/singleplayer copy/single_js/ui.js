@@ -1,85 +1,7 @@
-// Draw a grid overlay for debug mode
-function drawGridOverlay() {
-  if (!showData) return;
-  if (window.graphicsSettings && window.graphicsSettings.performanceMode) return;
-  ctx.save();
-  
-  // Draw world grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-  ctx.lineWidth = 1;
-  // Use world transform so grid aligns with world
-  for (let x = 0; x <= WORLD_SIZE; x += GRID_SIZE) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, WORLD_SIZE);
-    ctx.stroke();
-  }
-  for (let y = 0; y <= WORLD_SIZE; y += GRID_SIZE) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(WORLD_SIZE, y);
-    ctx.stroke();
-  }
-  
-  // Draw chunk borders in a different color
-  if (window.ChunkManager) {
-    ctx.strokeStyle = 'rgba(255,255,0,0.8)'; // Yellow for chunk borders
-    ctx.lineWidth = 2;
-    const chunkSize = window.ChunkManager.CHUNK_SIZE;
-    
-    for (let x = 0; x <= WORLD_SIZE; x += chunkSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, WORLD_SIZE);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= WORLD_SIZE; y += chunkSize) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(WORLD_SIZE, y);
-      ctx.stroke();
-    }
-    
-    // Highlight loaded chunks
-    if (window.player && typeof window.ChunkManager.getChunkDebugInfo === 'function') {
-      const debugInfo = window.ChunkManager.getChunkDebugInfo();
-      ctx.fillStyle = 'rgba(0,255,0,0.1)'; // Green tint for loaded chunks
-      
-      debugInfo.loadedChunks.forEach(chunkKey => {
-        const [chunkX, chunkY] = chunkKey.split(',').map(Number);
-        const bounds = window.ChunkManager.getChunkBounds(chunkX, chunkY);
-        ctx.fillRect(bounds.minX, bounds.minY, bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
-      });
-    }
-  }
-  
-  ctx.restore();
-}
 // Ensure Day is defined globally for this module
 if (typeof Day === 'undefined') {
   var Day = 0;
-
 }
-  function drawLoadedChunkTerrain() {
-    if (!window.ChunkManager || !window.ChunkManager.getChunkDebugInfo) return;
-    const debugInfo = window.ChunkManager.getChunkDebugInfo();
-    for (const chunkKey of debugInfo.loadedChunks) {
-      const [chunkX, chunkY] = chunkKey.split(',').map(Number);
-      const chunk = window.ChunkManager.getChunkData ? window.ChunkManager.getChunkData(chunkX, chunkY) : null;
-      // Fallback: try loadedChunks map if not exposed
-      if (!chunk && window.ChunkManager._getLoadedChunk) {
-        // For internal debug/testing only
-        const loaded = window.ChunkManager._getLoadedChunk(chunkKey);
-        if (loaded) chunk = loaded;
-      }
-      if (chunk && chunk.terrain && Array.isArray(chunk.terrain.tiles)) {
-        chunk.terrain.tiles.forEach(tile => {
-          ctx.fillStyle = tile.biome.backgroundColor;
-          ctx.fillRect(tile.x, tile.y, tile.biome.tileSize || 100, tile.biome.tileSize || 100);
-        });
-      }
-    }
-  }
 // Ensure DAY_LENGTH is defined globally for this module
 if (typeof DAY_LENGTH === 'undefined') {
   var DAY_LENGTH = 120;
@@ -135,36 +57,7 @@ function drawHUD() {
       ctx.fillText('Player position: ' + Math.floor(player.x) + ', ' + Math.floor(player.y), 10, yOffsetUI);
       yOffsetUI += 20;
       ctx.fillText('Gametime: ' + Math.floor(gameTime), 10, yOffsetUI);
-      yOffsetUI += 20;
-      // Show world seed and optional world name in debug HUD
-      if (typeof window.worldSeed !== 'undefined') {
-        const seedLine = `Seed: ${window.worldSeed}${window.worldName ? ' • ' + window.worldName : ''}`;
-        ctx.fillText(seedLine, 10, yOffsetUI);
-      }
       
-      // Show chunk information in debug mode
-      if (window.ChunkManager && typeof window.ChunkManager.getChunkDebugInfo === 'function') {
-        yOffsetUI += 20;
-        const chunkInfo = window.ChunkManager.getChunkDebugInfo();
-        ctx.fillText(`Chunks: ${chunkInfo.loadedCount} loaded, ${chunkInfo.cachedCount} cached`, 10, yOffsetUI);
-        yOffsetUI += 20;
-        ctx.fillText(`Player chunk: ${chunkInfo.playerChunk}`, 10, yOffsetUI);
-      }
-      
-      // Show biome information in debug mode
-      if (typeof window.getBiomeAtPosition === 'function') {
-        yOffsetUI += 20;
-        const biome = window.getBiomeAtPosition(player.x, player.y);
-        ctx.fillStyle = biome.color;
-        ctx.fillText('Biome: ' + biome.name, 10, yOffsetUI);
-        ctx.fillStyle = '#fff';
-        
-        if (typeof window.getElevationAtPosition === 'function') {
-          yOffsetUI += 20;
-          const elevation = window.getElevationAtPosition(player.x, player.y);
-          ctx.fillText('Elevation: ' + Math.floor(elevation * 100) + '%', 10, yOffsetUI);
-        }
-      }
       
       // Show save countdown in debug mode
       if (window.SaveManager && typeof window.SaveManager.getSaveCountdown === 'function') {

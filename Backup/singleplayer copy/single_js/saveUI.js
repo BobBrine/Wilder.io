@@ -4,35 +4,6 @@
 
   let selectedPlayerSlot = null;
   let selectedWorldSlot = null;
-  
-  // Utility: hash string to 32-bit positive integer seed
-  function hashStringToSeed(str) {
-    // FNV-1a 32-bit
-    let h = 0x811c9dc5;
-    for (let i = 0; i < str.length; i++) {
-      h ^= str.charCodeAt(i);
-      // h *= 16777619 (with overflow via bit ops)
-      h = (h + (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24)) >>> 0;
-    }
-    // Constrain to 31-bit positive range similar to Java int and existing usage
-    return (h >>> 0) % 2147483647;
-  }
-
-  function parseSeedInput(raw) {
-    if (raw == null) return null;
-    const s = String(raw).trim();
-    if (!s) return null;
-    // Try numeric first
-    const asNum = Number(s);
-    if (!Number.isNaN(asNum) && Number.isFinite(asNum)) {
-      // Clamp to 0..2147483646
-      let n = Math.floor(asNum);
-      if (n < 0) n = (Math.abs(n)) % 2147483647;
-      return n % 2147483647;
-    }
-    // Otherwise hash the string deterministically
-    return hashStringToSeed(s);
-  }
 
   // Create player selection panel
   function createPlayerPanel() {
@@ -134,9 +105,8 @@
       } else {
         summary = `
           <div style="flex: 1;">
-            <div style="font-size: 1.3em; font-weight: bold;">${data.worldName ? data.worldName : `World ${slotIndex + 1}`}</div>
+            <div style="font-size: 1.3em; font-weight: bold;">World ${slotIndex + 1}</div>
             <div style="opacity: 0.8; margin: 4px 0;">Day ${data.Day || 0} • Difficulty ${data.difficulty || 1}</div>
-            <div style="opacity: 0.6; font-size: 0.9em;">Seed: ${typeof data.worldSeed === 'number' ? data.worldSeed : '—'}</div>
             <div style="opacity: 0.6; font-size: 0.9em;">${formatLastPlayed(data.timestamp)}</div>
           </div>
         `;
@@ -159,7 +129,7 @@
           ">🗑</button>
         </div>
       `;
-      } else {
+    } else {
       // Empty slot
       slotDiv.innerHTML = `
         <div style="flex: 1;">
@@ -220,13 +190,11 @@
     document.body.appendChild(overlay);
 
     dialog.querySelector('.confirm-delete').onclick = () => {
-      if (typeof playCancel === 'function') playCancel();
       document.body.removeChild(overlay);
       onConfirm();
     };
 
     dialog.querySelector('.cancel-delete').onclick = () => {
-      if (typeof playCancel === 'function') playCancel();
       document.body.removeChild(overlay);
     };
 
@@ -265,7 +233,6 @@
           
           if (playBtn) {
             playBtn.onclick = () => {
-              if (typeof playSelect === 'function') playSelect();
               selectedPlayerSlot = i;
               showWorldPanel();
             };
@@ -274,7 +241,6 @@
           if (deleteBtn) {
             deleteBtn.onclick = (e) => {
               e.stopPropagation();
-              if (typeof playSelect === 'function') playSelect();
               showConfirmDialog(
                 'Are you sure you want to delete this player data? This cannot be undone.',
                 async () => {
@@ -295,7 +261,6 @@
           const createBtn = slotElement.querySelector('.create-btn');
           if (createBtn) {
             createBtn.onclick = () => {
-              if (typeof playSelect === 'function') playSelect();
               selectedPlayerSlot = i;
               createNewPlayer(i);
             };
@@ -312,7 +277,6 @@
         const createBtn = slotElement.querySelector('.create-btn');
         if (createBtn) {
           createBtn.onclick = () => {
-            if (typeof playSelect === 'function') playSelect();
             selectedPlayerSlot = i;
             createNewPlayer(i);
           };
@@ -341,27 +305,16 @@
         const deleteBtn = slotElement.querySelector('.delete-btn');
         
         playBtn.onclick = () => {
-          if (typeof playSelect === 'function') playSelect();
           selectedWorldSlot = i;
           startGameWithSlots();
         };
         
         deleteBtn.onclick = (e) => {
           e.stopPropagation();
-          if (typeof playSelect === 'function') playSelect();
           showConfirmDialog(
             'Are you sure you want to delete this world data? This cannot be undone.',
             async () => {
               await window.SaveManager.deleteWorld(i);
-              // Clear current selection if it was this slot
-              try {
-                if (selectedWorldSlot === i) selectedWorldSlot = null;
-                if (window.SaveManager && window.SaveManager.getCurrentWorldSlot && window.SaveManager.setCurrentSlots) {
-                  const currPlayer = window.SaveManager.getCurrentPlayerSlot();
-                  // Clear current world slot to avoid auto-loading a deleted world on refresh
-                  window.SaveManager.setCurrentSlots(currPlayer, null);
-                }
-              } catch(_) {}
               populateWorldSlots();
             }
           );
@@ -370,82 +323,13 @@
         // Empty slot
         const createBtn = slotElement.querySelector('.create-btn');
         createBtn.onclick = () => {
-          if (typeof playSelect === 'function') playSelect();
           selectedWorldSlot = i;
-          showCreateWorldDialog(i);
+          createNewWorld(i);
         };
       }
       
       container.appendChild(slotElement);
     }
-  }
-
-  // Seed/name entry dialog for creating a new world
-  function showCreateWorldDialog(slot) {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.6);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10000;
-    `;
-    const dialog = document.createElement('div');
-    dialog.className = 'panel';
-    dialog.style.cssText = `
-      width: 520px;
-      padding: 20px;
-    `;
-    dialog.innerHTML = `
-      <div class="menu-header"><h2>Create New World</h2></div>
-      <div style="display:flex; flex-direction:column; gap:12px;">
-        <label style="display:flex; flex-direction:column; gap:6px;">
-          <span style="opacity:0.85;">World Name (optional)</span>
-          <input id="cw-name" type="text" placeholder="World ${slot + 1}" style="padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color:#fff;" />
-        </label>
-        <label style="display:flex; flex-direction:column; gap:6px;">
-          <span style="opacity:0.85;">Seed (leave blank for random)</span>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="cw-seed" type="text" placeholder="Enter number or any text" style="flex:1; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color:#fff;" />
-            <button id="cw-rand" class="primary" title="Randomize" style="min-width: 110px;">Random</button>
-          </div>
-        </label>
-        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:6px;">
-          <button id="cw-cancel" class="danger">Cancel</button>
-          <button id="cw-create" class="primary">Create World</button>
-        </div>
-      </div>
-    `;
-    overlay.appendChild(dialog);
-    document.body.appendChild(overlay);
-
-    const inputName = dialog.querySelector('#cw-name');
-    const inputSeed = dialog.querySelector('#cw-seed');
-    const btnRand = dialog.querySelector('#cw-rand');
-    const btnCancel = dialog.querySelector('#cw-cancel');
-    const btnCreate = dialog.querySelector('#cw-create');
-
-    // Randomize fills with a new random seed number
-    btnRand.onclick = () => {
-      const r = Math.floor(Math.random() * 2147483647);
-      inputSeed.value = String(r);
-    };
-
-    const close = () => { try { document.body.removeChild(overlay); } catch(_) {} };
-    btnCancel.onclick = () => { if (typeof playCancel === 'function') playCancel(); close(); };
-
-    const doCreate = async () => {
-      const rawSeed = inputSeed.value;
-      const seed = parseSeedInput(rawSeed);
-      const name = (inputName.value || '').trim();
-      close();
-      await createNewWorld(slot, { seed, name });
-    };
-    btnCreate.onclick = () => { if (typeof playSelect === 'function') playSelect(); doCreate(); };
-    inputSeed.addEventListener('keydown', (e) => { if (e.key === 'Enter') doCreate(); });
-    inputName.addEventListener('keydown', (e) => { if (e.key === 'Enter') doCreate(); });
   }
 
   // Create new player
@@ -526,7 +410,7 @@
   }
 
   // Create new world
-  async function createNewWorld(slot, options) {
+  async function createNewWorld(slot) {
     try {
       // Reset any existing seeded RNG state first
       if (typeof window.resetWorldSeed === 'function') {
@@ -537,15 +421,8 @@
       window.gameTime = 0;
       window.Day = 0;
       window.difficulty = 1;
-      // Determine seed: use provided seed (number) if available; if null/undefined, generate random
-      if (options && typeof options.seed === 'number') {
-        window.worldSeed = options.seed % 2147483647;
-      } else {
-        // Generate a unique seed using timestamp + random to ensure uniqueness
-        window.worldSeed = Math.floor(Date.now() * Math.random()) % 2147483647;
-      }
-      // Optional world name
-      window.worldName = options && options.name ? String(options.name) : undefined;
+      // Generate a unique seed using timestamp + random to ensure uniqueness
+      window.worldSeed = Math.floor(Date.now() * Math.random()) % 2147483647;
       
       // Re-initialize the seeded RNG with the new world seed
       if (typeof window.initializeWorldSeed === 'function') {
@@ -702,18 +579,6 @@
       await window.SaveManager.loadPlayer(selectedPlayerSlot);
       await window.SaveManager.loadWorld(selectedWorldSlot);
       
-      // Always initialize world seed and world generation for biome/terrain rendering
-      try {
-        if (typeof window.initializeWorldSeed === 'function') {
-          window.initializeWorldSeed();
-        }
-        if (typeof window.initializeWorldGeneration === 'function' && typeof window.worldSeed === 'number') {
-          window.initializeWorldGeneration(window.worldSeed);
-        }
-      } catch (e) {
-        console.warn('World generation init failed:', e);
-      }
-      
       // Final position verification and correction
       if (window.player && window.SaveManager.getCurrentPlayerSlot() !== null && window.SaveManager.getCurrentWorldSlot() !== null) {
         const currentPlayerSlot = window.SaveManager.getCurrentPlayerSlot();
@@ -750,11 +615,10 @@
   // Ensure player is alive for first frame if health > 0
   try { if (window.player && window.player.health > 0) window.player.isDead = false; } catch(_) {}
       
-      // Handle resource spawning - use chunk-based spawning if available
+      // Handle resource spawning - always ensure resources are available
       console.log('=== RESOURCE SPAWNING CHECK ===');
       console.log('window.allResources exists:', !!window.allResources);
       console.log('window.allResources keys:', window.allResources ? Object.keys(window.allResources) : 'none');
-      
       // Ensure keys exist without breaking references
       try {
         if (typeof window.ensureAllResourceTypes === 'function') {
@@ -777,27 +641,30 @@
       console.log('hasResourcesWithContent (has actual resources):', hasResourcesWithContent);
       
       if (!hasResourcesWithContent) {
-        // Use chunk-based spawning if available, otherwise fall back to old system
-        if (window.ChunkManager && window.player) {
-          console.log('Using chunk-based resource spawning');
-          // World generation already initialized above
-          // Force initial chunk loading at player spawn position
-          console.log(`Initial chunk loading at player position (${window.player.x}, ${window.player.y})`);
-          window.ChunkManager.updateLoadedChunks(window.player.x, window.player.y, true);
-          window.__resourcesSpawnedOnce = true;
-          console.log('Chunk-based resource spawning initialized');
-        } else {
-          // Resources are now handled by chunk manager - disable old spawning
-          console.log('Resources will be spawned by chunk manager as player moves');
-          // Seed already initialized above
-          // Mark as spawned to prevent old system from running
-          window.__resourcesSpawnedOnce = true;
-          console.log('Chunk-based resource system initialized with seed:', window.worldSeed);
+        // Spawn fresh resources using the world's seed for consistent generation
+        // Ensure the seeded RNG is properly initialized
+        if (typeof window.initializeWorldSeed === 'function') {
+          window.initializeWorldSeed();
+        }
+        try {
+          if (typeof window.spawnAllResources === 'function') {
+            window.spawnAllResources();
+            window.__resourcesSpawnedOnce = true;
+            console.log('Spawned fresh resources using seed:', window.worldSeed);
+          } else {
+            console.warn('spawnAllResources is not available on window yet');
+          }
+        } catch (e) {
+          console.error('Error while spawning resources:', e);
         }
       } else {
         // Using saved resources
+        // Resources loaded from save, ensure spawned flag is set
         window.__resourcesSpawnedOnce = true;
-        // Seed and world generation already initialized above
+        // Also initialize the seed for any future resource operations
+        if (typeof window.initializeWorldSeed === 'function') {
+          window.initializeWorldSeed();
+        }
       }
       
       // Ensure player gets starter kit only for brand-new players (no inventory)
@@ -829,21 +696,36 @@
         window.startPlayerStateLoop();
       }
       
-      // Mobs are now handled by chunk manager - disable old global spawning
-      
-      // Ensure playersMap is updated
+      // Ensure mobs are spawned and tracking player
       try {
+        if (typeof window.spawnAllMob === 'function' && window.allResources) {
+          // Only spawn mobs if resources are available
+          const resourceCount = Object.values(window.allResources).reduce((total, arr) => total + (arr ? arr.length : 0), 0);
+          if (resourceCount > 0) {
+            console.log('Spawning mobs with', resourceCount, 'resources available');
+            window.spawnAllMob(window.allResources, {}, window.gameTime || 0);
+          } else {
+            console.log('Skipping mob spawn - no resources available yet');
+          }
+        }
+        // Ensure playersMap is updated
         if (typeof window.playersMap !== 'undefined' && window.player && window.player.id) {
           window.playersMap[window.player.id] = window.player;
         }
       } catch(e) {
-        console.warn('Failed to setup playersMap:', e);
+        console.warn('Failed to setup mobs:', e);
+        // Try basic mob initialization without resources
+        try {
+          if (typeof window.mobs !== 'undefined') {
+            window.mobs = window.mobs || [];
+          }
+        } catch(e2) {
+          console.warn('Failed basic mob setup:', e2);
+        }
       }
       
       // Start autosave
       window.SaveManager.startAutosave();
-      
-      // Seed badge removed: seed is shown in debug HUD instead
       
       console.log(`Game started with Player Slot ${selectedPlayerSlot} and World Slot ${selectedWorldSlot}`);
     } catch (e) {
@@ -867,7 +749,6 @@
       const backBtn = document.getElementById('backToMainBtn');
       if (backBtn) {
         backBtn.onclick = () => {
-          if (typeof playCancel === 'function') playCancel();
           hideAllPanels();
           // Show main menu again
           if (mainMenu) mainMenu.style.display = 'block';
@@ -912,7 +793,7 @@
     // Wire up back button
     const backBtn = document.getElementById('backToPlayerBtn');
     if (backBtn) {
-      backBtn.onclick = () => { if (typeof playCancel === 'function') playCancel(); showPlayerPanel(); };
+      backBtn.onclick = showPlayerPanel;
     }
   }
 

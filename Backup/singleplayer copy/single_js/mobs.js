@@ -1,10 +1,6 @@
 const mobtype = initializeMobTypes(gameTime, difficulty);
 const mobs = Object.fromEntries(Object.keys(mobtype).map(type => [type, []]));
 
-// Export to window for chunk manager access
-window.mobs = mobs;
-window.mobtype = mobtype;
-
 let mobloaded = false;
 let showData = false;
 
@@ -52,6 +48,13 @@ function drawCrystal(ctx, x, y, size) {
 
 function drawMob() {
   ctx.save();
+  // Force feet animation for all mobs for testing
+  // Remove this line when you want real movement logic
+  for (const mobList of Object.values(mobs)) {
+    for (const mob of mobList) {
+      mob.isMovingForward = true;
+    }
+  }
   const now = performance.now();
   // Interpolation tuning constants
   for (const mobList of Object.values(mobs)) {
@@ -625,7 +628,6 @@ function generatePassiveMobType(id, difficulty) {
   
   return {
     maxCount: 11,  // slightly more mobs at higher difficulty
-    spawnWeight: 0.2, // lower selection weight further to reduce passive mob spawns
     size: 30,
     health: fixedHealth,
     speed: fixedSpeed,
@@ -683,7 +685,6 @@ function generateAggressiveMobType(id, gameTime, difficulty, totalMaxCount = 28)
 
   return {
     maxCount: totalMaxCount, // Use the exact totalMaxCount
-    spawnWeight: 0.29, // selection weight for spawning
     profiles: {
       tank: {
         count: tankCount,
@@ -744,7 +745,6 @@ function generateSpecialAggressiveMobType(id, gameTime, difficulty) {
 
   return {
     maxCount: 1,
-    spawnWeight: 0.01, // very rare
     size: 30,
     health: 500 * (1 + 0.3 * (difficulty - 1)),
     speed: 200 * (1 + 0.1 * (difficulty - 1)),
@@ -1137,27 +1137,6 @@ function updateMobs(allResources, players, deltaTime) {
       const config = mobtype[mob.type];
       const mobSize = mob.size;
 
-      // Backfill missing runtime fields for compatibility with chunk-spawned mobs
-      if (typeof mob.moveSpeed !== 'number') {
-        if (config?.profiles && mob.profile && config.profiles[mob.profile]?.speed) {
-          mob.moveSpeed = config.profiles[mob.profile].speed;
-        } else if (typeof config?.speed === 'number') {
-          mob.moveSpeed = config.speed;
-        } else {
-          mob.moveSpeed = 60;
-        }
-      }
-      if (typeof mob.turnSpeed !== 'number') mob.turnSpeed = config?.turnSpeed || Math.PI;
-      if (!mob.currentBehavior) mob.currentBehavior = config?.behavior || 'wander';
-      if (!mob.behavior) mob.behavior = mob.currentBehavior;
-      if (!mob.threatTable) mob.threatTable = {};
-      if (typeof mob.facingAngle !== 'number') mob.facingAngle = Math.random() * Math.PI * 2;
-      if (typeof mob.targetAngle !== 'number') mob.targetAngle = mob.facingAngle;
-      if (typeof mob.moveTimer !== 'number') mob.moveTimer = Math.random() * 3 + 2;
-      if (typeof mob.isTurning !== 'boolean') mob.isTurning = true;
-      if (typeof mob.aggroRadius !== 'number') mob.aggroRadius = (mob.profile && config?.profiles?.[mob.profile]?.aggroRadius) || config?.aggroRadius || 0;
-      if (typeof mob.escapeRadius !== 'number') mob.escapeRadius = (mob.profile && config?.profiles?.[mob.profile]?.escapeRadius) || config?.escapeRadius || 0;
-
       if (mob.damageCooldown > 0) {
         mob.damageCooldown -= deltaTime;
       }
@@ -1395,12 +1374,8 @@ function updateMobs(allResources, players, deltaTime) {
           players
         );
 
-  const oldX = mob.x, oldY = mob.y;
-  if (!collideX) mob.x = Math.max(minX, Math.min(maxX, newX));
-  if (!collideY) mob.y = Math.max(minY, Math.min(maxY, newY));
-  // Update move flag for feet animation
-  const moved = ((mob.x !== oldX) || (mob.y !== oldY));
-  mob.isMovingForward = moved;
+        if (!collideX) mob.x = Math.max(minX, Math.min(maxX, newX));
+        if (!collideY) mob.y = Math.max(minY, Math.min(maxY, newY));
         // If both axes blocked (likely tight overlap) attempt gentle separation (mobs first, then resources)
   if (collideX && collideY) {
           const { cx, cy } = getCenterPos(mob.x, mob.y, mobSize);

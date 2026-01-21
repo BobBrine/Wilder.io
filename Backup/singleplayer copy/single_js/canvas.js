@@ -1,7 +1,7 @@
 const canvas = document.getElementById("gameCanvas");
-// Stable canvas context (no desynchronized flag to avoid GPU flicker issues)
-const ctx = canvas.getContext('2d', { alpha: false });
-window.ctx = ctx;
+// Prefer a desynchronized, opaque context to reduce compositor latency and blending cost
+const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+// Reduce filtering cost when scaling images
 ctx.imageSmoothingEnabled = false;
 
 // Make canvas fill the browser window (CSS) and allow lower internal resolution via renderScale

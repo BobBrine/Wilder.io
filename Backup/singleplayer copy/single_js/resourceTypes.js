@@ -56,7 +56,6 @@ const resourceTypes = {
     maxCount: 50,
     sizeX: 32,
     sizeY: 32,
-    alignToBlockGrid: true,
     get health() { return Math.floor(getRandomValue() * (25 - 15 + 1)) + 15; },
     color: "red",
     drop: "food",
@@ -67,27 +66,16 @@ const resourceTypes = {
 
   wood: {
     maxCount: 80,
-    // Fallback base size (in case sizeStrategy is bypassed somewhere)
-    sizeX: 64,
-    sizeY: 64,
-    alignToBlockGrid: true,
-    // Strategy ensures the tree stays fully within ONE grid cell while
-    // still allowing variety & visually larger presence than small ores/food.
-    sizeStrategy() {
-      const cell = (typeof GRID_SIZE === 'number') ? GRID_SIZE : 32;
-      // Choose between 2x2, 2x1, 1x2, or 1x1 cells for variety (base logical footprint)
-      const variants = [
-        { w:2, h:2, weight: 0.35 },
-        { w:2, h:1, weight: 0.20 },
-        { w:1, h:2, weight: 0.20 },
-        { w:1, h:1, weight: 0.25 }
-      ];
-      const r = getRandomValue();
-      let acc = 0; let chosen = variants[0];
-      for (const v of variants) { acc += v.weight; if (r <= acc) { chosen = v; break; } }
-      // Scale factor to double overall size while preserving aspect ratios & grid alignment
-      const scale = 2; // doubling request
-      return { sizeX: chosen.w * cell * scale, sizeY: chosen.h * cell * scale };
+    get sizeX() {
+      const min = 48;
+      const maxArea = 8192;
+      const x = Math.floor(getRandomValue() * ((maxArea / min) - min + 1)) + min;
+      return x;
+    },
+    get sizeY() {
+      const maxArea = 8192;
+      const x = this.sizeX;
+      return Math.floor(maxArea / x);
     },
     get health() { return Math.floor(getRandomValue() * (35 - 20 + 1)) + 20; },
     color: "green",
@@ -101,39 +89,36 @@ const resourceTypes = {
     maxCount: 50,
     sizeX: 64,
     sizeY: 64,
-    alignToBlockGrid: true,
-  get health() { return Math.floor(getRandomValue() * (50 - 30 + 1)) + 30; },
+    get health() { return Math.floor(Math.random() * (50 - 30 + 1)) + 30; },
     color: "darkgray",
     drop: "stone",
     requiredTool: { categories: ["pickaxe"], minTier: 1 },
     spawntimer: 12,
-    getDropAmount(health) { return health <= 40 ? Math.floor(getRandomValue() * 3) + 4 : Math.floor(getRandomValue() * 4) + 5; }
+    getDropAmount(health) { return health <= 40 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 5; }
   },
 
   iron: {
     maxCount: 25,
     sizeX: 64,
     sizeY: 64,
-    alignToBlockGrid: true,
-  get health() { return Math.floor(getRandomValue() * (70 - 45 + 1)) + 45; },
+    get health() { return Math.floor(Math.random() * (70 - 45 + 1)) + 45; },
     color: "white",
     drop: "iron",
     requiredTool: { categories: ["pickaxe"], minTier: 2 },
     spawntimer: 14,
-    getDropAmount(health) { return health <= 55 ? Math.floor(getRandomValue() * 3) + 4 : Math.floor(getRandomValue() * 4) + 6; }
+    getDropAmount(health) { return health <= 55 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 6; }
   },
 
   gold: {
     maxCount: 15,
     sizeX: 32,
     sizeY: 32,
-    alignToBlockGrid: true,
-  get health() { return Math.floor(getRandomValue() * (90 - 60 + 1)) + 60; },
+    get health() { return Math.floor(Math.random() * (90 - 60 + 1)) + 60; },
     color: "gold",
     drop: "gold",
     requiredTool: { categories: ["pickaxe"], minTier: 3 },
     spawntimer: 16,
-    getDropAmount(health) { return health <= 75 ? Math.floor(getRandomValue() * 3) + 4 : Math.floor(getRandomValue() * 4) + 5; }
+    getDropAmount(health) { return health <= 75 ? Math.floor(Math.random() * 3) + 4 : Math.floor(Math.random() * 4) + 5; }
   }
 };
 
@@ -544,24 +529,6 @@ function isOverlappingAny(source, x, y, sizeX, sizeY) {
   });
 }
 
-// Prevent resources from spawning at or overlapping the player spawn point
-const PLAYER_SPAWN_X = 2500;
-const PLAYER_SPAWN_Y = 2500;
-const PLAYER_SPAWN_SAFE_RADIUS = 96; // px (3x3 grid if grid=32, or adjust as needed)
-
-function overlapsPlayerSpawn(x, y, sizeX, sizeY) {
-  // Axis-aligned bounding box overlap with spawn safe zone
-  const left = x, right = x + sizeX, top = y, bottom = y + sizeY;
-  const spawnLeft = PLAYER_SPAWN_X - PLAYER_SPAWN_SAFE_RADIUS;
-  const spawnRight = PLAYER_SPAWN_X + PLAYER_SPAWN_SAFE_RADIUS;
-  const spawnTop = PLAYER_SPAWN_Y - PLAYER_SPAWN_SAFE_RADIUS;
-  const spawnBottom = PLAYER_SPAWN_Y + PLAYER_SPAWN_SAFE_RADIUS;
-  return (
-    left < spawnRight && right > spawnLeft &&
-    top < spawnBottom && bottom > spawnTop
-  );
-}
-
 function createResourceSpawner(type, targetArray, isOverlapping) {
   const config = resourceTypes[type];
   if (!config) return;
@@ -570,61 +537,12 @@ function createResourceSpawner(type, targetArray, isOverlapping) {
   let deadCount = targetArray.filter(r => r.sizeX === 0 || r.sizeY === 0).length;
 
   while (activeCount + deadCount < config.maxCount) {
-    let sizeX, sizeY, x, y;
-  // Apply biome-based spawning logic
-  let attempts = 0;
-  const maxAttempts = 50; // Prevent infinite loops
-  
-  do {
-    attempts++;
-    if (config.alignToBlockGrid) {
-      const block = (typeof GRID_SIZE === 'number') ? GRID_SIZE : 32;
-      if (typeof config.sizeStrategy === 'function') {
-        const s = config.sizeStrategy();
-        sizeX = s.sizeX; sizeY = s.sizeY;
-      } else {
-        sizeX = (typeof config.sizeX === 'function') ? config.sizeX() : config.sizeX;
-        sizeY = (typeof config.sizeY === 'function') ? config.sizeY() : config.sizeY;
-      }
-      // Force to multiples of block size
-      sizeX = Math.max(block, Math.round(sizeX / block) * block);
-      sizeY = Math.max(block, Math.round(sizeY / block) * block);
-      const maxCols = Math.floor(WORLD_SIZE / block) - (sizeX / block);
-      const maxRows = Math.floor(WORLD_SIZE / block) - (sizeY / block);
-      const col = Math.floor(getRandomValue() * (maxCols + 1));
-      const row = Math.floor(getRandomValue() * (maxRows + 1));
-      x = col * block;
-      y = row * block;
-    } else {
-      const col = Math.floor(getRandomValue() * GRID_COLS);
-      const row = Math.floor(getRandomValue() * GRID_ROWS);
-      if (typeof config.sizeStrategy === 'function') {
-        const s = config.sizeStrategy();
-        sizeX = s.sizeX; sizeY = s.sizeY;
-      } else {
-        sizeX = (typeof config.sizeX === 'function') ? config.sizeX() : config.sizeX;
-        sizeY = (typeof config.sizeY === 'function') ? config.sizeY() : config.sizeY;
-      }
-      const maxCell = (typeof GRID_CELL_SIZE === 'number') ? GRID_CELL_SIZE : 100;
-      sizeX = Math.min(sizeX, maxCell);
-      sizeY = Math.min(sizeY, maxCell);
-      ({ x, y } = getRandomPositionInCell(col, row, sizeX, sizeY));
-    }
-    
-    // Check biome suitability if world generation is available
-    let biomeSuitable = true;
-    if (typeof window.canResourceSpawnAtLocation === 'function') {
-      biomeSuitable = window.canResourceSpawnAtLocation(x, y, type);
-    }
-    
-    // Also check for biome spawn chance
-    let spawnChanceCheck = true;
-    if (typeof window.getResourceSpawnChance === 'function') {
-      const spawnChance = window.getResourceSpawnChance(x, y, type);
-      spawnChanceCheck = getRandomValue() < spawnChance;
-    }
-    
-    if (biomeSuitable && spawnChanceCheck && !isOverlapping(x, y, sizeX, sizeY) && !overlapsPlayerSpawn(x, y, sizeX, sizeY)) {
+    const col = Math.floor(getRandomValue() * GRID_COLS);
+    const row = Math.floor(getRandomValue() * GRID_ROWS);
+    const sizeX = typeof config.sizeX === 'function' ? config.sizeX() : config.sizeX;
+    const sizeY = typeof config.sizeY === 'function' ? config.sizeY() : config.sizeY;
+    const { x, y } = getRandomPositionInCell(col, row, sizeX, sizeY);
+    if (!isOverlapping(x, y, sizeX, sizeY)) {
       const id = crypto.randomUUID();
       const initialHealth = typeof config.health === 'function' ? config.health() : config.health;
       targetArray.push({
@@ -640,14 +558,7 @@ function createResourceSpawner(type, targetArray, isOverlapping) {
         respawnTime: config.spawntimer
       });
       activeCount++;
-      break; // Successfully spawned, exit the loop
     }
-  } while (attempts < maxAttempts);
-  
-  // If we couldn't find a suitable location after max attempts, warn but continue
-  if (attempts >= maxAttempts) {
-    console.warn(`Failed to find suitable biome location for ${type} after ${maxAttempts} attempts`);
-  }
   }
 }
 
@@ -658,12 +569,6 @@ function spawnAllResources() {
   // Initialize seeded random generation for consistent world gen
   initializeWorldSeed();
   console.log('Seeded RNG initialized for world seed:', window.worldSeed);
-  
-  // Initialize world generation system
-  if (typeof window.initializeWorldGeneration === 'function') {
-    window.initializeWorldGeneration(window.worldSeed);
-    console.log('World generation initialized for biome-aware spawning');
-  }
   
   // Ensure window.allResources and all type arrays exist
   ensureAllResourceTypes();
@@ -704,44 +609,15 @@ function updateResourceRespawns(deltaTime) {
           const config = resourceTypes[r.type];
           let newX, newY, newSizeX, newSizeY;
           do {
-            if (config.alignToBlockGrid) {
-              const block = (typeof GRID_SIZE === 'number') ? GRID_SIZE : 32;
-              if (typeof config.sizeStrategy === 'function') {
-                const s = config.sizeStrategy();
-                newSizeX = s.sizeX; newSizeY = s.sizeY;
-              } else {
-                newSizeX = (typeof config.sizeX === 'function') ? config.sizeX() : config.sizeX;
-                newSizeY = (typeof config.sizeY === 'function') ? config.sizeY() : config.sizeY;
-              }
-              newSizeX = Math.max(block, Math.round(newSizeX / block) * block);
-              newSizeY = Math.max(block, Math.round(newSizeY / block) * block);
-              const maxCols = Math.floor(WORLD_SIZE / block) - (newSizeX / block);
-              const maxRows = Math.floor(WORLD_SIZE / block) - (newSizeY / block);
-              const col = Math.floor(getRandomValue() * (maxCols + 1));
-              const row = Math.floor(getRandomValue() * (maxRows + 1));
-              newX = col * block;
-              newY = row * block;
-            } else {
-              if (typeof config.sizeStrategy === 'function') {
-                const s = config.sizeStrategy();
-                newSizeX = s.sizeX; newSizeY = s.sizeY;
-              } else {
-                newSizeX = (typeof config.sizeX === 'function') ? config.sizeX() : config.sizeX;
-                newSizeY = (typeof config.sizeY === 'function') ? config.sizeY() : config.sizeY;
-              }
-              const maxCell = (typeof GRID_CELL_SIZE === 'number') ? GRID_CELL_SIZE : 100;
-              newSizeX = Math.min(newSizeX, maxCell);
-              newSizeY = Math.min(newSizeY, maxCell);
-              const col = Math.floor(getRandomValue() * GRID_COLS);
-              const row = Math.floor(getRandomValue() * GRID_ROWS);
-              ({ x: newX, y: newY } = getRandomPositionInCell(col, row, newSizeX, newSizeY));
-            }
+            newSizeX = typeof config.sizeX === 'function' ? config.sizeX() : config.sizeX;
+            newSizeY = typeof config.sizeY === 'function' ? config.sizeY() : config.sizeY;
+            const col = Math.floor(getRandomValue() * GRID_COLS);
+            const row = Math.floor(getRandomValue() * GRID_ROWS);
+            ({ x: newX, y: newY } = getRandomPositionInCell(col, row, newSizeX, newSizeY));
           } while (
             isOverlappingAny(window.allResources, newX, newY, newSizeX, newSizeY) ||
             isOverlappingAny(mobs, newX, newY, newSizeX, newSizeY) ||
-            isOverlappingAny(player, newX, newY, newSizeX, newSizeY) ||
-            (typeof window.canResourceSpawnAtLocation === 'function' && !window.canResourceSpawnAtLocation(newX, newY, r.type)) ||
-            (typeof window.getResourceSpawnChance === 'function' && getRandomValue() >= window.getResourceSpawnChance(newX, newY, r.type))
+            isOverlappingAny(player, newX, newY, newSizeX, newSizeY)
           );
           const newHealth = typeof config.health === 'function' ? config.health() : config.health;
           r.id = crypto.randomUUID();
