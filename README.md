@@ -1,4 +1,4 @@
-# Wilder.io
+# Wilder.io (https://bobbrine.github.io/Wilder.io/)
 
 ## Overview
 Wilder.io is a browser-based survival and crafting game inspired by classic .io-style games. The project was developed to explore real-time game systems, multiplayer networking, and performance-conscious world simulation in both online and offline environments.
