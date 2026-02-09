@@ -17,6 +17,9 @@ The primary goal of this project was to learn how client-server systems work in 
 - Chunk-based world streaming for performance
 - Deterministic world generation using seeded randomness
 
+![Wilder.io homescreen](screenshot/Screenshot1.png)
+![Wilder.io gameplay](screenshot/Screenshot2.png)
+
 ## Technologies Used
 - JavaScript (browser-based client)
 - HTML / CSS
