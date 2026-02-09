@@ -64,5 +64,5 @@ Planned improvements include:
 - Open docs/index.html using a local web server for multiplayer.
 - Open docs/singleplayer/index.html using a local web server for offline singleplayer.
 
-### Notes
+## Notes
 This project was developed as a personal learning exercise to better understand interactive systems, networking, and game architecture.
